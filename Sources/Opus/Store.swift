@@ -1,0 +1,203 @@
+import SwiftUI
+
+@MainActor @Observable
+final class Store {
+    var state: Snapshot
+    var error: String?
+    private let database: Database
+    private var undoStates: [Snapshot] = []
+    var canUndo: Bool { !undoStates.isEmpty }
+    var location: URL { database.url }
+
+    init(database: Database) throws {
+        self.database = database
+        state = try database.load()
+        refreshOccurrences()
+    }
+    func change(_ mutation: (inout Snapshot) -> Void) {
+        let previous = state
+        var next = state
+        mutation(&next)
+        do {
+            try database.save(next)
+            error = nil
+            undoStates.append(previous)
+            if undoStates.count > 30 { undoStates.removeFirst() }
+            state = next
+        } catch { self.error = error.localizedDescription }
+    }
+    func undo() {
+        guard let previous = undoStates.last else { return }
+        do { try database.save(previous); state = previous; undoStates.removeLast() }
+        catch { self.error = error.localizedDescription }
+    }
+    func course(_ id: String?) -> Course? { state.courses.first { $0.id == id } }
+    func save(_ task: StudyTask) {
+        change { state in
+            if let index = state.tasks.firstIndex(where: { $0.id == task.id }) { state.tasks[index] = task }
+            else { state.tasks.append(task) }
+        }
+    }
+    func save(_ assessment: Assessment) {
+        change { state in
+            if let index = state.assessments.firstIndex(where: { $0.id == assessment.id }) { state.assessments[index] = assessment }
+            else { state.assessments.append(assessment) }
+        }
+    }
+    func save(_ course: Course) {
+        change { state in
+            if let index = state.courses.firstIndex(where: { $0.id == course.id }) { state.courses[index] = course }
+            else { state.courses.append(course) }
+        }
+    }
+    func deleteCourse(_ id: String) {
+        change { state in
+            state.courses.removeAll { $0.id == id }
+            for index in state.tasks.indices where state.tasks[index].courseID == id { state.tasks[index].courseID = nil }
+            for index in state.assessments.indices where state.assessments[index].courseID == id { state.assessments[index].courseID = nil }
+            for index in state.schedule.indices where state.schedule[index].courseID == id { state.schedule[index].courseID = nil }
+            state.rules.removeAll { $0.courseID == id }
+        }
+    }
+    func deleteTask(_ id: String) {
+        change { state in
+            state.tasks.removeAll { $0.id == id }
+            state.activities.removeAll { $0.taskID == id }
+        }
+    }
+    func record(_ task: StudyTask, value: Int?, note: String) {
+        change { state in
+            guard let index = state.tasks.firstIndex(where: { $0.id == task.id }) else { return }
+            let previous = state.tasks[index].current
+            if let value {
+                state.tasks[index].current = value
+                state.tasks[index].completed = value >= task.target
+            }
+            state.activities.append(Activity(taskID: task.id, note: note, previous: value == nil ? nil : previous, value: value))
+        }
+    }
+    func refreshOccurrences(through: String? = nil) {
+        var next = state
+        Self.generate(in: &next, through: through)
+        do { try database.save(next); state = next } catch { self.error = error.localizedDescription }
+    }
+    static func generate(in state: inout Snapshot, today: String = Day.today, through: String? = nil) {
+        let horizon = max(56, through.map { (Calendar.current.dateComponents([.day], from: Day.date(today), to: Day.date($0)).day ?? 0) + 1 } ?? 56)
+        for rule in state.rules where rule.enabled {
+            for offset in 0..<horizon {
+                let day = Day.adding(offset, to: today)
+                guard rule.occurs(on: day) else { continue }
+                let key = "\(rule.id):\(day)"
+                guard !state.generated.contains(key) else { continue }
+                state.generated.insert(key)
+                switch rule.kind {
+                case .assessment:
+                    state.assessments.append(Assessment(courseID: rule.courseID, title: rule.title, day: day, topics: rule.notes ?? "", ruleID: rule.id, occurrence: day))
+                case .task:
+                    state.tasks.append(StudyTask(courseID: rule.courseID, title: rule.title, notes: rule.notes ?? "", kind: rule.taskKind ?? .checkbox, planned: day, target: rule.targetCount ?? 30, ruleID: rule.id, occurrence: day))
+                case .schedule:
+                    state.schedule.append(ScheduleBlock(courseID: rule.courseID, title: rule.title, day: day, startMinute: rule.startMinute ?? 540, duration: rule.duration ?? 60, notes: rule.notes ?? "", ruleID: rule.id, occurrence: day))
+                }
+            }
+        }
+    }
+    private static func removeUntouched(_ rule: QuizRule, in state: inout Snapshot) {
+        var removedDays: [String] = []
+        state.assessments.removeAll { item in
+            let remove = item.ruleID == rule.id && !item.confirmed && item.day >= Day.today && item.day == item.occurrence && item.title == rule.title && item.topics == (rule.notes ?? "") && item.courseID == rule.courseID
+            if remove, let day = item.occurrence { removedDays.append(day) }
+            return remove
+        }
+        let worked = Set(state.activities.map(\.taskID))
+        state.tasks.removeAll { item in
+            let remove = item.ruleID == rule.id && !item.completed && (item.planned ?? "") >= Day.today && item.planned == item.occurrence && item.title == rule.title && item.notes == (rule.notes ?? "") && item.current == 0 && item.start == 1 && item.target == (rule.targetCount ?? 30) && item.kind == (rule.taskKind ?? .checkbox) && item.due == nil && !worked.contains(item.id) && item.courseID == rule.courseID
+            if remove, let day = item.occurrence { removedDays.append(day) }
+            return remove
+        }
+        state.schedule.removeAll { item in
+            let remove = item.ruleID == rule.id && item.day >= Day.today && item.day == item.occurrence && item.title == rule.title && item.notes == (rule.notes ?? "") && item.startMinute == (rule.startMinute ?? 540) && item.duration == (rule.duration ?? 60) && item.courseID == rule.courseID
+            if remove, let day = item.occurrence { removedDays.append(day) }
+            return remove
+        }
+        for day in removedDays { state.generated.remove("\(rule.id):\(day)") }
+    }
+    func saveRule(_ rule: QuizRule) {
+        guard !rule.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !rule.days.isEmpty else { return }
+        change { state in
+            if let index = state.rules.firstIndex(where: { $0.id == rule.id }) {
+                Self.removeUntouched(state.rules[index], in: &state)
+                state.rules[index] = rule
+            } else { state.rules.append(rule) }
+            Self.generate(in: &state)
+        }
+    }
+    func deleteRule(_ id: String) {
+        change { state in
+            if let rule = state.rules.first(where: { $0.id == id }) { Self.removeUntouched(rule, in: &state) }
+            state.rules.removeAll { $0.id == id }
+        }
+    }
+    func save(_ block: ScheduleBlock) {
+        guard block.startMinute >= 0, block.duration > 0, block.startMinute + block.duration <= 1440 else { return }
+        change { state in
+            if let index = state.schedule.firstIndex(where: { $0.id == block.id }) { state.schedule[index] = block }
+            else { state.schedule.append(block) }
+        }
+    }
+    func updateProgress(_ id: String, to value: Int) {
+        guard let task = state.tasks.first(where: { $0.id == id }), task.kind == .progress else { return }
+        let bounded = min(task.target, max(task.start - 1, value))
+        guard task.current != bounded else { return }
+        record(task, value: bounded, note: "Finished through \(bounded) \(task.unit)")
+    }
+    func setup(personalized: Bool) {
+        change { $0.setupComplete = true }
+    }
+}
+
+extension Course {
+    static let colors = ["blue", "purple", "pink", "orange", "red", "brown", "green", "teal"]
+    var tint: Color {
+        switch color {
+        case "purple": .purple
+        case "pink": .pink
+        case "orange": .orange
+        case "red": .red
+        case "brown": .brown
+        case "green": .green
+        case "teal": .teal
+        default: .blue
+        }
+    }
+}
+
+extension Course {
+    var shortName: String {
+        name.replacingOccurrences(of: "AP ", with: "").replacingOccurrences(of: "Honors ", with: "")
+    }
+}
+extension Store {
+    @discardableResult func reschedule(_ payload: String, to day: String) -> Bool {
+        if payload.hasPrefix("assessment:"), var item = state.assessments.first(where: { $0.id == String(payload.dropFirst(11)) }) {
+            item.day = day; save(item); return error == nil
+        }
+        if payload.hasPrefix("planned:"), var task = state.tasks.first(where: { $0.id == String(payload.dropFirst(8)) }) {
+            task.planned = day; save(task); return error == nil
+        }
+        if payload.hasPrefix("schedule:"), var block = state.schedule.first(where: { $0.id == String(payload.dropFirst(9)) }) {
+            block.day = day; save(block); return error == nil
+        }
+        if payload.hasPrefix("task:"), var task = state.tasks.first(where: { $0.id == String(payload.dropFirst(5)) }) {
+            task.due = day; save(task); return error == nil
+        }
+        return false
+    }
+    func moveTask(_ id: String, before target: String) {
+        guard id != target, let task = state.tasks.first(where: { $0.id == id }), state.tasks.contains(where: { $0.id == target }) else { return }
+        change { state in
+            state.tasks.removeAll { $0.id == id }
+            let index = state.tasks.firstIndex { $0.id == target }!
+            state.tasks.insert(task, at: index)
+        }
+    }
+}

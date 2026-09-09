@@ -1,0 +1,100 @@
+import SwiftUI
+
+struct CourseEditor: View {
+    var store: Store
+    @State var course: Course
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TextField("List name", text: $course.name).textFieldStyle(.plain).font(.system(size: 19, weight: .semibold))
+            Divider()
+            PropertyRow("Color") {
+                HStack(spacing: 9) {
+                    ForEach(Course.colors, id: \.self) { color in
+                        Button { course.color = color } label: {
+                            Circle().fill(Course(name: "", color: color).tint).frame(width: 20, height: 20)
+                                .overlay { if course.color == color { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white) } }
+                        }.buttonStyle(.plain).accessibilityLabel(color).accessibilityValue(course.color == color ? "Selected" : "")
+                    }
+                }
+            }
+            Divider()
+            HStack {
+                if store.state.courses.contains(where: { $0.id == course.id }) {
+                    Button("Remove list", role: .destructive) { store.deleteCourse(course.id); dismiss() }.help("Move its tasks to Inbox and keep its calendar entries")
+                }
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Done") { course.name = course.name.trimmingCharacters(in: .whitespacesAndNewlines); store.save(course); if store.error == nil { dismiss() } }.keyboardShortcut(.defaultAction).disabled(course.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }.padding(20).frame(width: 380)
+    }
+}
+struct RuleEditor: View {
+    var store: Store
+    @State var rule: QuizRule
+    @State private var days: Set<Int>
+    @Environment(\.dismiss) private var dismiss
+    init(store: Store, rule: QuizRule) {
+        self.store = store; _rule = State(initialValue: rule); _days = State(initialValue: rule.days)
+    }
+    private var valid: Bool { !rule.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !days.isEmpty && (rule.endDate == nil || rule.endDate! >= (rule.startDate ?? Day.today)) && (rule.kind != .schedule || (rule.startMinute ?? 540) + (rule.duration ?? 60) <= 1440) }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TextField("Repeat something", text: $rule.title).textFieldStyle(.plain).font(.system(size: 19, weight: .semibold))
+            Divider()
+            VStack(spacing: 0) {
+                PropertyRow("Add to") {
+                    Picker("Kind", selection: Binding(get: { rule.kind }, set: { rule.itemKind = $0 })) {
+                        ForEach(RepeatItem.allCases) { Text($0.rawValue).tag($0) }
+                    }.labelsHidden().pickerStyle(.menu)
+                }
+                PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $rule.courseID) }
+                if rule.kind == .task {
+                    PropertyRow("Track") {
+                        Picker("Track", selection: Binding(get: { rule.taskKind ?? .checkbox }, set: { rule.taskKind = $0 })) { ForEach(TaskKind.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().pickerStyle(.menu)
+                    }
+                    if rule.taskKind == .progress {
+                        PropertyRow("Goal") { TextField("Pages", value: Binding(get: { rule.targetCount ?? 30 }, set: { rule.targetCount = max(1, $0) }), format: .number).frame(width: 80) }
+                    }
+                }
+                if rule.kind == .schedule {
+                    PropertyRow("At") { DatePicker("Time", selection: Binding(get: { ClockTime.date(rule.startMinute ?? 540) }, set: { rule.startMinute = ClockTime.minutes($0) }), displayedComponents: .hourAndMinute).labelsHidden() }
+                    PropertyRow("For") {
+                        Picker("Duration", selection: Binding(get: { rule.duration ?? 60 }, set: { rule.duration = $0 })) { ForEach([15,30,45,60,90,120,180], id: \.self) { Text("\($0) minutes").tag($0) } }.labelsHidden()
+                    }
+                }
+            }
+            Divider()
+            HStack {
+                Text("Repeat on").font(.callout.weight(.medium))
+                Spacer()
+                Menu("Presets") {
+                    Button("Every day") { days = Set(1...7) }
+                    Button("Weekdays") { days = Set(2...6) }
+                    Button("Mon, Tue, Wed") { days = [2,3,4] }
+                    Button("Weekends") { days = [1,7] }
+                }.menuStyle(.borderlessButton).fixedSize()
+            }
+            WeekdayPicker(days: $days)
+            VStack(spacing: 0) {
+                PropertyRow("Every") {
+                    Picker("Interval", selection: Binding(get: { rule.intervalWeeks ?? 1 }, set: { rule.intervalWeeks = $0 })) { ForEach(1...8, id: \.self) { Text($0 == 1 ? "Week" : "\($0) weeks").tag($0) } }.labelsHidden()
+                }
+                PropertyRow("From") { DateMenu(title: "Today", value: $rule.startDate) }
+                PropertyRow("Until") { DateMenu(title: "No end date", value: $rule.endDate) }
+                PropertyRow("Active") { Toggle("Active", isOn: $rule.enabled).labelsHidden().toggleStyle(.switch).controlSize(.small) }
+            }
+            Text("Changes apply to future untouched occurrences. Completed or individually edited items stay as they are.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack {
+                if store.state.rules.contains(where: { $0.id == rule.id }) { Button("Delete", role: .destructive) { store.deleteRule(rule.id); dismiss() } }
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Done") {
+                    rule.weekdays = days.sorted(); rule.startDate = rule.startDate ?? Day.today
+                    store.saveRule(rule); if store.error == nil { dismiss() }
+                }.keyboardShortcut(.defaultAction).disabled(!valid)
+            }
+        }.padding(20).frame(width: 360)
+    }
+}

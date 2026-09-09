@@ -1,0 +1,50 @@
+# Opus
+
+A local-first native macOS study planner built with SwiftUI and SQLite. Requires macOS 14 or later and Xcode's Swift 6 toolchain to build. No third-party dependencies, network service, or account.
+
+## Run
+
+```sh
+./scripts/build-app.sh
+open dist/Opus.app
+```
+
+Open `Package.swift` in Xcode to edit and run the executable, or use `swift run`. The app bundle is the preferred way to launch with normal Mac window behavior.
+
+## Use
+
+New installations start empty; users create their own lists and rhythms.
+- **⌘N** adds in context: inline task entry in lists, an entry on the selected calendar date, or a timed Schedule block. Type a title and press Return to add it and keep typing. List, task type, and optional deadline appear when the entry field is focused. Select a row for an autosaving details/notes panel.
+- **Today** includes planned work from today or earlier and tasks due today or overdue. **All tasks** also shows unscheduled work. Right-click a task to plan it for today or tomorrow.
+- For notes on pages 206–235, use Start 206, Finish 235, Finished through 205. Record a new stopping point from the task card. Lower the stopping point to correct an entry. A simple pace suggestion divides remaining work across calendar days through the deadline.
+- Log Example E reviews and Example H attempts from Practice cards. Outcomes distinguish attempted, reviewed, solved with help, and solved independently. Sessions do not automatically complete the underlying task.
+- **Calendar** combines planned tasks, deadlines, and assessments in day, week, and month views. Click a date to add there, click an item to edit, and use the checkbox to complete a task directly. The toolbar Add action follows the last selected date. Overflow opens the full day list.
+- **Schedule** keeps timed classes and study blocks separate, with day/week timelines and side-by-side overlapping events.
+- **Rhythm** repeats tasks, assessments, or scheduled blocks on any combination of weekdays, including every day or Monday–Wednesday. Choose a week interval and optional end date. Generation preserves worked-on, completed, moved, and individually edited occurrences; deleted occurrences remain skipped.
+- Edit a list from its sidebar context menu. Removing it moves tasks to Inbox, retains assessments as personal, and removes its recurrence rules.
+- **⌥⌘Z** (or the toolbar Undo button) undoes the last saved task/list/calendar change, including deletion, during the current app session. Standard **⌘Z** remains native text undo inside editors. The bottom-left menu exports all records to JSON and reveals the database in Finder.
+- Task rows support drag reordering in **My order**, or use the View menu to sort by due date and show completed tasks.
+- The notes inspector supports Markdown headings, inline emphasis/links, and clickable `- [ ]` checklists in Preview. Text changes save after a short idle period and when the inspector closes.
+- The original teal stacked-pages mark is packaged as the Dock/Finder icon by drawing code in `scripts/make-icon.swift`, with an `.icns` containing standard and Retina sizes.
+
+## Storage
+
+The app saves to `~/Library/Application Support/Opus/Opus.sqlite`. For isolated development runs, set `OPUS_DATA_DIR` to another directory. SQLite uses WAL, foreign-key checks, bound parameters, and atomic transactions. Each collection has relational identifiers and typed JSON payloads, with ordering columns and a version-two schema (existing version-one databases migrate automatically). Records are loaded into an observable in-memory store; small local datasets are committed as a transaction per edit. Save failures retain the preceding in-memory and disk state and display an error.
+
+JSON export is a portable snapshot, not a live SQLite file copy. Do not copy only the `.sqlite` file while the app is running because recent writes can be in its WAL file. Future schema changes need explicit numbered migrations before the version is incremented.
+
+## Verification
+
+```sh
+swift test --scratch-path /tmp/opus-build
+```
+
+Tests cover reopening SQLite with Unicode and multiline content, failed-transaction rollback, page arithmetic, recurrence deduplication/skipping/moving, list deletion and undo, progress correction, and calendar date boundaries, month/week grid boundaries, drag rescheduling, persisted manual task order, legacy database migration, custom recurrence days and intervals, overlapping schedule blocks, and concurrent notes/progress edits.
+
+## Current scope
+
+The app includes editable lists/tasks, direct textbook progress, practice history, a unified calendar, a separate timed schedule, flexible repeating rules, undo, and JSON export. It does not yet include sync, JSON import, automatic backups, reminders, or archived lists. Preparation tasks copy assessment details when created; they are not linked for automatic updates. App signing is local/ad hoc, not notarized distribution.
+
+## Interface references
+
+The interface uses progressive disclosure and low-effort actions from the [GNOME design principles](https://developer.gnome.org/hig/principles.html), compact checklist interaction inspired by [Apple Notes](https://support.apple.com/en-ca/guide/notes/apd93c815aa0/mac), month/week navigation inspired by [Google Calendar](https://support.google.com/calendar/answer/6110849?co=GENIE.Platform%3DDesktop&hl=en-GB), and plain-text Markdown/checklists familiar from [Obsidian](https://help.obsidian.md/syntax). It remains a SwiftUI/AppKit Mac app with system controls.
