@@ -24,13 +24,12 @@ struct InlineProgress: View {
     }
     private var controls: some View {
         HStack(spacing: 6) {
-            Text(task.unit == "pages" ? "Page" : "Through").font(.caption).foregroundStyle(.secondary).fixedSize()
+            Text(task.unit == "pages" ? "Read through" : "Completed").font(.caption).foregroundStyle(.secondary).fixedSize()
             TextField("Current progress", value: $number, format: .number.grouping(.never)).textFieldStyle(.plain).multilineTextAlignment(.trailing)
                 .font(.system(size: 13, weight: .medium, design: .monospaced)).frame(width: 45).focused($editing).onSubmit { apply(number) }
                 .padding(.horizontal, 5).padding(.vertical, 3).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 4))
             Text("/ \(task.target)").font(.caption).foregroundStyle(.secondary).fixedSize()
-            Button { apply(task.current - 1) } label: { Image(systemName: "minus").frame(width: 20, height: 20) }.roundedControls().disabled(task.current < task.start).help("Previous \(task.unit == "pages" ? "page" : "unit")")
-            Button { apply(task.current + 1) } label: { Image(systemName: "plus").frame(width: 20, height: 20) }.roundedControls().disabled(task.current >= task.target).help("Next \(task.unit == "pages" ? "page" : "unit")")
+
         }.fixedSize()
     }
     private func apply(_ updated: Int) {

@@ -12,11 +12,15 @@ struct CalendarHeading: View {
             Text(anchor.formatted(.dateTime.month(.wide).year()))
                 .font(.system(size: 22, weight: .semibold)).lineLimit(1).layoutPriority(1)
             Spacer(minLength: 8)
-            Picker("View", selection: $period) {
-                Text("Day").tag(CalendarPeriod.day)
-                Text("Week").tag(CalendarPeriod.week)
-                if !schedule { Text("Month").tag(CalendarPeriod.month) }
-            }.pickerStyle(.menu).labelsHidden().frame(width: 88)
+            Menu {
+                ForEach(CalendarPeriod.allCases.filter { !schedule || $0 != .month }, id: \.self) { option in
+                    Button(option.rawValue) { period = option }
+                }
+            } label: {
+                HStack(spacing: 7) { Text(period.rawValue); Image(systemName: "chevron.down").font(.caption) }
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(.regularMaterial, in: Capsule())
+            }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             HStack(spacing: 4) {
                 Button { advance(-1) } label: { Image(systemName: "chevron.left").frame(width: 16) }
                     .help("Previous " + period.rawValue.lowercased())

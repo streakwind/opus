@@ -27,14 +27,13 @@ struct ContentView: View {
     private var course: Course? { store.course(selection) }
     private var isCalendar: Bool { selection == "upcoming" || selection == "schedule" }
     private var heading: String {
-        switch selection { case "today": "Today"; case "all": "All tasks"; case "inbox": "Inbox"; case "routines": "Rhythm"; default: course?.name ?? "Today" }
+        switch selection { case "today": "Today"; case "all": "Tasks"; case "routines": "Rhythm"; default: course?.name ?? "Today" }
     }
     private var tasks: [StudyTask] {
         store.state.tasks.filter { task in
             let matches: Bool
             switch selection {
             case "all": matches = true
-            case "inbox": matches = task.courseID == nil
             case "today": matches = (task.planned.map { task.ruleID == nil ? $0 <= Day.today : $0 == Day.today } ?? false) || (task.due.map { $0 <= Day.today } ?? false)
             default: matches = task.courseID == selection
             }
@@ -53,8 +52,7 @@ struct ContentView: View {
                 }.padding(20)
                 List(selection: $selection) {
                     Label("Today", systemImage: "sun.max").tag("today")
-                    Label("All tasks", systemImage: "tray.full").tag("all")
-                    Label("Inbox", systemImage: "tray").tag("inbox")
+                    Label("Tasks", systemImage: "checklist").tag("all")
                     Section {
                         Label("Calendar", systemImage: "calendar").tag("upcoming")
                         Label("Schedule", systemImage: "clock").tag("schedule")

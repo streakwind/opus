@@ -115,6 +115,7 @@ struct CalendarEntryEditor: View {
 struct ScheduleEditor: View {
     var store: Store
     @State var block: ScheduleBlock
+    var onChange: (ScheduleBlock) -> Void = { _ in }
     @State private var repeatBlock = false
     @State private var repeatDays: Set<Int> = []
     @FocusState private var titleFocused: Bool
@@ -123,6 +124,7 @@ struct ScheduleEditor: View {
     private var valid: Bool { !block.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && block.duration > 0 && block.startMinute + block.duration <= 1440 && (!repeatBlock || !repeatDays.isEmpty) }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Text(Day.date(block.day).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) + " · " + block.timeLabel).font(.caption).foregroundStyle(.secondary)
             TextField("Class, study session, or event", text: $block.title).textFieldStyle(.plain).font(.system(size: 18, weight: .semibold)).focused($titleFocused).onSubmit(save)
             Divider()
             VStack(spacing: 0) {
@@ -149,6 +151,7 @@ struct ScheduleEditor: View {
                 Button(existing ? "Done" : "Add", action: save).keyboardShortcut(.defaultAction).disabled(!valid)
             }
         }.padding(18).frame(width: 350).roundedControls()
+        .onChange(of: block) { _, updated in onChange(updated) }
         .onAppear { if !existing { titleFocused = true }; repeatDays = [Calendar.current.component(.weekday, from: Day.date(block.day))] }
     }
     private func save() {
