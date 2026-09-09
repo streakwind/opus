@@ -16,7 +16,7 @@ struct OpusApp: App {
     var body: some Scene {
         WindowGroup {
             if let store {
-                ContentView(store: store).frame(minWidth: 850, minHeight: 600)
+                ContentView(store: store).background(WindowChrome()).frame(minWidth: 850, minHeight: 600)
                     .onAppear {
                         if let url = Bundle.main.url(forResource: "OpusStack", withExtension: "icns"), let icon = NSImage(contentsOf: url) { NSApplication.shared.applicationIconImage = icon }
                     }

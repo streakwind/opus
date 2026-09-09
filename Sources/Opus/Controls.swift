@@ -54,3 +54,14 @@ struct TimeControl: View {
             }
     }
 }
+
+struct WindowChrome: NSViewRepresentable {
+    final class ChromeView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.titlebarSeparatorStyle = .none
+        }
+    }
+    func makeNSView(context: Context) -> ChromeView { ChromeView() }
+    func updateNSView(_ nsView: ChromeView, context: Context) { nsView.window?.titlebarSeparatorStyle = .none }
+}

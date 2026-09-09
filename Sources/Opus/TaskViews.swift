@@ -3,16 +3,17 @@ import SwiftUI
 struct InlineProgress: View {
     var store: Store
     var task: StudyTask
+    var showsPace: Bool
     @State private var number: Int
     @FocusState private var editing: Bool
-    init(store: Store, task: StudyTask) {
-        self.store = store; self.task = task
+    init(store: Store, task: StudyTask, showsPace: Bool = true) {
+        self.store = store; self.task = task; self.showsPace = showsPace
         _number = State(initialValue: task.current)
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             controls
-            if let pace = task.pacing(on: Day.today) {
+            if showsPace, let pace = task.pacing(on: Day.today) {
                 Text(pace).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -25,7 +26,7 @@ struct InlineProgress: View {
             TextField("Current progress", value: $number, format: .number.grouping(.never)).textFieldStyle(.plain).multilineTextAlignment(.trailing)
                 .font(.system(size: 13, weight: .medium, design: .monospaced)).frame(width: 45).focused($editing).onSubmit { apply(number) }
                 .padding(.horizontal, 5).padding(.vertical, 3).background(Color.primary.opacity(0.05), in: Capsule())
-            Text("of \(task.target) · \(Int(task.fraction * 100))%").font(.caption).foregroundStyle(.secondary).fixedSize()
+            Text("/ \(task.target)").font(.caption).foregroundStyle(.secondary).fixedSize()
 
         }.fixedSize()
     }
@@ -55,14 +56,18 @@ struct TaskLine: View {
                         if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
                         if let due = task.due { Text("· Due " + Day.label(due)).foregroundStyle(due < Day.today && !task.completed ? Color.red : .secondary) }
                         if task.ruleID != nil { Image(systemName: "repeat") }
-                        if !task.notes.isEmpty { Image(systemName: "note.text") }
                     }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
-                Spacer(minLength: 0)
+                if task.kind == .progress {
+                    InlineProgress(store: store, task: task, showsPace: false)
+                }
             }
-            if task.kind == .progress { InlineProgress(store: store, task: task).padding(.leading, 28) }
+            if task.kind == .progress, let pace = task.pacing(on: Day.today) {
+                Text(pace).font(.caption).foregroundStyle(.secondary).padding(.leading, 28)
+            }
 
-        }.padding(.vertical, task.kind == .progress ? 8 : 5).contentShape(Rectangle()).opacity(task.completed ? 0.55 : 1)
+
+        }.padding(.vertical, 5).contentShape(Rectangle()).opacity(task.completed ? 0.55 : 1)
     }
 }
 
@@ -71,7 +76,6 @@ struct TaskInspector: View {
     @State var draft: StudyTask
     @State private var baseline: StudyTask
     var close: () -> Void
-    @State private var preview = false
     init(store: Store, task: StudyTask, close: @escaping () -> Void) {
         self.store = store; self.close = close
         _draft = State(initialValue: task); _baseline = State(initialValue: task)
@@ -107,11 +111,6 @@ struct TaskInspector: View {
                             }
                         }
                         InlineProgress(store: store, task: store.state.tasks.first { $0.id == draft.id } ?? draft)
-                    }
-                    if draft.courseID == nil || !draft.notes.isEmpty {
-                        DisclosureGroup("Details", isExpanded: $preview) {
-                            TextEditor(text: $draft.notes).font(.system(size: 13)).scrollContentBackground(.hidden).frame(minHeight: 90)
-                        }.font(.caption).foregroundStyle(.secondary)
                     }
                     let entries = store.state.activities.filter { $0.taskID == draft.id }.suffix(5).reversed()
                     if !entries.isEmpty {
@@ -152,39 +151,9 @@ struct DateMenu: View {
     @Binding var value: String?
     @State private var calendar = false
     var body: some View {
-        Menu {
-            Button("Today") { value = Day.today }
-            Button("Tomorrow") { value = Day.adding(1) }
-            Button("Choose date…") { calendar = true }
-            if value != nil { Divider(); Button("Clear date") { value = nil } }
-        } label: { Text(value.map(Day.label) ?? title) }.menuStyle(.button).menuIndicator(.hidden).roundedControls().fixedSize()
+        Button(value.map(Day.label) ?? title) { calendar = true }.roundedControls()
             .popover(isPresented: $calendar) {
-                VStack {
-                    DatePicker(title, selection: Binding(get: { Day.date(value ?? Day.today) }, set: { value = Day.string($0) }), displayedComponents: .date).datePickerStyle(.graphical)
-                    Button("Done") { if value == nil { value = Day.today }; calendar = false }
-                }.padding(12)
+                CompactDatePicker(value: $value) { calendar = false }
             }
-    }
-}
-
-struct NotesPreview: View {
-    @Binding var text: String
-    var body: some View {
-        let lines = text.components(separatedBy: "\n")
-        VStack(alignment: .leading, spacing: 7) {
-            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                if line.hasPrefix("- [ ] ") || line.hasPrefix("- [x] ") || line.hasPrefix("- [X] ") {
-                    let checked = !line.hasPrefix("- [ ] ")
-                    Toggle(isOn: Binding(get: { checked }, set: { value in
-                        var changed = text.components(separatedBy: "\n")
-                        guard index < changed.count else { return }
-                        changed[index] = (value ? "- [x] " : "- [ ] ") + String(changed[index].dropFirst(6))
-                        text = changed.joined(separator: "\n")
-                    })) { Text(.init(String(line.dropFirst(6)))).strikethrough(checked) }.toggleStyle(.checkbox)
-                } else if line.hasPrefix("# ") { Text(String(line.dropFirst(2))).font(.title3.bold()) }
-                else if line.hasPrefix("## ") { Text(String(line.dropFirst(3))).font(.headline) }
-                else { Text(.init(line.isEmpty ? " " : line)).textSelection(.enabled) }
-            }
-        }.font(.callout)
     }
 }

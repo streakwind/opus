@@ -13,7 +13,7 @@ struct CalendarHeading: View {
                 .font(.system(size: 22, weight: .semibold)).lineLimit(1).layoutPriority(1)
             Spacer(minLength: 8)
             HStack(spacing: 4) {
-                ForEach(CalendarPeriod.allCases.filter { !schedule || $0 != .month }, id: \.self) { option in
+                ForEach((schedule ? [CalendarPeriod.day, .week] : [.week, .month]), id: \.self) { option in
                     Button(option.rawValue) { period = option }
                         .tint(period == option ? Color.accentColor : Color.secondary)
                         .accessibilityAddTraits(period == option ? .isSelected : [])

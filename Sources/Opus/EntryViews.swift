@@ -71,7 +71,7 @@ struct CalendarEntryEditor: View {
                 }
             }
             if case .task(let task, _) = source, task.kind == .progress { InlineProgress(store: store, task: store.state.tasks.first { $0.id == task.id } ?? task) }
-            if notesVisible { TextField("Notes", text: $notes, axis: .vertical).textFieldStyle(.plain).lineLimit(2...6) }
+            if kind == .assessment && notesVisible { TextField("Notes", text: $notes, axis: .vertical).textFieldStyle(.plain).lineLimit(2...6) }
             else if kind == .assessment { Button("Add topics") { notesVisible = true }.buttonStyle(.plain).foregroundStyle(.secondary).font(.caption) }
             HStack {
                 if !isNew { Button(role: .destructive, action: delete) { Image(systemName: "trash") }.buttonStyle(.plain).help("Delete") }

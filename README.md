@@ -18,13 +18,13 @@ New installations start empty; users create their own lists and rhythms.
 - **Today** includes planned work from today or earlier and tasks due today or overdue. **All tasks** also shows unscheduled work. Right-click a task to plan it for today or tomorrow.
 - For notes on pages 206–235, use Start 206, Finish 235, Finished through 205. Record a new stopping point from the task card. Lower the stopping point to correct an entry. A simple pace suggestion divides remaining work across calendar days through the deadline.
 - Practice and vocabulary tasks use the same checkbox interaction as other tasks. Existing session history remains available in Details. New tasks offer simple tasks or page progress.
-- **Calendar** combines planned tasks, deadlines, and assessments in day, week, and month views. Click a date to add there, click an item to edit, and use the checkbox to complete a task directly. The toolbar Add action follows the last selected date. Overflow opens the full day list.
+- **Calendar** combines planned tasks, deadlines, and assessments in week and month views. Click a date to add there, click an item to edit, and use the checkbox to complete a task directly. The toolbar Add action follows the last selected date. Overflow opens the full day list.
 - **Schedule** keeps timed classes and study blocks separate, with day/week timelines and side-by-side overlapping events.
 - **Rhythm** repeats tasks, assessments, or scheduled blocks on any combination of weekdays, including every day or Monday–Wednesday. Choose a week interval and optional end date. Generation preserves worked-on, completed, moved, and individually edited occurrences; deleted occurrences remain skipped.
 - Edit a list from its sidebar context menu. Removing it moves tasks to Inbox, retains assessments as personal, and removes its recurrence rules.
 - **⌥⌘Z** (or the toolbar Undo button) undoes the last saved task/list/calendar change, including deletion, during the current app session. Standard **⌘Z** remains native text undo inside editors. The bottom-left menu exports all records to JSON and reveals the database in Finder.
 - Task rows support drag reordering in **My order**, or use the View menu to sort by due date and show completed tasks.
-- Inbox holds items without a course/list. Optional details stay collapsed; existing notes are preserved. Text changes save after a short idle period and when the inspector closes.
+- Inbox holds items without a course/list. Task notes controls are omitted; legacy note data remains in storage and JSON exports.
 - The original teal stacked-pages mark is packaged as the Dock/Finder icon by drawing code in `scripts/make-icon.swift`, with an `.icns` containing standard and Retina sizes.
 
 ## Storage
