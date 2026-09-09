@@ -23,6 +23,7 @@ struct OpusApp: App {
             }
             else { ContentUnavailableView("Unable to open Opus", systemImage: "externaldrive.badge.exclamationmark", description: Text(startupError ?? "Unknown storage error")) }
         }
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1100, height: 760)
         .commands {
             CommandGroup(after: .undoRedo) {

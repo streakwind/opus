@@ -23,7 +23,7 @@ struct CalendarHeading: View {
                 Button("Today") { anchor = Date() }
                 Button { advance(1) } label: { Image(systemName: "chevron.right").frame(width: 16) }
                     .help("Next " + period.rawValue.lowercased())
-            }.fixedSize()
+            }.fixedSize().roundedControls()
         }.padding(.horizontal, 20).padding(.vertical, 14)
     }
     private func advance(_ value: Int) {
@@ -38,13 +38,11 @@ struct AssessmentCalendar: View {
     var newEntryRequest: Int
     @State private var anchor = Date()
     @State private var period = CalendarPeriod.month
-    @State private var newEntry: CalendarDraft?
     @State private var selectedDay = Day.today
     private var days: [String] { period == .day ? [Day.string(anchor)] : CalendarLayout.days(containing: anchor, week: period == .week) }
     var body: some View {
         VStack(spacing: 0) {
             CalendarHeading(anchor: $anchor, period: $period)
-                .popover(item: $newEntry) { CalendarEntryEditor(store: store, source: $0).id($0.id) }
             HStack(spacing: 0) {
                 ForEach(Array(days.prefix(period == .day ? 1 : 7)), id: \.self) { day in
                     Text(Day.date(day).formatted(.dateTime.weekday(.abbreviated))).font(.system(size: 13)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 12)
@@ -60,7 +58,7 @@ struct AssessmentCalendar: View {
                         ForEach(0..<rows, id: \.self) { row in
                             HStack(spacing: 0) {
                                 ForEach(Array(days[(row*columns)..<(row*columns+columns)]), id: \.self) { day in
-                                    CalendarDayCell(store: store, day: day, inMonth: period != .month || Calendar.current.isDate(Day.date(day), equalTo: anchor, toGranularity: .month), query: query, capacity: max(1, Int((height - 52) / 23)), wide: period == .day, select: { selectedDay = day })
+                                    CalendarDayCell(store: store, day: day, inMonth: period != .month || Calendar.current.isDate(Day.date(day), equalTo: anchor, toGranularity: .month), query: query, capacity: max(1, Int((height - 52) / 23)), wide: period == .day, selected: selectedDay == day, newEntryRequest: newEntryRequest, select: { selectedDay = day })
                                         .frame(width: geometry.size.width / CGFloat(columns), height: height)
                                 }
                             }
@@ -69,8 +67,8 @@ struct AssessmentCalendar: View {
                 }.scrollIndicators(.hidden)
             }
         }
-        .onChange(of: newEntryRequest) { _, _ in newEntry = .new(selectedDay) }
         .onChange(of: anchor) { _, _ in selectedDay = Day.string(anchor); ensureOccurrences() }
+        .onChange(of: period) { _, _ in if !days.contains(selectedDay) { selectedDay = Day.string(anchor) }; ensureOccurrences() }
         .onAppear(perform: ensureOccurrences)
     }
     private func ensureOccurrences() { store.refreshOccurrences(through: days.last) }
@@ -83,6 +81,8 @@ private struct CalendarDayCell: View {
     var query: String
     var capacity: Int
     var wide: Bool
+    var selected: Bool
+    var newEntryRequest: Int
     var select: () -> Void
     @State private var editing: CalendarDraft?
     @State private var overflow = false
@@ -124,7 +124,8 @@ private struct CalendarDayCell: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(targeted ? Color.accentColor.opacity(0.12) : background)
+        .background(targeted || selected ? Color.accentColor.opacity(0.08) : background)
+        .overlay { if selected { Rectangle().strokeBorder(Color.accentColor.opacity(0.5), lineWidth: 1) } }
         .overlay(alignment: .trailing) { Rectangle().fill(Color.primary.opacity(0.13)).frame(width: 0.5) }
         .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.13)).frame(height: 0.5) }
         .contentShape(Rectangle()).onTapGesture { select(); editing = .new(day) }
@@ -136,6 +137,7 @@ private struct CalendarDayCell: View {
             }
             return true
         }
+        .onChange(of: newEntryRequest) { _, _ in if selected { editing = .new(day) } }
         .popover(item: $editing) { CalendarEntryEditor(store: store, source: $0).id($0.id) }
     }
     private var background: Color {

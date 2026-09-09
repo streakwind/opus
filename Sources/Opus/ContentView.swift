@@ -93,10 +93,10 @@ struct ContentView: View {
                 }
             }.background(Color(nsColor: .textBackgroundColor))
                 .toolbar {
-                    ToolbarItem { Button { store.undo() } label: { Image(systemName: "arrow.uturn.backward") }.disabled(!store.canUndo).help("Undo change (⌥⌘Z)") }
-                    ToolbarItem { Button(action: add) { Label("Add", systemImage: "plus") }.keyboardShortcut("n").help("Add (⌘N)") }
+                    ToolbarItem(placement: .primaryAction) { Button { store.undo() } label: { Image(systemName: "arrow.uturn.backward") }.disabled(!store.canUndo).help("Undo change (⌥⌘Z)") }
+                    ToolbarItem(placement: .primaryAction) { Button(action: add) { Label("Add", systemImage: "plus") }.keyboardShortcut("n").help("Add (⌘N)") }
                 }
-                .searchable(text: $query, prompt: "Search")
+                .searchable(text: $query, placement: .toolbar, prompt: "Search")
         }
         .sheet(item: $editor) { item in
             switch item { case .course(let course): CourseEditor(store: store, course: course); case .rule(let rule): RuleEditor(store: store, rule: rule) }
@@ -154,7 +154,6 @@ struct ContentView: View {
                             Text(query.isEmpty ? "Type a task above to get started." : "No matching tasks.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 12).listRowSeparator(.hidden)
                         }
                     }.listStyle(.inset).scrollContentBackground(.hidden)
-                    if selection == "today" { todayFooter }
                 }.frame(maxWidth: .infinity)
                 if wide, let id = selectedTask, let task = store.state.tasks.first(where: { $0.id == id }) {
                     Divider()
@@ -194,21 +193,6 @@ struct ContentView: View {
         }.labelsHidden().frame(width: 120)
         Picker("Track", selection: $quickKind) { ForEach(TaskKind.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().frame(width: 100)
         DateMenu(title: "Due date", value: $quickDue).font(.caption)
-    }
-    private var todayFooter: some View {
-        let items = store.state.assessments.filter { $0.day == Day.today }
-        let blocks = store.state.schedule.filter { $0.day == Day.today }.sorted { $0.startMinute < $1.startMinute }
-        return VStack(spacing: 0) {
-            if !items.isEmpty || !blocks.isEmpty {
-                Divider()
-                HStack(spacing: 8) {
-                    Image(systemName: "calendar").foregroundStyle(.secondary)
-                    Text(items.first?.title ?? blocks.first?.title ?? "").font(.caption).lineLimit(1)
-                    Spacer()
-                    Button("Open " + (items.isEmpty ? "schedule" : "calendar")) { selection = items.isEmpty ? "schedule" : "upcoming" }.buttonStyle(.plain).font(.caption).foregroundStyle(Color.accentColor)
-                }.padding(14)
-            }
-        }
     }
     private var routines: some View {
         VStack(alignment: .leading, spacing: 0) {

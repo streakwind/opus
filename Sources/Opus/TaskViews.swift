@@ -3,20 +3,24 @@ import SwiftUI
 struct InlineProgress: View {
     var store: Store
     var task: StudyTask
-    @State private var value: Double
     @State private var number: Int
     @FocusState private var editing: Bool
     init(store: Store, task: StudyTask) {
         self.store = store; self.task = task
-        _value = State(initialValue: Double(task.current)); _number = State(initialValue: task.current)
+        _number = State(initialValue: task.current)
     }
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 16) { controls; progressSlider.frame(width: 140) }
-            VStack(alignment: .leading, spacing: 3) { controls; progressSlider.frame(maxWidth: 240) }
+        VStack(alignment: .leading, spacing: 5) {
+            controls
+            ProgressView(value: task.fraction).progressViewStyle(.linear)
+                .tint(store.course(task.courseID)?.tint ?? .accentColor)
+                .frame(maxWidth: 280).accessibilityLabel("Progress for " + task.title)
+            if let pace = task.pacing(on: Day.today) {
+                Text(pace).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
         }
         .onChange(of: editing) { old, new in if old && !new { apply(number) } }
-        .onChange(of: task.current) { _, current in value = Double(current); number = current }
+        .onChange(of: task.current) { _, current in number = current }
     }
     private var controls: some View {
         HStack(spacing: 6) {
@@ -25,21 +29,14 @@ struct InlineProgress: View {
                 .font(.system(size: 13, weight: .medium, design: .monospaced)).frame(width: 45).focused($editing).onSubmit { apply(number) }
                 .padding(.horizontal, 5).padding(.vertical, 3).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 4))
             Text("/ \(task.target)").font(.caption).foregroundStyle(.secondary).fixedSize()
-            Button { apply(task.current - 1) } label: { Image(systemName: "minus").frame(width: 20, height: 20) }.buttonStyle(.borderless).disabled(task.current < task.start).help("Previous \(task.unit == "pages" ? "page" : "unit")")
-            Button { apply(task.current + 1) } label: { Image(systemName: "plus").frame(width: 20, height: 20) }.buttonStyle(.borderless).disabled(task.current >= task.target).help("Next \(task.unit == "pages" ? "page" : "unit")")
+            Button { apply(task.current - 1) } label: { Image(systemName: "minus").frame(width: 20, height: 20) }.roundedControls().disabled(task.current < task.start).help("Previous \(task.unit == "pages" ? "page" : "unit")")
+            Button { apply(task.current + 1) } label: { Image(systemName: "plus").frame(width: 20, height: 20) }.roundedControls().disabled(task.current >= task.target).help("Next \(task.unit == "pages" ? "page" : "unit")")
         }.fixedSize()
-    }
-    private var progressSlider: some View {
-        Slider(value: $value, in: Double(task.start - 1)...Double(max(task.start, task.target))) { isDragging in
-            if !isDragging { apply(Int(value.rounded())) }
-        }.controlSize(.small).tint(store.course(task.courseID)?.tint ?? .accentColor)
-            .accessibilityLabel("Progress for " + task.title)
-            .onChange(of: value) { _, new in if !editing { number = Int(new.rounded()) } }
     }
     private func apply(_ updated: Int) {
         let bounded = min(task.target, max(task.start - 1, updated))
         store.updateProgress(task.id, to: bounded)
-        value = Double(bounded); number = bounded
+        number = bounded
     }
 }
 
@@ -60,7 +57,6 @@ struct TaskLine: View {
                     Button(action: openDetails) { Text(task.title).font(.system(size: 14, weight: .medium)).strikethrough(task.completed).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.plain)
                     HStack(spacing: 5) {
                         if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
-                        if task.kind == .progress { Text(task.progressLabel) }
                         if let due = task.due { Text("· Due " + Day.label(due)).foregroundStyle(due < Day.today && !task.completed ? Color.red : .secondary) }
                         if task.ruleID != nil { Image(systemName: "repeat") }
                         if !task.notes.isEmpty { Image(systemName: "note.text") }

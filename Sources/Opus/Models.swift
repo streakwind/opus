@@ -45,6 +45,8 @@ struct QuizRule: Identifiable, Codable, Equatable {
     var weekday = 4
     var enabled = true
     // Optional additions keep version-one rules readable without altering their meaning.
+    var assessmentsConfirmed: Bool?
+    var confirmsAssessments: Bool { assessmentsConfirmed ?? (title == "Example recurrence") }
     var weekdays: [Int]?
     var itemKind: RepeatItem?
     var intervalWeeks: Int?
@@ -157,5 +159,21 @@ extension StudyTask {
         if draft.unit != baseline.unit { result.unit = draft.unit }
         if draft.completed != baseline.completed { result.completed = draft.completed }
         return result
+    }
+}
+
+
+extension StudyTask {
+    /// Recalculate a realistic daily quota from the actual stopping point.
+    func pacing(on today: String) -> String? {
+        guard kind == .progress, !completed, current < target else { return nil }
+        guard let due else { return "Set a due date to plan your daily pace" }
+        let remaining = target - max(start - 1, current)
+        if due < today { return "Overdue · \(remaining) \(unit) left" }
+        let days = max(1, (Calendar.current.dateComponents([.day], from: Day.date(today), to: Day.date(due)).day ?? 0) + 1)
+        let quota = Int(ceil(Double(remaining) / Double(days)))
+        let stop = min(target, max(start - 1, current) + quota)
+        let goal = unit == "pages" ? "Read through page \(stop) today" : "Complete \(quota) \(unit) today"
+        return "\(goal) · \(quota) \(unit)/day over \(days) \(days == 1 ? "day" : "days")"
     }
 }

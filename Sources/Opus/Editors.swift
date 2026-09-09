@@ -27,7 +27,7 @@ struct CourseEditor: View {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Done") { course.name = course.name.trimmingCharacters(in: .whitespacesAndNewlines); store.save(course); if store.error == nil { dismiss() } }.keyboardShortcut(.defaultAction).disabled(course.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-        }.padding(20).frame(width: 380)
+        }.padding(20).frame(width: 380).roundedControls()
     }
 }
 struct RuleEditor: View {
@@ -50,6 +50,14 @@ struct RuleEditor: View {
                     }.labelsHidden().pickerStyle(.menu)
                 }
                 PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $rule.courseID) }
+                if rule.kind == .assessment {
+                    PropertyRow("Dates") {
+                        Picker("Dates", selection: Binding(get: { rule.confirmsAssessments }, set: { rule.assessmentsConfirmed = $0 })) {
+                            Text("Confirmed").tag(true)
+                            Text("Tentative").tag(false)
+                        }.labelsHidden()
+                    }
+                }
                 if rule.kind == .task {
                     PropertyRow("Track") {
                         Picker("Track", selection: Binding(get: { rule.taskKind ?? .checkbox }, set: { rule.taskKind = $0 })) { ForEach(TaskKind.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().pickerStyle(.menu)
@@ -95,6 +103,6 @@ struct RuleEditor: View {
                     store.saveRule(rule); if store.error == nil { dismiss() }
                 }.keyboardShortcut(.defaultAction).disabled(!valid)
             }
-        }.padding(20).frame(width: 360)
+        }.padding(20).frame(width: 360).roundedControls()
     }
 }

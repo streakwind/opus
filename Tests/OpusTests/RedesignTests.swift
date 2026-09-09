@@ -3,8 +3,34 @@ import CSQLite
 @testable import Opus
 
 final class RedesignTests: XCTestCase {
+    func testPacingUsesInclusiveDaysAndActualPageRange() {
+        var task = StudyTask(title: "Notes", kind: .progress, due: "2026-09-11", start: 17, target: 49, current: 25)
+        XCTAssertEqual(task.pacing(on: "2026-09-09"), "Read through page 33 today · 8 pages/day over 3 days")
+        XCTAssertEqual(task.pacing(on: "2026-09-11"), "Read through page 49 today · 24 pages/day over 1 day")
+        XCTAssertEqual(task.pacing(on: "2026-09-12"), "Overdue · 24 pages left")
+        task.due = nil
+        XCTAssertEqual(task.pacing(on: "2026-09-09"), "Set a due date to plan your daily pace")
+        task.current = 49
+        XCTAssertNil(task.pacing(on: "2026-09-09"))
+    }
     private func db() throws -> Database {
         try Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusV3-" + UUID().uuidString).appendingPathComponent("test.sqlite"))
+    }
+    @MainActor func testWeeklyQuizzesBecomeConfirmedOnce() throws {
+        let database = try db()
+        let rule = QuizRule(title: "Example recurrence")
+        var state = Snapshot()
+        state.rules = [rule]
+        state.assessments = [Assessment(title: "Example recurrence", day: Day.today, ruleID: rule.id, occurrence: Day.today)]
+        try database.save(state)
+        let store = try Store(database: database)
+        XCTAssertTrue(store.state.assessments.allSatisfy(\.confirmed))
+        XCTAssertEqual(store.state.rules.first?.assessmentsConfirmed, true)
+        var item = store.state.assessments[0]
+        item.confirmed = false
+        store.save(item)
+        let reopened = try Store(database: database)
+        XCTAssertFalse(try XCTUnwrap(reopened.state.assessments.first { $0.id == item.id }).confirmed)
     }
     func testLegacyRuleDecodesAsWeeklyAssessment() throws {
         let data = Data(#"{"id":"legacy","title":"Quiz","weekday":4,"enabled":true}"#.utf8)

@@ -53,6 +53,8 @@ struct CalendarEntryEditor: View {
     private var isNew: Bool { if case .new = source { true } else { false } }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Text((isNew ? "Add to " : "On ") + Day.date(day ?? Day.today).formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+                .font(.subheadline).foregroundStyle(.secondary)
             TextField("Title", text: $title).textFieldStyle(.plain).font(.system(size: 18, weight: .semibold)).focused($titleFocused).onSubmit(save)
             Divider()
             VStack(spacing: 0) {
@@ -79,7 +81,7 @@ struct CalendarEntryEditor: View {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(isNew ? "Add" : "Done", action: save).keyboardShortcut(.defaultAction).disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-        }.padding(18).frame(width: 340)
+        }.padding(18).frame(width: 340).roundedControls()
         .onAppear { if isNew { titleFocused = true } }
     }
     private func save() {
@@ -146,7 +148,7 @@ struct ScheduleEditor: View {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(existing ? "Done" : "Add", action: save).keyboardShortcut(.defaultAction).disabled(!valid)
             }
-        }.padding(18).frame(width: 350)
+        }.padding(18).frame(width: 350).roundedControls()
         .onAppear { if !existing { titleFocused = true }; repeatDays = [Calendar.current.component(.weekday, from: Day.date(block.day))] }
     }
     private func save() {
