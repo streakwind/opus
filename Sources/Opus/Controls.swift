@@ -34,8 +34,23 @@ struct PillPicker<Value: Hashable, Options: View>: View {
         self.title = title; self.label = label; _selection = selection; options = content()
     }
     var body: some View {
-        Menu { Picker(title, selection: $selection) { options } } label: { PillLabel(title: label) }
+        Menu { Picker(title, selection: $selection) { options }.pickerStyle(.inline) } label: { Text(label) }
             .menuStyle(.button).menuIndicator(.hidden).roundedControls().fixedSize(horizontal: false, vertical: true)
             .accessibilityLabel(title + ": " + label)
+    }
+}
+
+
+struct TimeControl: View {
+    @Binding var minutes: Int
+    @State private var editing = false
+    var body: some View {
+        Button(ClockTime.label(minutes)) { editing = true }.roundedControls()
+            .popover(isPresented: $editing) {
+                VStack(spacing: 12) {
+                    DatePicker("Time", selection: Binding(get: { ClockTime.date(minutes) }, set: { minutes = ClockTime.minutes($0) }), displayedComponents: .hourAndMinute)
+                    Button("Done") { editing = false }.keyboardShortcut(.defaultAction)
+                }.padding(16).roundedControls()
+            }
     }
 }

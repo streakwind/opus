@@ -57,7 +57,6 @@ struct ScheduleView: View {
                     }.buttonStyle(.plain)
                 }
             }.frame(height: 58).padding(.bottom, 8)
-            Divider()
             GeometryReader { geometry in
                 let columnWidth = max(1, (geometry.size.width - 56) / CGFloat(days.count))
                 ScrollViewReader { reader in

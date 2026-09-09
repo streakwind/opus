@@ -21,11 +21,11 @@ struct InlineProgress: View {
     }
     private var controls: some View {
         HStack(spacing: 6) {
-            Text(task.unit == "pages" ? "Read through" : "Completed").font(.caption).foregroundStyle(.secondary).fixedSize()
+            Text(task.unit == "pages" ? "Page" : "Done").font(.caption).foregroundStyle(.secondary).fixedSize()
             TextField("Current progress", value: $number, format: .number.grouping(.never)).textFieldStyle(.plain).multilineTextAlignment(.trailing)
                 .font(.system(size: 13, weight: .medium, design: .monospaced)).frame(width: 45).focused($editing).onSubmit { apply(number) }
                 .padding(.horizontal, 5).padding(.vertical, 3).background(Color.primary.opacity(0.05), in: Capsule())
-            Text("of \(task.target)").font(.caption).foregroundStyle(.secondary).fixedSize()
+            Text("of \(task.target) · \(Int(task.fraction * 100))%").font(.caption).foregroundStyle(.secondary).fixedSize()
 
         }.fixedSize()
     }
@@ -61,19 +61,7 @@ struct TaskLine: View {
                 Spacer(minLength: 0)
             }
             if task.kind == .progress { InlineProgress(store: store, task: task).padding(.leading, 28) }
-            if task.kind == .practice {
-                HStack {
-                    let sessions = store.state.activities.filter { $0.taskID == task.id }
-                    Text("\(sessions.count) sessions" + (sessions.last.map { " · " + Day.label(Day.string($0.date)) } ?? "")).font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Log session") { store.record(task, value: nil, note: "Practiced") }.buttonStyle(.borderless)
-                    Menu {
-                        ForEach(["Reviewed", "Attempted", "Solved with help", "Solved independently"], id: \.self) { outcome in
-                            Button(outcome) { store.record(task, value: nil, note: outcome) }
-                        }
-                    } label: { Image(systemName: "chevron.down") }.menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 28, height: 24)
-                }.padding(.leading, 28)
-            }
+
         }.padding(.vertical, task.kind == .progress ? 8 : 5).contentShape(Rectangle()).opacity(task.completed ? 0.55 : 1)
     }
 }
@@ -101,15 +89,13 @@ struct TaskInspector: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     TextField("Task title", text: $draft.title, axis: .vertical).textFieldStyle(.plain).font(.system(size: 19, weight: .semibold)).lineLimit(1...5)
-                    Divider()
                     VStack(spacing: 0) {
                         PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $draft.courseID) }
                         PropertyRow("Plan") { DateMenu(title: "Anytime", value: $draft.planned) }
                         PropertyRow("Due") { DateMenu(title: "No deadline", value: $draft.due) }
-                        PropertyRow("Track") { PillPicker("Tracking", label: draft.kind.rawValue, selection: $draft.kind) { ForEach(TaskKind.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().pickerStyle(.menu) }
+                        PropertyRow("Track") { PillPicker("Tracking", label: draft.kind.rawValue, selection: $draft.kind) { ForEach([TaskKind.checkbox, .progress]) { Text($0.rawValue).tag($0) } }.labelsHidden().pickerStyle(.menu) }
                     }
                     if draft.kind == .progress {
-                        Divider()
                         VStack(spacing: 0) {
                             PropertyRow("Unit") { TextField("pages", text: $draft.unit).textFieldStyle(.plain) }
                             PropertyRow("Range") {
@@ -122,18 +108,10 @@ struct TaskInspector: View {
                         }
                         InlineProgress(store: store, task: store.state.tasks.first { $0.id == draft.id } ?? draft)
                     }
-                    Divider()
-                    HStack {
-                        Text("Notes").font(.system(size: 13, weight: .medium))
-                        Spacer()
-                        Button(preview ? "Edit" : "Preview") { preview.toggle() }.buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
-                    }
-                    if preview { NotesPreview(text: $draft.notes).frame(maxWidth: .infinity, alignment: .leading) }
-                    else {
-                        ZStack(alignment: .topLeading) {
-                            if draft.notes.isEmpty { Text("Notes, links, or a checklist…").font(.callout).foregroundStyle(.tertiary).padding(.leading, 4).allowsHitTesting(false) }
-                            TextEditor(text: $draft.notes).font(.system(size: 13)).scrollContentBackground(.hidden).frame(minHeight: 120)
-                        }
+                    if draft.courseID == nil || !draft.notes.isEmpty {
+                        DisclosureGroup("Details", isExpanded: $preview) {
+                            TextEditor(text: $draft.notes).font(.system(size: 13)).scrollContentBackground(.hidden).frame(minHeight: 90)
+                        }.font(.caption).foregroundStyle(.secondary)
                     }
                     let entries = store.state.activities.filter { $0.taskID == draft.id }.suffix(5).reversed()
                     if !entries.isEmpty {
@@ -179,7 +157,7 @@ struct DateMenu: View {
             Button("Tomorrow") { value = Day.adding(1) }
             Button("Choose date…") { calendar = true }
             if value != nil { Divider(); Button("Clear date") { value = nil } }
-        } label: { PillLabel(title: value.map(Day.label) ?? title) }.menuStyle(.button).menuIndicator(.hidden).roundedControls().fixedSize()
+        } label: { Text(value.map(Day.label) ?? title) }.menuStyle(.button).menuIndicator(.hidden).roundedControls().fixedSize()
             .popover(isPresented: $calendar) {
                 VStack {
                     DatePicker(title, selection: Binding(get: { Day.date(value ?? Day.today) }, set: { value = Day.string($0) }), displayedComponents: .date).datePickerStyle(.graphical)

@@ -27,13 +27,14 @@ struct ContentView: View {
     private var course: Course? { store.course(selection) }
     private var isCalendar: Bool { selection == "upcoming" || selection == "schedule" }
     private var heading: String {
-        switch selection { case "today": "Today"; case "all": "Tasks"; case "routines": "Rhythm"; default: course?.name ?? "Today" }
+        switch selection { case "today": "Today"; case "all": "Tasks"; case "inbox": "Inbox"; case "routines": "Rhythm"; default: course?.name ?? "Today" }
     }
     private var tasks: [StudyTask] {
         store.state.tasks.filter { task in
             let matches: Bool
             switch selection {
             case "all": matches = true
+            case "inbox": matches = task.courseID == nil
             case "today": matches = (task.planned.map { task.ruleID == nil ? $0 <= Day.today : $0 == Day.today } ?? false) || (task.due.map { $0 <= Day.today } ?? false)
             default: matches = task.courseID == selection
             }
@@ -53,6 +54,7 @@ struct ContentView: View {
                 List(selection: $selection) {
                     Label("Today", systemImage: "sun.max").tag("today")
                     Label("Tasks", systemImage: "checklist").tag("all")
+                    Label("Inbox", systemImage: "tray").tag("inbox")
                     Section {
                         Label("Calendar", systemImage: "calendar").tag("upcoming")
                         Label("Schedule", systemImage: "clock").tag("schedule")
@@ -87,7 +89,6 @@ struct ContentView: View {
                         if selection == "today" { Text(Date().formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())).font(.callout).foregroundStyle(.secondary).fixedSize() }
                         if let course { Button { editor = .course(course) } label: { Image(systemName: "ellipsis") }.buttonStyle(.plain).help("Edit list") }
                     }.padding(.horizontal, 22).padding(.vertical, 18)
-                    Divider()
                     }
                     if selection == "routines" { routines } else { taskContent }
                 }
@@ -126,7 +127,7 @@ struct ContentView: View {
                                 selectedTask = task.id
                                 if !wide { narrowTask = task }
                             }
-                            .listRowSeparator(.visible)
+                            .listRowSeparator(.hidden)
                             .listRowBackground(selectedTask == task.id && wide ? Color.accentColor.opacity(0.065) : Color.clear)
                             .popover(isPresented: Binding(get: { !wide && narrowTask?.id == task.id }, set: { if !$0 { narrowTask = nil } })) {
                                 TaskInspector(store: store, task: task) { narrowTask = nil }.frame(width: 350, height: 530)
@@ -140,8 +141,7 @@ struct ContentView: View {
                                     Button("Inbox") { var copy = task; copy.courseID = nil; store.save(copy) }
                                     ForEach(store.state.courses) { list in Button(list.name) { var copy = task; copy.courseID = list.id; store.save(copy) } }
                                 }
-                                Divider()
-                                Button("Delete", role: .destructive) { store.deleteTask(task.id) }
+                                            Button("Delete", role: .destructive) { store.deleteTask(task.id) }
                             }
                         }.onMove { offsets, destination in
                             guard !dueOrder else { return }
@@ -156,7 +156,6 @@ struct ContentView: View {
                     }.listStyle(.inset).scrollContentBackground(.hidden)
                 }.frame(maxWidth: .infinity)
                 if wide, let id = selectedTask, let task = store.state.tasks.first(where: { $0.id == id }) {
-                    Divider()
                     TaskInspector(store: store, task: task) { selectedTask = nil }.id(id).frame(width: 320)
                 }
             }
@@ -191,7 +190,7 @@ struct ContentView: View {
             Text("Inbox").tag(nil as String?)
             ForEach(store.state.courses) { Text($0.shortName).tag(Optional($0.id)) }
         }.labelsHidden().frame(width: 120)
-        PillPicker("Track", label: quickKind.rawValue, selection: $quickKind) { ForEach(TaskKind.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().frame(width: 100)
+        PillPicker("Track", label: quickKind.rawValue, selection: $quickKind) { ForEach([TaskKind.checkbox, .progress]) { Text($0.rawValue).tag($0) } }.labelsHidden().frame(width: 100)
         DateMenu(title: "Due date", value: $quickDue).font(.caption)
     }
     private var routines: some View {

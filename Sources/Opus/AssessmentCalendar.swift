@@ -9,14 +9,16 @@ struct CalendarHeading: View {
     var schedule = false
     var body: some View {
         HStack(spacing: 12) {
-            Text(anchor.formatted(.dateTime.month(.wide).year()))
+            Text(period == .day ? anchor.formatted(.dateTime.month(.abbreviated).day().year()) : anchor.formatted(.dateTime.month(.wide).year()))
                 .font(.system(size: 22, weight: .semibold)).lineLimit(1).layoutPriority(1)
             Spacer(minLength: 8)
-            PillPicker("View", label: period.rawValue, selection: $period) {
+            HStack(spacing: 4) {
                 ForEach(CalendarPeriod.allCases.filter { !schedule || $0 != .month }, id: \.self) { option in
-                    Text(option.rawValue).tag(option)
+                    Button(option.rawValue) { period = option }
+                        .tint(period == option ? Color.accentColor : Color.secondary)
+                        .accessibilityAddTraits(period == option ? .isSelected : [])
                 }
-            }.fixedSize()
+            }.roundedControls().fixedSize()
             HStack(spacing: 4) {
                 Button { advance(-1) } label: { Image(systemName: "chevron.left").frame(width: 16) }
                     .help("Previous " + period.rawValue.lowercased())
@@ -48,7 +50,6 @@ struct AssessmentCalendar: View {
                     Text(Day.date(day).formatted(.dateTime.weekday(.abbreviated))).font(.system(size: 13)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 12)
                 }
             }.padding(.bottom, 7)
-            Divider()
             GeometryReader { geometry in
                 let columns = period == .day ? 1 : 7
                 let rows = days.count / columns
@@ -64,11 +65,11 @@ struct AssessmentCalendar: View {
                             }
                         }
                     }
-                }.scrollIndicators(.hidden)
+                }.scrollIndicators(.hidden).id(period.rawValue + (days.first ?? ""))
             }
         }
         .onChange(of: anchor) { _, _ in selectedDay = Day.string(anchor); ensureOccurrences() }
-        .onChange(of: period) { _, _ in if !days.contains(selectedDay) { selectedDay = Day.string(anchor) }; ensureOccurrences() }
+        .onChange(of: period) { _, _ in anchor = Day.date(selectedDay); ensureOccurrences() }
         .onAppear(perform: ensureOccurrences)
     }
     private func ensureOccurrences() { store.refreshOccurrences(through: days.last) }
@@ -160,8 +161,7 @@ private struct CalendarDayCell: View {
                 Button("Edit") { editing = .assessment(item) }
                 Button(item.confirmed ? "Mark tentative" : "Confirm") { var copy = item; copy.confirmed.toggle(); store.save(copy) }
                 Button("Add preparation task") { store.save(StudyTask(courseID: item.courseID, title: "Prepare: " + item.title, notes: item.topics, planned: Day.today, due: item.day)) }
-                Divider()
-                Button("Delete", role: .destructive) { store.change { $0.assessments.removeAll { $0.id == item.id } } }
+                    Button("Delete", role: .destructive) { store.change { $0.assessments.removeAll { $0.id == item.id } } }
             }
     }
     private func taskLine(_ task: StudyTask) -> some View {

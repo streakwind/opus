@@ -7,7 +7,6 @@ struct CourseEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("List name", text: $course.name).textFieldStyle(.plain).font(.system(size: 19, weight: .semibold))
-            Divider()
             PropertyRow("Color") {
                 HStack(spacing: 9) {
                     ForEach(Course.colors, id: \.self) { color in
@@ -18,7 +17,6 @@ struct CourseEditor: View {
                     }
                 }
             }
-            Divider()
             HStack {
                 if store.state.courses.contains(where: { $0.id == course.id }) {
                     Button("Remove list", role: .destructive) { store.deleteCourse(course.id); dismiss() }.help("Move its tasks to Inbox and keep its calendar entries")
@@ -42,7 +40,6 @@ struct RuleEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("Repeat something", text: $rule.title).textFieldStyle(.plain).font(.system(size: 19, weight: .semibold))
-            Divider()
             VStack(spacing: 0) {
                 PropertyRow("Add to") {
                     PillPicker("Kind", label: rule.kind.rawValue, selection: Binding(get: { rule.kind }, set: { rule.itemKind = $0 })) {
@@ -67,13 +64,12 @@ struct RuleEditor: View {
                     }
                 }
                 if rule.kind == .schedule {
-                    PropertyRow("At") { DatePicker("Time", selection: Binding(get: { ClockTime.date(rule.startMinute ?? 540) }, set: { rule.startMinute = ClockTime.minutes($0) }), displayedComponents: .hourAndMinute).labelsHidden() }
+                    PropertyRow("At") { TimeControl(minutes: Binding(get: { rule.startMinute ?? 540 }, set: { rule.startMinute = $0 })) }
                     PropertyRow("For") {
                         PillPicker("Duration", label: "\(rule.duration ?? 60) minutes", selection: Binding(get: { rule.duration ?? 60 }, set: { rule.duration = $0 })) { ForEach([15,30,45,60,90,120,180], id: \.self) { Text("\($0) minutes").tag($0) } }.labelsHidden()
                     }
                 }
             }
-            Divider()
             HStack {
                 Text("Repeat on").font(.callout.weight(.medium))
                 Spacer()

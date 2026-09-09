@@ -56,7 +56,6 @@ struct CalendarEntryEditor: View {
             Text((isNew ? "Add to " : "On ") + Day.date(day ?? Day.today).formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
                 .font(.subheadline).foregroundStyle(.secondary)
             TextField("Title", text: $title).textFieldStyle(.plain).font(.system(size: 18, weight: .semibold)).focused($titleFocused).onSubmit(save)
-            Divider()
             VStack(spacing: 0) {
                 if isNew {
                     PropertyRow("Add as") {
@@ -64,7 +63,7 @@ struct CalendarEntryEditor: View {
                     }
                 }
                 PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $course) }
-                PropertyRow(kind == .task ? "On" : "Date") { DatePicker("Date", selection: Binding(get: { Day.date(day ?? Day.today) }, set: { day = Day.string($0) }), displayedComponents: .date).labelsHidden() }
+                PropertyRow(kind == .task ? "On" : "Date") { DateMenu(title: "Date", value: $day) }
                 if kind == .assessment {
                     PropertyRow("Status") {
                         PillPicker("Status", label: confirmed ? "Confirmed" : "Tentative", selection: $confirmed) { Text("Confirmed").tag(true); Text("Tentative").tag(false) }.labelsHidden().pickerStyle(.menu)
@@ -73,8 +72,7 @@ struct CalendarEntryEditor: View {
             }
             if case .task(let task, _) = source, task.kind == .progress { InlineProgress(store: store, task: store.state.tasks.first { $0.id == task.id } ?? task) }
             if notesVisible { TextField("Notes", text: $notes, axis: .vertical).textFieldStyle(.plain).lineLimit(2...6) }
-            else { Button("Add notes") { notesVisible = true }.buttonStyle(.plain).foregroundStyle(.secondary).font(.caption) }
-            Divider()
+            else if kind == .assessment { Button("Add topics") { notesVisible = true }.buttonStyle(.plain).foregroundStyle(.secondary).font(.caption) }
             HStack {
                 if !isNew { Button(role: .destructive, action: delete) { Image(systemName: "trash") }.buttonStyle(.plain).help("Delete") }
                 Spacer()
@@ -126,11 +124,10 @@ struct ScheduleEditor: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(Day.date(block.day).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) + " · " + block.timeLabel).font(.caption).foregroundStyle(.secondary)
             TextField("Class, study session, or event", text: $block.title).textFieldStyle(.plain).font(.system(size: 18, weight: .semibold)).focused($titleFocused).onSubmit(save)
-            Divider()
             VStack(spacing: 0) {
                 PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $block.courseID) }
                 PropertyRow("Date") { DateMenu(title: "Date", value: Binding(get: { block.day }, set: { block.day = $0 ?? Day.today })) }
-                PropertyRow("From") { DatePicker("From", selection: Binding(get: { ClockTime.date(block.startMinute) }, set: { block.startMinute = ClockTime.minutes($0) }), displayedComponents: .hourAndMinute).labelsHidden() }
+                PropertyRow("From") { TimeControl(minutes: $block.startMinute) }
                 PropertyRow("For") {
                     PillPicker("Duration", label: "\(block.duration) minutes", selection: $block.duration) {
                         ForEach(Array(Set([15,30,45,60,90,120,180,block.duration])).sorted(), id: \.self) { Text("\($0) minutes").tag($0) }
@@ -141,9 +138,8 @@ struct ScheduleEditor: View {
                 Toggle("Repeat", isOn: $repeatBlock).toggleStyle(.checkbox)
                 if repeatBlock { WeekdayPicker(days: $repeatDays) }
             }
-            TextField("Notes (optional)", text: $block.notes, axis: .vertical).textFieldStyle(.plain).lineLimit(1...4)
+            if !block.notes.isEmpty { TextField("Details", text: $block.notes, axis: .vertical).textFieldStyle(.plain).lineLimit(1...4) }
             if block.startMinute + block.duration > 1440 { Text("Choose a duration that ends before midnight.").font(.caption).foregroundStyle(.orange) }
-            Divider()
             HStack {
                 if existing { Button(role: .destructive) { store.change { $0.schedule.removeAll { $0.id == block.id } }; dismiss() } label: { Image(systemName: "trash") }.buttonStyle(.plain) }
                 Spacer()
