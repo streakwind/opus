@@ -45,14 +45,14 @@ struct RuleEditor: View {
             Divider()
             VStack(spacing: 0) {
                 PropertyRow("Add to") {
-                    Picker("Kind", selection: Binding(get: { rule.kind }, set: { rule.itemKind = $0 })) {
+                    PillPicker("Kind", label: rule.kind.rawValue, selection: Binding(get: { rule.kind }, set: { rule.itemKind = $0 })) {
                         ForEach(RepeatItem.allCases) { Text($0.rawValue).tag($0) }
                     }.labelsHidden().pickerStyle(.menu)
                 }
                 PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $rule.courseID) }
                 if rule.kind == .assessment {
                     PropertyRow("Dates") {
-                        Picker("Dates", selection: Binding(get: { rule.confirmsAssessments }, set: { rule.assessmentsConfirmed = $0 })) {
+                        PillPicker("Dates", label: rule.confirmsAssessments ? "Confirmed" : "Tentative", selection: Binding(get: { rule.confirmsAssessments }, set: { rule.assessmentsConfirmed = $0 })) {
                             Text("Confirmed").tag(true)
                             Text("Tentative").tag(false)
                         }.labelsHidden()
@@ -60,7 +60,7 @@ struct RuleEditor: View {
                 }
                 if rule.kind == .task {
                     PropertyRow("Track") {
-                        Picker("Track", selection: Binding(get: { rule.taskKind ?? .checkbox }, set: { rule.taskKind = $0 })) { ForEach(TaskKind.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().pickerStyle(.menu)
+                        PillPicker("Track", label: (rule.taskKind ?? .checkbox).rawValue, selection: Binding(get: { rule.taskKind ?? .checkbox }, set: { rule.taskKind = $0 })) { ForEach(TaskKind.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().pickerStyle(.menu)
                     }
                     if rule.taskKind == .progress {
                         PropertyRow("Goal") { TextField("Pages", value: Binding(get: { rule.targetCount ?? 30 }, set: { rule.targetCount = max(1, $0) }), format: .number).frame(width: 80) }
@@ -69,7 +69,7 @@ struct RuleEditor: View {
                 if rule.kind == .schedule {
                     PropertyRow("At") { DatePicker("Time", selection: Binding(get: { ClockTime.date(rule.startMinute ?? 540) }, set: { rule.startMinute = ClockTime.minutes($0) }), displayedComponents: .hourAndMinute).labelsHidden() }
                     PropertyRow("For") {
-                        Picker("Duration", selection: Binding(get: { rule.duration ?? 60 }, set: { rule.duration = $0 })) { ForEach([15,30,45,60,90,120,180], id: \.self) { Text("\($0) minutes").tag($0) } }.labelsHidden()
+                        PillPicker("Duration", label: "\(rule.duration ?? 60) minutes", selection: Binding(get: { rule.duration ?? 60 }, set: { rule.duration = $0 })) { ForEach([15,30,45,60,90,120,180], id: \.self) { Text("\($0) minutes").tag($0) } }.labelsHidden()
                     }
                 }
             }
@@ -87,7 +87,7 @@ struct RuleEditor: View {
             WeekdayPicker(days: $days)
             VStack(spacing: 0) {
                 PropertyRow("Every") {
-                    Picker("Interval", selection: Binding(get: { rule.intervalWeeks ?? 1 }, set: { rule.intervalWeeks = $0 })) { ForEach(1...8, id: \.self) { Text($0 == 1 ? "Week" : "\($0) weeks").tag($0) } }.labelsHidden()
+                    PillPicker("Interval", label: (rule.intervalWeeks ?? 1) == 1 ? "Week" : "\(rule.intervalWeeks ?? 1) weeks", selection: Binding(get: { rule.intervalWeeks ?? 1 }, set: { rule.intervalWeeks = $0 })) { ForEach(1...8, id: \.self) { Text($0 == 1 ? "Week" : "\($0) weeks").tag($0) } }.labelsHidden()
                 }
                 PropertyRow("From") { DateMenu(title: "Today", value: $rule.startDate) }
                 PropertyRow("Until") { DateMenu(title: "No end date", value: $rule.endDate) }

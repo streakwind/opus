@@ -13,3 +13,29 @@ struct RoundedControls: ViewModifier {
 extension View {
     func roundedControls() -> some View { modifier(RoundedControls()) }
 }
+
+struct PillLabel: View {
+    var title: String
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title).lineLimit(1)
+            Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+        }.padding(.horizontal, 12).padding(.vertical, 7)
+            .background(.regularMaterial, in: Capsule())
+            .overlay { Capsule().strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5) }
+    }
+}
+struct PillPicker<Value: Hashable, Options: View>: View {
+    var title: String
+    var label: String
+    @Binding var selection: Value
+    @ViewBuilder var options: Options
+    init(_ title: String, label: String, selection: Binding<Value>, @ViewBuilder content: () -> Options) {
+        self.title = title; self.label = label; _selection = selection; options = content()
+    }
+    var body: some View {
+        Menu { Picker(title, selection: $selection) { options } } label: { PillLabel(title: label) }
+            .menuStyle(.button).menuIndicator(.hidden).roundedControls().fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel(title + ": " + label)
+    }
+}

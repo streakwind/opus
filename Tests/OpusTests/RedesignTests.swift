@@ -13,6 +13,13 @@ final class RedesignTests: XCTestCase {
         task.current = 49
         XCTAssertNil(task.pacing(on: "2026-09-09"))
     }
+    func testScheduleClickUsesQuarterHourAndLateNight() {
+        XCTAssertEqual(ScheduleLayout.minute(at: 630), 630)
+        XCTAssertEqual(ScheduleLayout.minute(at: 644), 630)
+        XCTAssertEqual(ScheduleLayout.minute(at: 1439), 1425)
+        XCTAssertEqual(ScheduleLayout.minute(at: -10), 0)
+        XCTAssertEqual(ScheduleLayout.minute(at: 315, hourHeight: 30), 630)
+    }
     private func db() throws -> Database {
         try Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusV3-" + UUID().uuidString).appendingPathComponent("test.sqlite"))
     }

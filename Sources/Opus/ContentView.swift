@@ -80,6 +80,7 @@ struct ContentView: View {
                 else if selection == "upcoming" { AssessmentCalendar(store: store, query: query, newEntryRequest: newEntryRequest) }
                 else if selection == "schedule" { ScheduleView(store: store, query: query, newEntryRequest: newEntryRequest) }
                 else {
+                    if selection != "all" && selection != "inbox" {
                     HStack(alignment: .firstTextBaseline) {
                         Text(heading).font(.system(size: 26, weight: .bold)).lineLimit(1)
                         Spacer()
@@ -87,6 +88,7 @@ struct ContentView: View {
                         if let course { Button { editor = .course(course) } label: { Image(systemName: "ellipsis") }.buttonStyle(.plain).help("Edit list") }
                     }.padding(.horizontal, 22).padding(.vertical, 18)
                     Divider()
+                    }
                     if selection == "routines" { routines } else { taskContent }
                 }
             }.background(Color(nsColor: .textBackgroundColor))
@@ -185,11 +187,11 @@ struct ContentView: View {
         }.padding(.horizontal, 22).padding(.vertical, 14)
     }
     @ViewBuilder private var entryOptions: some View {
-        Picker("List", selection: $quickCourse) {
+        PillPicker("List", label: store.course(quickCourse)?.shortName ?? "Inbox", selection: $quickCourse) {
             Text("Inbox").tag(nil as String?)
             ForEach(store.state.courses) { Text($0.shortName).tag(Optional($0.id)) }
         }.labelsHidden().frame(width: 120)
-        Picker("Track", selection: $quickKind) { ForEach(TaskKind.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().frame(width: 100)
+        PillPicker("Track", label: quickKind.rawValue, selection: $quickKind) { ForEach(TaskKind.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().frame(width: 100)
         DateMenu(title: "Due date", value: $quickDue).font(.caption)
     }
     private var routines: some View {

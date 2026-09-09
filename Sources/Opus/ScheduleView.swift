@@ -7,6 +7,9 @@ struct SchedulePlacement: Identifiable {
     var id: String { block.id }
 }
 enum ScheduleLayout {
+    static func minute(at y: CGFloat, hourHeight: CGFloat = 60) -> Int {
+        min(1425, max(0, Int(y / hourHeight * 60 / 15) * 15))
+    }
     static func placements(_ blocks: [ScheduleBlock]) -> [SchedulePlacement] {
         let sorted = blocks.sorted { $0.startMinute == $1.startMinute ? $0.id < $1.id : $0.startMinute < $1.startMinute }
         var result: [SchedulePlacement] = []
@@ -35,6 +38,7 @@ struct ScheduleView: View {
     @State private var period = CalendarPeriod.week
     @State private var editing: ScheduleBlock?
     @State private var editorDay = Day.today
+    @State private var selectedMinute = 7 * 60
     private let hourHeight: CGFloat = 60
     private var days: [String] { period == .day ? [Day.string(anchor)] : CalendarLayout.days(containing: anchor, week: true) }
     var body: some View {
@@ -68,7 +72,9 @@ struct ScheduleView: View {
                                 dayColumn(day, width: columnWidth)
                             }
                         }.frame(height: hourHeight * 24)
-                    }.onAppear { reader.scrollTo(7, anchor: .top) }
+                    }.onAppear { reader.scrollTo(selectedMinute / 60, anchor: .top) }
+                    .onChange(of: period) { _, _ in reader.scrollTo(selectedMinute / 60, anchor: .top) }
+                    .onChange(of: anchor) { _, _ in reader.scrollTo(selectedMinute / 60, anchor: .top) }
                 }
             }
         }
@@ -89,7 +95,8 @@ struct ScheduleView: View {
                 }
             }.frame(width: width).background(Calendar.current.isDateInWeekend(Day.date(day)) ? Color.primary.opacity(0.025) : Color.clear)
                 .contentShape(Rectangle()).onTapGesture(coordinateSpace: .local) { point in
-                    editorDay = day; editing = ScheduleBlock(day: day, startMinute: min(1380, max(0, Int(point.y / hourHeight * 60 / 15) * 15)))
+                    selectedMinute = ScheduleLayout.minute(at: point.y, hourHeight: hourHeight)
+                    editorDay = day; editing = ScheduleBlock(day: day, startMinute: selectedMinute, duration: min(60, 1440 - selectedMinute))
                 }
             ForEach(ScheduleLayout.placements(blocks)) { placement in
                 let block = placement.block
@@ -109,7 +116,7 @@ struct ScheduleView: View {
             }.allowsHitTesting(false)
         }.frame(width: width, height: hourHeight * 24)
             .popover(isPresented: Binding(get: { editing != nil && editorDay == day }, set: { if !$0 { editing = nil } }), attachmentAnchor: .rect(.rect(CGRect(x: 0, y: CGFloat(editing?.startMinute ?? 540) / 60 * hourHeight, width: width, height: 20)))) {
-                if let draft = editing { ScheduleEditor(store: store, block: draft, onChange: { editing = $0 }).id(draft.id) }
+                if let draft = editing { ScheduleEditor(store: store, block: draft, onChange: { editing = $0; selectedMinute = $0.startMinute }).id(draft.id) }
             }
             .overlay(alignment: .trailing) { Rectangle().fill(Color.primary.opacity(0.1)).frame(width: 0.5) }
             .dropDestination(for: String.self) { values, location in

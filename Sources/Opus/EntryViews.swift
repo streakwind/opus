@@ -15,7 +15,7 @@ struct CourseMenu: View {
     var courses: [Course]
     @Binding var value: String?
     var body: some View {
-        Picker("List", selection: $value) {
+        PillPicker("List", label: courses.first { $0.id == value }?.name ?? "Inbox", selection: $value) {
             Text("Inbox").tag(nil as String?)
             ForEach(courses) { Text($0.name).tag(Optional($0.id)) }
         }.labelsHidden().pickerStyle(.menu).fixedSize(horizontal: false, vertical: true)
@@ -60,14 +60,14 @@ struct CalendarEntryEditor: View {
             VStack(spacing: 0) {
                 if isNew {
                     PropertyRow("Add as") {
-                        Picker("Kind", selection: $kind) { Text("Task").tag(RepeatItem.task); Text("Assessment").tag(RepeatItem.assessment) }.labelsHidden().pickerStyle(.segmented)
+                        PillPicker("Kind", label: kind.rawValue, selection: $kind) { Text("Task").tag(RepeatItem.task); Text("Assessment").tag(RepeatItem.assessment) }.labelsHidden().pickerStyle(.segmented)
                     }
                 }
                 PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $course) }
                 PropertyRow(kind == .task ? "On" : "Date") { DatePicker("Date", selection: Binding(get: { Day.date(day ?? Day.today) }, set: { day = Day.string($0) }), displayedComponents: .date).labelsHidden() }
                 if kind == .assessment {
                     PropertyRow("Status") {
-                        Picker("Status", selection: $confirmed) { Text("Confirmed").tag(true); Text("Tentative").tag(false) }.labelsHidden().pickerStyle(.menu)
+                        PillPicker("Status", label: confirmed ? "Confirmed" : "Tentative", selection: $confirmed) { Text("Confirmed").tag(true); Text("Tentative").tag(false) }.labelsHidden().pickerStyle(.menu)
                     }
                 }
             }
@@ -132,7 +132,7 @@ struct ScheduleEditor: View {
                 PropertyRow("Date") { DateMenu(title: "Date", value: Binding(get: { block.day }, set: { block.day = $0 ?? Day.today })) }
                 PropertyRow("From") { DatePicker("From", selection: Binding(get: { ClockTime.date(block.startMinute) }, set: { block.startMinute = ClockTime.minutes($0) }), displayedComponents: .hourAndMinute).labelsHidden() }
                 PropertyRow("For") {
-                    Picker("Duration", selection: $block.duration) {
+                    PillPicker("Duration", label: "\(block.duration) minutes", selection: $block.duration) {
                         ForEach(Array(Set([15,30,45,60,90,120,180,block.duration])).sorted(), id: \.self) { Text("\($0) minutes").tag($0) }
                     }.labelsHidden().pickerStyle(.menu)
                 }

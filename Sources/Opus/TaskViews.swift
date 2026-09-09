@@ -12,9 +12,6 @@ struct InlineProgress: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             controls
-            ProgressView(value: task.fraction).progressViewStyle(.linear)
-                .tint(store.course(task.courseID)?.tint ?? .accentColor)
-                .frame(maxWidth: 280).accessibilityLabel("Progress for " + task.title)
             if let pace = task.pacing(on: Day.today) {
                 Text(pace).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
@@ -27,8 +24,8 @@ struct InlineProgress: View {
             Text(task.unit == "pages" ? "Read through" : "Completed").font(.caption).foregroundStyle(.secondary).fixedSize()
             TextField("Current progress", value: $number, format: .number.grouping(.never)).textFieldStyle(.plain).multilineTextAlignment(.trailing)
                 .font(.system(size: 13, weight: .medium, design: .monospaced)).frame(width: 45).focused($editing).onSubmit { apply(number) }
-                .padding(.horizontal, 5).padding(.vertical, 3).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 4))
-            Text("/ \(task.target)").font(.caption).foregroundStyle(.secondary).fixedSize()
+                .padding(.horizontal, 5).padding(.vertical, 3).background(Color.primary.opacity(0.05), in: Capsule())
+            Text("of \(task.target)").font(.caption).foregroundStyle(.secondary).fixedSize()
 
         }.fixedSize()
     }
@@ -109,7 +106,7 @@ struct TaskInspector: View {
                         PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $draft.courseID) }
                         PropertyRow("Plan") { DateMenu(title: "Anytime", value: $draft.planned) }
                         PropertyRow("Due") { DateMenu(title: "No deadline", value: $draft.due) }
-                        PropertyRow("Track") { Picker("Tracking", selection: $draft.kind) { ForEach(TaskKind.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().pickerStyle(.menu) }
+                        PropertyRow("Track") { PillPicker("Tracking", label: draft.kind.rawValue, selection: $draft.kind) { ForEach(TaskKind.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().pickerStyle(.menu) }
                     }
                     if draft.kind == .progress {
                         Divider()
@@ -182,7 +179,7 @@ struct DateMenu: View {
             Button("Tomorrow") { value = Day.adding(1) }
             Button("Choose date…") { calendar = true }
             if value != nil { Divider(); Button("Clear date") { value = nil } }
-        } label: { Text(value.map(Day.label) ?? title) }.menuStyle(.borderlessButton).fixedSize()
+        } label: { PillLabel(title: value.map(Day.label) ?? title) }.menuStyle(.button).menuIndicator(.hidden).roundedControls().fixedSize()
             .popover(isPresented: $calendar) {
                 VStack {
                     DatePicker(title, selection: Binding(get: { Day.date(value ?? Day.today) }, set: { value = Day.string($0) }), displayedComponents: .date).datePickerStyle(.graphical)
