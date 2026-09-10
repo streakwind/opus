@@ -48,12 +48,8 @@ struct TaskLine: View {
                 Button {
                     var updated = task; updated.completed.toggle(); store.save(updated)
                 } label: {
-                    ZStack {
-                        Image(systemName: task.completed ? "checkmark.circle.fill" : "circle").font(.system(size: 18)).foregroundStyle(task.completed ? Color.accentColor : Color.secondary)
-                        if task.kind == .progress && !task.completed {
-                            Circle().trim(from: 0, to: task.fraction).stroke(store.course(task.courseID)?.tint ?? .accentColor, style: StrokeStyle(lineWidth: 2, lineCap: .round)).rotationEffect(.degrees(-90)).frame(width: 15, height: 15)
-                        }
-                    }.frame(width: 18, height: 18)
+                    Image(systemName: task.completed ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 18)).foregroundStyle(task.completed ? Color.accentColor : Color.secondary)
                 }.buttonStyle(.borderless).help(task.completed ? "Reopen task" : "Complete task")
                 VStack(alignment: .leading, spacing: 3) {
                     Button(action: openDetails) { Text(task.title).font(.system(size: 14, weight: .medium)).strikethrough(task.completed).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.plain)

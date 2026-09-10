@@ -38,6 +38,7 @@ struct ScheduleView: View {
     @State private var period = CalendarPeriod.week
     @State private var editing: ScheduleBlock?
     @State private var editorDay = Day.today
+    @State private var scrollOffset: CGFloat = 420
     @State private var selectedMinute = 7 * 60
     private let hourHeight: CGFloat = 60
     private var days: [String] { period == .day ? [Day.string(anchor)] : CalendarLayout.days(containing: anchor, week: true) }
@@ -71,9 +72,28 @@ struct ScheduleView: View {
                                 dayColumn(day, width: columnWidth)
                             }
                         }.frame(height: hourHeight * 24)
-                    }.onAppear { reader.scrollTo(selectedMinute / 60, anchor: .top) }
+                        .background(GeometryReader { content in
+                            Color.clear.preference(key: ScheduleScrollOffset.self, value: -content.frame(in: .named("scheduleViewport")).minY)
+                        })
+                    }.coordinateSpace(name: "scheduleViewport")
+                    .onPreferenceChange(ScheduleScrollOffset.self) { scrollOffset = $0 }
+                    .onAppear { reader.scrollTo(selectedMinute / 60, anchor: .top) }
                     .onChange(of: period) { _, _ in reader.scrollTo(selectedMinute / 60, anchor: .top) }
                     .onChange(of: anchor) { _, _ in reader.scrollTo(selectedMinute / 60, anchor: .top) }
+                }
+                .overlay(alignment: .topLeading) {
+                    let column = days.firstIndex(of: editing?.day ?? editorDay) ?? 0
+                    Color.clear.frame(width: 1, height: 1)
+                        .position(x: 56 + (CGFloat(column) + 0.5) * columnWidth,
+                                  y: min(geometry.size.height - 20, max(20, CGFloat(editing?.startMinute ?? 540) - scrollOffset)))
+                        .popover(item: $editing) { draft in
+                            ScheduleEditor(store: store, block: draft, onChange: { updated in
+                                editing = updated; selectedMinute = updated.startMinute
+                                if editorDay != updated.day {
+                                    editorDay = updated.day; anchor = Day.date(updated.day)
+                                }
+                            }).id(draft.id)
+                        }
                 }
             }
         }
@@ -122,9 +142,6 @@ struct ScheduleView: View {
                 }
             }.allowsHitTesting(false)
         }.frame(width: width, height: hourHeight * 24)
-            .popover(isPresented: Binding(get: { editing != nil && editorDay == day }, set: { if !$0 { editing = nil } }), attachmentAnchor: .rect(.rect(CGRect(x: 0, y: CGFloat(editing?.startMinute ?? 540) / 60 * hourHeight, width: width, height: 20)))) {
-                if let draft = editing { ScheduleEditor(store: store, block: draft, onChange: { editing = $0; selectedMinute = $0.startMinute }).id(draft.id) }
-            }
             .overlay(alignment: .trailing) { Rectangle().fill(Color.primary.opacity(0.1)).frame(width: 0.5) }
             .dropDestination(for: String.self) { values, location in
                 guard let payload = values.first, payload.hasPrefix("schedule:"), var block = store.state.schedule.first(where: { $0.id == String(payload.dropFirst(9)) }) else { return false }
@@ -151,4 +168,9 @@ private struct ScheduleEventCard: View {
         }.buttonStyle(.plain).help(block.title + " · " + block.timeLabel).draggable("schedule:" + block.id)
             .contextMenu { Button("Delete", role: .destructive, action: delete) }
     }
+}
+
+private struct ScheduleScrollOffset: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }

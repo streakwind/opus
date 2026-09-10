@@ -30,6 +30,7 @@ enum CalendarDraft: Identifiable {
 struct CalendarEntryEditor: View {
     var store: Store
     var source: CalendarDraft
+    var onDateChange: (String) -> Void
     @State private var title: String
     @State private var course: String?
     @State private var day: String?
@@ -39,8 +40,8 @@ struct CalendarEntryEditor: View {
     @State private var notesVisible: Bool
     @FocusState private var titleFocused: Bool
     @Environment(\.dismiss) private var dismiss
-    init(store: Store, source: CalendarDraft) {
-        self.store = store; self.source = source
+    init(store: Store, source: CalendarDraft, onDateChange: @escaping (String) -> Void = { _ in }) {
+        self.store = store; self.source = source; self.onDateChange = onDateChange
         switch source {
         case .new(let day):
             _title = State(initialValue: ""); _day = State(initialValue: day); _kind = State(initialValue: .task); _confirmed = State(initialValue: true); _notes = State(initialValue: ""); _notesVisible = State(initialValue: false)
@@ -81,6 +82,7 @@ struct CalendarEntryEditor: View {
             }
         }.padding(18).frame(width: 340).roundedControls()
         .onAppear { if isNew { titleFocused = true } }
+        .onChange(of: day) { _, day in if let day { onDateChange(day) } }
     }
     private func save() {
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)

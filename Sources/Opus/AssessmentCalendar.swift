@@ -44,6 +44,7 @@ struct AssessmentCalendar: View {
     @State private var anchor = Date()
     @State private var period = CalendarPeriod.month
     @State private var selectedDay = Day.today
+    @State private var editing: CalendarDraft?
     private var days: [String] { period == .day ? [Day.string(anchor)] : CalendarLayout.days(containing: anchor, week: period == .week) }
     var body: some View {
         VStack(spacing: 0) {
@@ -63,7 +64,7 @@ struct AssessmentCalendar: View {
                         ForEach(0..<rows, id: \.self) { row in
                             HStack(spacing: 0) {
                                 ForEach(Array(days[(row*columns)..<(row*columns+columns)]), id: \.self) { day in
-                                    CalendarDayCell(store: store, day: day, inMonth: period != .month || Calendar.current.isDate(Day.date(day), equalTo: anchor, toGranularity: .month), query: query, capacity: max(1, Int((height - 52) / 23)), wide: period == .day, selected: selectedDay == day, newEntryRequest: newEntryRequest, select: { selectedDay = day })
+                                    CalendarDayCell(store: store, day: day, inMonth: period != .month || Calendar.current.isDate(Day.date(day), equalTo: anchor, toGranularity: .month), query: query, capacity: max(1, Int((height - 52) / 23)), wide: period == .day, selected: selectedDay == day, newEntryRequest: newEntryRequest, select: { selectedDay = day }, editing: $editing)
                                         .frame(width: geometry.size.width / CGFloat(columns), height: height).id(day)
                                 }
                             }
@@ -77,6 +78,18 @@ struct AssessmentCalendar: View {
                         reader.scrollTo(focus.day, anchor: .center)
                     }
                 }
+                }
+                .overlay(alignment: .topLeading) {
+                    let index = days.firstIndex(of: selectedDay) ?? 0
+                    Color.clear.frame(width: 1, height: 1)
+                        .position(x: (CGFloat(index % columns) + 0.5) * geometry.size.width / CGFloat(columns),
+                                  y: min(geometry.size.height - 20, (CGFloat(index / columns) + 0.5) * height))
+                        .popover(item: $editing) { draft in
+                            CalendarEntryEditor(store: store, source: draft, onDateChange: { day in
+                                selectedDay = day
+                                if !days.contains(day) { anchor = Day.date(day) }
+                            }).id(draft.id)
+                        }
                 }
             }
         }
@@ -100,7 +113,7 @@ private struct CalendarDayCell: View {
     var selected: Bool
     var newEntryRequest: Int
     var select: () -> Void
-    @State private var editing: CalendarDraft?
+    @Binding var editing: CalendarDraft?
     @State private var overflow = false
     @State private var targeted = false
     private var assessments: [Assessment] {
@@ -154,7 +167,7 @@ private struct CalendarDayCell: View {
             return true
         }
         .onChange(of: newEntryRequest) { _, _ in if selected { editing = .new(day) } }
-        .popover(item: $editing) { CalendarEntryEditor(store: store, source: $0).id($0.id) }
+
     }
     private var background: Color {
         if !inMonth { return Color.primary.opacity(0.035) }
@@ -162,7 +175,7 @@ private struct CalendarDayCell: View {
     }
     private func assessmentLine(_ item: Assessment) -> some View {
         let tint = store.course(item.courseID)?.tint ?? .teal
-        return Button { overflow = false; editing = .assessment(item) } label: {
+        return Button { select(); overflow = false; editing = .assessment(item) } label: {
             HStack(spacing: 4) {
                 Capsule().fill(tint).frame(width: 3, height: 14)
                 Text((store.course(item.courseID)?.shortName).map { $0 + " · " } ?? "") + Text(item.title == "Example recurrence" ? "Quiz" : item.title)
@@ -184,10 +197,12 @@ private struct CalendarDayCell: View {
             Button {
                 var copy = task; copy.completed.toggle(); store.save(copy)
             } label: { Image(systemName: task.completed ? "checkmark.circle.fill" : "circle").font(.system(size: 11)) }.buttonStyle(.plain).help(task.completed ? "Reopen task" : "Complete task")
-            Button { overflow = false; editing = .task(task, day) } label: {
-                Text(task.title).strikethrough(task.completed).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+            Button { select(); overflow = false; editing = .task(task, day) } label: {
+                HStack(spacing: 4) {
+                    Text(task.title).strikethrough(task.completed).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                    if task.due == day { Image(systemName: "flag.fill").font(.system(size: 8)).foregroundStyle(.secondary) }
+                }.frame(maxWidth: .infinity, minHeight: 21).contentShape(Rectangle())
             }.buttonStyle(.plain)
-            if task.due == day { Image(systemName: "flag.fill").font(.system(size: 8)).foregroundStyle(.secondary) }
         }.font(.system(size: wide ? 13 : 11)).frame(height: 21).padding(.horizontal, 5).opacity(task.completed ? 0.45 : 1)
             .help(task.title + (task.due == day ? " · Due" : " · Planned"))
             .onDrag { NSItemProvider(object: ((task.due == day ? "task:" : "planned:") + task.id) as NSString) }

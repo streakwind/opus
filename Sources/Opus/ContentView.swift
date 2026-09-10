@@ -87,7 +87,7 @@ struct ContentView: View {
                         Text(heading).font(.system(size: 26, weight: .bold)).lineLimit(1)
                         Spacer()
                         if selection == "today" { Text(Date().formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())).font(.callout).foregroundStyle(.secondary).fixedSize() }
-                        if let course { Button { editor = .course(course) } label: { Image(systemName: "ellipsis") }.buttonStyle(.plain).help("Edit list") }
+                        if let course { Button { editor = .course(course) } label: { Image(systemName: "ellipsis").frame(width: 36, height: 32).contentShape(Rectangle()) }.buttonStyle(.plain).help("Edit list") }
                     }.padding(.horizontal, 22).padding(.vertical, 18)
                     }
                     if selection == "routines" { routines } else { taskContent }
