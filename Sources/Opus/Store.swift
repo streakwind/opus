@@ -1,5 +1,7 @@
 import SwiftUI
 
+enum RecurringDeleteScope { case thisEvent, thisAndFollowing, allEvents }
+
 @MainActor @Observable
 final class Store {
     var state: Snapshot
@@ -101,8 +103,14 @@ final class Store {
     static func generate(in state: inout Snapshot, today: String = Day.today, through: String? = nil) {
         let horizon = max(56, through.map { (Calendar.current.dateComponents([.day], from: Day.date(today), to: Day.date($0)).day ?? 0) + 1 } ?? 56)
         for rule in state.rules where rule.enabled {
-            for offset in -1..<horizon {
-                if offset < 0 && rule.kind == .assessment { continue }
+            let firstOffset: Int
+            switch rule.kind {
+            case .assessment: firstOffset = 0
+            case .task: firstOffset = -1
+            case .schedule:
+                firstOffset = min(0, rule.startDate.map { Calendar.current.dateComponents([.day], from: Day.date(today), to: Day.date($0)).day ?? 0 } ?? 0)
+            }
+            for offset in firstOffset..<horizon {
                 let day = Day.adding(offset, to: today)
                 guard rule.occurs(on: day) else { continue }
                 let key = "\(rule.id):\(day)"
@@ -160,6 +168,46 @@ final class Store {
         change { state in
             if let index = state.schedule.firstIndex(where: { $0.id == block.id }) { state.schedule[index] = block }
             else { state.schedule.append(block) }
+        }
+    }
+    func setScheduleRuleEnd(_ id: String, to endDate: String?) {
+        change { state in
+            guard let index = state.rules.firstIndex(where: { $0.id == id && $0.kind == .schedule }) else { return }
+            state.rules[index].endDate = endDate
+            if let endDate {
+                state.schedule.removeAll { $0.ruleID == id && ($0.occurrence ?? $0.day) > endDate }
+                state.generated = state.generated.filter { key in
+                    guard key.hasPrefix(id + ":"), let day = key.split(separator: ":").last.map(String.init) else { return true }
+                    return day <= endDate
+                }
+            }
+            Self.generate(in: &state)
+        }
+    }
+    func deleteSchedule(_ block: ScheduleBlock, scope: RecurringDeleteScope) {
+        guard let ruleID = block.ruleID else {
+            change { $0.schedule.removeAll { $0.id == block.id } }
+            return
+        }
+        let boundary = block.occurrence ?? block.day
+        change { state in
+            switch scope {
+            case .thisEvent:
+                state.schedule.removeAll { $0.id == block.id }
+            case .thisAndFollowing:
+                if let index = state.rules.firstIndex(where: { $0.id == ruleID }) {
+                    state.rules[index].endDate = Day.adding(-1, to: boundary)
+                }
+                state.schedule.removeAll { $0.ruleID == ruleID && ($0.occurrence ?? $0.day) >= boundary }
+                state.generated = state.generated.filter { key in
+                    guard key.hasPrefix(ruleID + ":"), let day = key.split(separator: ":").last.map(String.init) else { return true }
+                    return day < boundary
+                }
+            case .allEvents:
+                state.schedule.removeAll { $0.ruleID == ruleID }
+                state.rules.removeAll { $0.id == ruleID }
+                state.generated = state.generated.filter { !$0.hasPrefix(ruleID + ":") }
+            }
         }
     }
     func updateProgress(_ id: String, to value: Int) {

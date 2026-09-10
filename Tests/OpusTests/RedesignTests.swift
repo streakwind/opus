@@ -54,9 +54,11 @@ final class RedesignTests: XCTestCase {
         XCTAssertFalse(assessments.assessments.contains { $0.day == yesterday })
 
         var schedule = Snapshot()
-        schedule.rules = [QuizRule(title: "Practice", weekdays: Array(1...7), itemKind: .schedule, startDate: yesterday)]
+        let twoWeeksAgo = Day.adding(-14, to: today)
+        schedule.rules = [QuizRule(title: "Practice", weekdays: Array(1...7), itemKind: .schedule, startDate: twoWeeksAgo)]
         Store.generate(in: &schedule, today: today)
         XCTAssertTrue(schedule.schedule.contains { $0.day == yesterday })
+        XCTAssertTrue(schedule.schedule.contains { $0.day == twoWeeksAgo })
     }
     func testClassTimesDecodeLegacyAndFollowWeekdays() throws {
         let legacy = try JSONDecoder().decode(Course.self, from: Data(#"{"id":"c","name":"Example A","color":"blue"}"#.utf8))
@@ -149,6 +151,28 @@ final class RedesignTests: XCTestCase {
         tasks.enabled = false; store.saveRule(tasks)
         XCTAssertEqual(store.state.tasks.count, 1)
         XCTAssertTrue(store.state.tasks[0].completed)
+    }
+    @MainActor func testRecurringScheduleDeletionScopes() throws {
+        let store = try Store(database: db())
+        let rule = QuizRule(title: "Practice", weekdays: Array(1...7), itemKind: .schedule, startDate: Day.today)
+        store.saveRule(rule)
+        let originalCount = store.state.schedule.count
+        let one = try XCTUnwrap(store.state.schedule.first)
+        store.deleteSchedule(one, scope: .thisEvent)
+        store.refreshOccurrences()
+        XCTAssertEqual(store.state.schedule.count, originalCount - 1)
+        XCTAssertFalse(store.state.schedule.contains { $0.id == one.id })
+
+        let boundaryItem = try XCTUnwrap(store.state.schedule.dropFirst(2).first)
+        let boundary = boundaryItem.occurrence ?? boundaryItem.day
+        store.deleteSchedule(boundaryItem, scope: .thisAndFollowing)
+        XCTAssertTrue(store.state.schedule.filter { $0.ruleID == rule.id }.allSatisfy { ($0.occurrence ?? $0.day) < boundary })
+        XCTAssertEqual(store.state.rules.first { $0.id == rule.id }?.endDate, Day.adding(-1, to: boundary))
+
+        let remaining = try XCTUnwrap(store.state.schedule.first { $0.ruleID == rule.id })
+        store.deleteSchedule(remaining, scope: .allEvents)
+        XCTAssertFalse(store.state.rules.contains { $0.id == rule.id })
+        XCTAssertFalse(store.state.schedule.contains { $0.ruleID == rule.id })
     }
     func testMigrationAddsScheduleWithoutLosingExistingData() throws {
         let database = try db()

@@ -155,13 +155,6 @@ struct ContentView: View {
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
                     quickEntry
-                    HStack {
-                        Spacer()
-                        Menu {
-                            Picker("Sort", selection: $dueOrder) { Text("My order").tag(false); Text("Due date").tag(true) }
-                            Toggle("Show completed", isOn: $showCompleted)
-                        } label: { Image(systemName: "line.3.horizontal.decrease") }.menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 28, height: 24).help("List options")
-                    }.padding(.horizontal, 22).padding(.vertical, 8)
                     List {
                         if !assessments.isEmpty {
                             listHeading("Assessments")
@@ -260,6 +253,11 @@ struct ContentView: View {
                 Image(systemName: "plus").foregroundStyle(.secondary)
                 TextField(quickKind == .progress ? "Add progress…" : "Add a task…", text: $quickTitle).textFieldStyle(.plain).font(.system(size: 14)).focused($quickFocused).onSubmit(capture)
                 if !quickTitle.isEmpty { Button(action: capture) { Image(systemName: "return") }.buttonStyle(.plain).help("Add task") }
+                Menu {
+                    Picker("Sort", selection: $dueOrder) { Text("My order").tag(false); Text("Due date").tag(true) }
+                    Toggle("Show completed", isOn: $showCompleted)
+                } label: { Image(systemName: "line.3.horizontal.decrease") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 28, height: 24).help("List options")
             }
             if quickFocused || !quickTitle.isEmpty {
                 ViewThatFits(in: .horizontal) {

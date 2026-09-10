@@ -148,7 +148,7 @@ struct ScheduleView: View {
                             editing = updated
                             selectedMinute = updated.startMinute
                             if updated.day != day { anchor = Day.date(updated.day) }
-                        }, delete: { store.change { $0.schedule.removeAll { $0.id == block.id } } })
+                        })
                     }
                 }
                 .frame(width: blockWidth, height: blockHeight).clipped()
@@ -179,7 +179,6 @@ private struct ScheduleEventCard: View {
     var fill: LinearGradient
     @Binding var editing: ScheduleBlock?
     var onChange: (ScheduleBlock) -> Void
-    var delete: () -> Void
     var body: some View {
         Button { editing = block } label: {
             VStack(alignment: .leading, spacing: 2) {
@@ -196,6 +195,14 @@ private struct ScheduleEventCard: View {
             .popover(item: Binding(get: { editing?.id == block.id ? editing : nil }, set: { editing = $0 })) { draft in
                 ScheduleEditor(store: store, block: draft, onChange: onChange).id(draft.id)
             }
-            .contextMenu { Button("Delete", role: .destructive, action: delete) }
+            .contextMenu {
+                if block.ruleID != nil {
+                    Button("Delete this event") { store.deleteSchedule(block, scope: .thisEvent) }
+                    Button("Delete this and following") { store.deleteSchedule(block, scope: .thisAndFollowing) }
+                    Button("Delete all events", role: .destructive) { store.deleteSchedule(block, scope: .allEvents) }
+                } else {
+                    Button("Delete", role: .destructive) { store.deleteSchedule(block, scope: .thisEvent) }
+                }
+            }
     }
 }

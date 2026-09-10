@@ -118,8 +118,18 @@ struct ScheduleEditor: View {
     var onChange: (ScheduleBlock) -> Void = { _ in }
     @State private var repeatBlock = false
     @State private var repeatDays: Set<Int> = []
+    @State private var repeatEnd: String?
+    private let originalRepeatEnd: String?
     @FocusState private var titleFocused: Bool
     @Environment(\.dismiss) private var dismiss
+    init(store: Store, block: ScheduleBlock, onChange: @escaping (ScheduleBlock) -> Void = { _ in }) {
+        self.store = store
+        _block = State(initialValue: block)
+        self.onChange = onChange
+        let end = block.ruleID.flatMap { id in store.state.rules.first { $0.id == id }?.endDate }
+        _repeatEnd = State(initialValue: end)
+        originalRepeatEnd = end
+    }
     private var existing: Bool { store.state.schedule.contains { $0.id == block.id } }
     private var valid: Bool { !block.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && block.duration > 0 && block.startMinute + block.duration <= 1440 && (!repeatBlock || !repeatDays.isEmpty) }
     var body: some View {
@@ -134,12 +144,28 @@ struct ScheduleEditor: View {
             }
             if !existing {
                 Toggle("Repeat", isOn: $repeatBlock).toggleStyle(.checkbox)
-                if repeatBlock { WeekdayPicker(days: $repeatDays) }
+                if repeatBlock {
+                    WeekdayPicker(days: $repeatDays)
+                    PropertyRow("Until") { DateMenu(title: "No end date", value: $repeatEnd) }
+                }
+            } else if block.ruleID != nil {
+                PropertyRow("Until") { DateMenu(title: "No end date", value: $repeatEnd) }
             }
             if !block.notes.isEmpty { TextField("Details", text: $block.notes, axis: .vertical).textFieldStyle(.plain).lineLimit(1...4) }
             if block.startMinute + block.duration > 1440 { Text("Choose a duration that ends before midnight.").font(.caption).foregroundStyle(.orange) }
             HStack {
-                if existing { Button(role: .destructive) { store.change { $0.schedule.removeAll { $0.id == block.id } }; dismiss() } label: { Image(systemName: "trash") }.buttonStyle(.plain) }
+                if existing {
+                    if block.ruleID != nil {
+                        Menu {
+                            Button("Delete this event") { delete(.thisEvent) }
+                            Button("Delete this and following") { delete(.thisAndFollowing) }
+                            Button("Delete all events", role: .destructive) { delete(.allEvents) }
+                        } label: { Image(systemName: "trash") }
+                            .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 28)
+                    } else {
+                        Button(role: .destructive) { delete(.thisEvent) } label: { Image(systemName: "trash") }.buttonStyle(.plain)
+                    }
+                }
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(existing ? "Done" : "Add", action: save).keyboardShortcut(.defaultAction).disabled(!valid)
@@ -152,9 +178,16 @@ struct ScheduleEditor: View {
         guard valid else { return }
         if repeatBlock {
             var rule = QuizRule(courseID: block.courseID, title: block.title)
-            rule.itemKind = .schedule; rule.weekdays = repeatDays.sorted(); rule.startDate = block.day; rule.startMinute = block.startMinute; rule.duration = block.duration; rule.notes = block.notes
+            rule.itemKind = .schedule; rule.weekdays = repeatDays.sorted(); rule.startDate = block.day; rule.endDate = repeatEnd; rule.startMinute = block.startMinute; rule.duration = block.duration; rule.notes = block.notes
             store.saveRule(rule)
-        } else { store.save(block) }
+        } else {
+            store.save(block)
+            if let ruleID = block.ruleID, repeatEnd != originalRepeatEnd { store.setScheduleRuleEnd(ruleID, to: repeatEnd) }
+        }
+        if store.error == nil { dismiss() }
+    }
+    private func delete(_ scope: RecurringDeleteScope) {
+        store.deleteSchedule(block, scope: scope)
         if store.error == nil { dismiss() }
     }
 }
