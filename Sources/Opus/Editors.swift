@@ -3,10 +3,20 @@ import SwiftUI
 struct CourseEditor: View {
     var store: Store
     @State var course: Course
+    @State private var classTimes: [ClassTime]
     @Environment(\.dismiss) private var dismiss
+    init(store: Store, course: Course) {
+        self.store = store
+        _course = State(initialValue: course)
+        _classTimes = State(initialValue: course.resolvedClassTimes)
+    }
     private var suggestedClassStart: Int {
         let starts: [String: Int] = [:]
         return starts[course.name] ?? 540
+    }
+    private var valid: Bool {
+        !course.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        classTimes.allSatisfy { !$0.days.isEmpty && $0.startMinute >= 0 && $0.endMinute > $0.startMinute && $0.endMinute <= 1440 }
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -21,15 +31,29 @@ struct CourseEditor: View {
                     }
                 }
             }
-            Toggle("Class time", isOn: Binding(get: { course.classStart != nil }, set: { course.classStart = $0 ? suggestedClassStart : nil }))
-            if course.classStart != nil {
-                PropertyRow("Starts") { TimeControl(minutes: Binding(get: { course.classStart ?? 465 }, set: { course.classStart = $0 })) }
-                PropertyRow("Length") {
-                    PillPicker("Length", label: "\(course.classDuration ?? 50) min", selection: Binding(get: { course.classDuration ?? 50 }, set: { course.classDuration = $0 })) {
-                        ForEach([30,45,50,60,75,90], id: \.self) { Text("\($0) minutes").tag($0) }
+            HStack {
+                Text("Class times").font(.callout.weight(.medium))
+                Spacer()
+                Button { addClassTime() } label: { Label("Add time", systemImage: "plus") }
+            }
+            ForEach($classTimes) { $time in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Time block").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Spacer()
+                        Button(role: .destructive) { classTimes.removeAll { $0.id == time.id } } label: {
+                            Image(systemName: "trash")
+                        }.buttonStyle(.plain).help("Remove class time")
+                    }
+                    PropertyRow("Starts") { TimeControl(minutes: $time.startMinute) }
+                    PropertyRow("Ends") { TimeControl(minutes: $time.endMinute) }
+                    WeekdayPicker(days: Binding(get: { Set(time.days) }, set: { time.days = $0.sorted() }))
+                    if time.endMinute <= time.startMinute {
+                        Text("End time must be after start time.").font(.caption).foregroundStyle(.orange)
                     }
                 }
-                WeekdayPicker(days: Binding(get: { Set(course.classDays ?? Array(2...6)) }, set: { course.classDays = $0.sorted() }))
+                .padding(12)
+                .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
             }
             HStack {
                 if store.state.courses.contains(where: { $0.id == course.id }) {
@@ -37,9 +61,19 @@ struct CourseEditor: View {
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Done") { course.name = course.name.trimmingCharacters(in: .whitespacesAndNewlines); store.save(course); if store.error == nil { dismiss() } }.keyboardShortcut(.defaultAction).disabled(course.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Done") {
+                    course.name = course.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    course.classTimes = classTimes
+                    course.syncLegacyClassTime()
+                    store.save(course)
+                    if store.error == nil { dismiss() }
+                }.keyboardShortcut(.defaultAction).disabled(!valid)
             }
-        }.padding(20).frame(width: 380).roundedControls()
+        }.padding(20).frame(width: 420).roundedControls()
+    }
+    private func addClassTime() {
+        let start = classTimes.last?.endMinute ?? suggestedClassStart
+        classTimes.append(ClassTime(startMinute: min(start, 1395), endMinute: min(start + 50, 1440)))
     }
 }
 struct RuleEditor: View {

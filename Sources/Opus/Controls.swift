@@ -14,6 +14,29 @@ extension View {
     func roundedControls() -> some View { modifier(RoundedControls()) }
 }
 
+struct PillChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(.regularMaterial, in: Capsule())
+            .overlay { Capsule().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.75) }
+    }
+}
+extension View {
+    func pillChrome() -> some View { modifier(PillChrome()) }
+}
+
+enum RepeatBadgeStyle { case background, fill }
+struct RepeatBadge: View {
+    var style: RepeatBadgeStyle = .background
+    var body: some View {
+        Image(systemName: "repeat")
+            .font(.system(size: style == .fill ? 8 : 10, weight: .semibold))
+            .foregroundStyle(style == .fill ? Color.white.opacity(0.9) : Color.primary.opacity(0.58))
+            .accessibilityLabel("Repeating")
+    }
+}
+
 struct PillLabel: View {
     var title: String
     var body: some View {
@@ -36,9 +59,7 @@ struct PillPicker<Value: Hashable, Options: View>: View {
     var body: some View {
         Menu { Picker(title, selection: $selection) { options }.pickerStyle(.inline) } label: { Text(label) }
             .menuStyle(.borderlessButton).menuIndicator(.hidden)
-            .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(.regularMaterial, in: Capsule())
-            .overlay { Capsule().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.75) }
+            .pillChrome()
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityLabel(title + ": " + label)
     }

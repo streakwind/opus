@@ -71,13 +71,23 @@ final class StorageTests: XCTestCase {
         let task = StudyTask(title: "Notes", kind: .progress, start: 10, target: 20, current: 9)
         store.save(task)
         store.record(task, value: 20, note: "Done")
-        XCTAssertTrue(store.state.tasks[0].completed)
+        XCTAssertFalse(store.state.tasks[0].completed)
         store.record(store.state.tasks[0], value: 18, note: "Correction")
         XCTAssertFalse(store.state.tasks[0].completed)
         XCTAssertEqual(store.state.activities.count, 2)
         store.undo()
         XCTAssertEqual(store.state.tasks[0].current, 20)
         XCTAssertEqual(store.state.activities.count, 1)
+    }
+    @MainActor func testCompletedProgressNormalizesWithoutLosingPosition() throws {
+        let database = try database()
+        var state = Snapshot()
+        state.tasks = [StudyTask(title: "Book", kind: .progress, completed: true, start: 10, target: 20, current: 20)]
+        try database.save(state)
+        let store = try Store(database: database)
+        XCTAssertFalse(store.state.tasks[0].completed)
+        XCTAssertEqual(store.state.tasks[0].current, 20)
+        XCTAssertFalse(try database.load().tasks[0].completed)
     }
     func testCalendarDayRoundtrip() {
         for day in ["2026-03-08", "2026-11-01", "2028-02-29"] { XCTAssertEqual(Day.string(Day.date(day)), day) }

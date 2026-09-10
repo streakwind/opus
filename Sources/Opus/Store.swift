@@ -13,14 +13,20 @@ final class Store {
     init(database: Database) throws {
         self.database = database
         state = try database.load()
+        var needsSave = false
         let fixedRules = Set(state.rules.filter { $0.kind == .assessment && $0.title == "Example recurrence" && $0.assessmentsConfirmed == nil }.map(\.id))
         if !fixedRules.isEmpty {
             for index in state.rules.indices where fixedRules.contains(state.rules[index].id) { state.rules[index].assessmentsConfirmed = true }
             for index in state.assessments.indices where fixedRules.contains(state.assessments[index].ruleID ?? "") && state.assessments[index].day >= Day.today {
                 state.assessments[index].confirmed = true
             }
-            try database.save(state)
+            needsSave = true
         }
+        for index in state.tasks.indices where state.tasks[index].kind == .progress && state.tasks[index].completed {
+            state.tasks[index].completed = false
+            needsSave = true
+        }
+        if needsSave { try database.save(state) }
         refreshOccurrences()
     }
     func change(_ mutation: (inout Snapshot) -> Void) {
@@ -54,6 +60,8 @@ final class Store {
         }
     }
     func save(_ course: Course) {
+        var course = course
+        course.syncLegacyClassTime()
         change { state in
             if let index = state.courses.firstIndex(where: { $0.id == course.id }) { state.courses[index] = course }
             else { state.courses.append(course) }
@@ -80,7 +88,7 @@ final class Store {
             let previous = state.tasks[index].current
             if let value {
                 state.tasks[index].current = value
-                state.tasks[index].completed = value >= task.target
+                if task.kind != .progress { state.tasks[index].completed = value >= task.target }
             }
             state.activities.append(Activity(taskID: task.id, note: note, previous: value == nil ? nil : previous, value: value))
         }
@@ -178,6 +186,20 @@ extension Course {
         case "teal": .teal
         default: .blue
         }
+    }
+    var scheduleGradient: LinearGradient {
+        let colors: [Color]
+        switch color {
+        case "purple": colors = [Color(red: 0.47, green: 0.30, blue: 0.76), Color(red: 0.39, green: 0.23, blue: 0.66)]
+        case "pink": colors = [Color(red: 0.78, green: 0.30, blue: 0.52), Color(red: 0.68, green: 0.22, blue: 0.44)]
+        case "orange": colors = [Color(red: 0.87, green: 0.43, blue: 0.16), Color(red: 0.76, green: 0.34, blue: 0.10)]
+        case "red": colors = [Color(red: 0.78, green: 0.25, blue: 0.28), Color(red: 0.68, green: 0.18, blue: 0.22)]
+        case "brown": colors = [Color(red: 0.58, green: 0.39, blue: 0.27), Color(red: 0.49, green: 0.31, blue: 0.21)]
+        case "green": colors = [Color(red: 0.20, green: 0.58, blue: 0.38), Color(red: 0.14, green: 0.48, blue: 0.31)]
+        case "teal": colors = [Color(red: 0.13, green: 0.57, blue: 0.61), Color(red: 0.09, green: 0.47, blue: 0.52)]
+        default: colors = [Color(red: 0.25, green: 0.48, blue: 0.86), Color(red: 0.18, green: 0.38, blue: 0.76)]
+        }
+        return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
 

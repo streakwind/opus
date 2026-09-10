@@ -7,16 +7,10 @@ struct CalendarHeading: View {
     @Binding var anchor: Date
     @Binding var period: CalendarPeriod
     var schedule = false
-    var workCount: Int? = nil
     var body: some View {
         HStack(spacing: 12) {
             Text(period == .day ? anchor.formatted(.dateTime.month(.abbreviated).day().year()) : anchor.formatted(.dateTime.month(.wide).year()))
                 .font(.system(size: 22, weight: .semibold)).lineLimit(1).layoutPriority(1)
-            if let workCount, workCount > 0 {
-                Text("\(workCount) due").font(.caption.weight(.medium)).foregroundStyle(.secondary)
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(Color.primary.opacity(0.06), in: Capsule())
-            }
             Spacer(minLength: 8)
             HStack(spacing: 2) {
                 ForEach((schedule ? [CalendarPeriod.day, .week] : [.week, .month]), id: \.self) { option in
@@ -196,13 +190,18 @@ private struct CalendarDayCell: View {
     }
     private func taskLine(_ task: StudyTask) -> some View {
         HStack(spacing: 4) {
-            Button {
-                var copy = task; copy.completed.toggle(); store.save(copy)
-            } label: { Image(systemName: task.completed ? "checkmark.circle.fill" : "circle").font(.system(size: 11)) }.buttonStyle(.plain).help(task.completed ? "Reopen task" : "Complete task")
+            if task.kind == .progress {
+                Image(systemName: "chart.bar.fill").font(.system(size: 9)).foregroundStyle(.secondary)
+            } else {
+                Button {
+                    var copy = task; copy.completed.toggle(); store.save(copy)
+                } label: { Image(systemName: task.completed ? "checkmark.circle.fill" : "circle").font(.system(size: 11)) }.buttonStyle(.plain).help(task.completed ? "Reopen task" : "Complete task")
+            }
             Button { select(); overflow = false; editing = .task(task, day) } label: {
-                Text(task.title).strikethrough(task.completed).lineLimit(1)
-                    .frame(maxWidth: .infinity, minHeight: 21, alignment: .leading)
-                    .contentShape(Rectangle())
+                HStack(spacing: 4) {
+                    Text(task.title).strikethrough(task.kind != .progress && task.completed).lineLimit(1)
+                    if task.ruleID != nil { RepeatBadge() }
+                }.frame(maxWidth: .infinity, minHeight: 21, alignment: .leading).contentShape(Rectangle())
             }.buttonStyle(.plain)
         }.font(.system(size: wide ? 13 : 11)).frame(height: 21).padding(.horizontal, 5).opacity(task.completed ? 0.45 : 1)
             .help(task.title + (task.due == day ? " · Due" : " · Planned"))

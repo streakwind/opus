@@ -1,15 +1,44 @@
 import Foundation
 
+struct ClassTime: Identifiable, Codable, Hashable {
+    var id = UUID().uuidString
+    var startMinute: Int
+    var endMinute: Int
+    var days: [Int] = Array(2...6)
+}
+
 struct Course: Identifiable, Codable, Hashable {
     var id = UUID().uuidString
     var name: String
     var color: String = "blue"
+    var classTimes: [ClassTime]?
+    // Legacy fields remain readable and mirror the first class time on save.
     var classStart: Int?
     var classDuration: Int?
     var classDays: [Int]?
-    func classBlock(on day: String) -> ScheduleBlock? {
-        guard let start = classStart, (classDays ?? Array(2...6)).contains(Calendar.current.component(.weekday, from: Day.date(day))) else { return nil }
-        return ScheduleBlock(id: "class:" + id + ":" + day, courseID: id, title: name, day: day, startMinute: start, duration: min(classDuration ?? 50, 1440 - start))
+    var resolvedClassTimes: [ClassTime] {
+        if let classTimes { return classTimes }
+        guard let classStart else { return [] }
+        return [ClassTime(id: "legacy", startMinute: classStart, endMinute: min(1440, classStart + (classDuration ?? 50)), days: classDays ?? Array(2...6))]
+    }
+    func classBlocks(on day: String) -> [ScheduleBlock] {
+        let weekday = Calendar.current.component(.weekday, from: Day.date(day))
+        return resolvedClassTimes.filter { $0.days.contains(weekday) && $0.endMinute > $0.startMinute }.map { time in
+            ScheduleBlock(id: "class:\(id):\(time.id):\(day)", courseID: id, title: name, day: day, startMinute: time.startMinute, duration: min(1440, time.endMinute) - time.startMinute)
+        }
+    }
+    func classBlock(on day: String) -> ScheduleBlock? { classBlocks(on: day).first }
+    mutating func syncLegacyClassTime() {
+        guard let classTimes else { return }
+        if let first = classTimes.first {
+            classStart = first.startMinute
+            classDuration = first.endMinute - first.startMinute
+            classDays = first.days
+        } else {
+            classStart = nil
+            classDuration = nil
+            classDays = nil
+        }
     }
 }
 
@@ -130,6 +159,41 @@ struct Snapshot: Codable {
     var setupComplete = false
 }
 
+enum CourseWork {
+    static func relevantDay(for task: StudyTask, from day: String) -> String? {
+        [task.due, task.planned].compactMap { $0 }.filter { $0 >= day }.min()
+    }
+    static func assessments(courseID: String, from day: String, in state: Snapshot) -> [Assessment] {
+        var seenRules = Set<String>()
+        return state.assessments
+            .filter { $0.courseID == courseID && $0.day >= day }
+            .sorted { $0.day == $1.day ? $0.title < $1.title : $0.day < $1.day }
+            .filter { item in
+                guard let ruleID = item.ruleID else { return true }
+                return seenRules.insert(ruleID).inserted
+            }
+    }
+    static func tasks(courseID: String, from day: String, in state: Snapshot, progress: Bool) -> [StudyTask] {
+        var seenRules = Set<String>()
+        return state.tasks
+            .filter {
+                $0.courseID == courseID &&
+                ($0.kind == .progress) == progress &&
+                (progress || !$0.completed) &&
+                relevantDay(for: $0, from: day) != nil
+            }
+            .sorted {
+                let lhs = relevantDay(for: $0, from: day) ?? "9999"
+                let rhs = relevantDay(for: $1, from: day) ?? "9999"
+                return lhs == rhs ? $0.title < $1.title : lhs < rhs
+            }
+            .filter { item in
+                guard let ruleID = item.ruleID else { return true }
+                return seenRules.insert(ruleID).inserted
+            }
+    }
+}
+
 enum Day {
     static func string(_ date: Date) -> String {
         let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
@@ -173,7 +237,7 @@ extension StudyTask {
 extension StudyTask {
     /// Recalculate a realistic daily quota from the actual stopping point.
     func pacing(on today: String) -> String? {
-        guard kind == .progress, !completed, current < target else { return nil }
+        guard kind == .progress, current < target else { return nil }
         guard let due else { return "Set a due date to plan your daily pace" }
         let remaining = target - max(start - 1, current)
         if due < today { return "Overdue · \(remaining) \(unit) left" }

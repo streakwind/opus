@@ -28,9 +28,15 @@ struct ContentView: View {
     private var course: Course? { store.course(selection) }
     private var isCalendar: Bool { selection == "upcoming" || selection == "schedule" }
     private var heading: String {
-        switch selection { case "today": "Today"; case "all": "Tasks"; case "inbox": "Inbox"; case "routines": "Rhythm"; default: course?.name ?? "Today" }
+        switch selection {
+        case "today": Date().formatted(.dateTime.weekday(.wide).month(.wide).day().year())
+        case "all": "Tasks"
+        case "inbox": "Inbox"
+        case "routines": "Rhythm"
+        default: course?.name ?? "Today"
+        }
     }
-    private var tasks: [StudyTask] {
+    private var matchingItems: [StudyTask] {
         let sorted = store.state.tasks.filter { task in
             let matches: Bool
             switch selection {
@@ -39,17 +45,23 @@ struct ContentView: View {
             case "today": matches = task.isInToday(on: Day.today)
             default: matches = task.courseID == selection
             }
-            return matches && (showCompleted || !task.completed) && (query.isEmpty || task.title.localizedCaseInsensitiveContains(query) || task.notes.localizedCaseInsensitiveContains(query))
+            let visible = task.kind == .progress || showCompleted || !task.completed
+            return matches && visible && (query.isEmpty || task.title.localizedCaseInsensitiveContains(query) || task.notes.localizedCaseInsensitiveContains(query))
         }.sorted {
             if $0.completed != $1.completed { return !$0.completed }
             return dueOrder ? ($0.due ?? "9999") < ($1.due ?? "9999") : false
         }
+        return sorted
+    }
+    private func nextRhythms(_ items: [StudyTask]) -> [StudyTask] {
         var seenRules = Set<String>()
-        return sorted.filter { task in
+        return items.filter { task in
             guard let ruleID = task.ruleID else { return true }
             return seenRules.insert(ruleID).inserted
         }
     }
+    private var tasks: [StudyTask] { nextRhythms(matchingItems.filter { $0.kind != .progress }) }
+    private var progressItems: [StudyTask] { nextRhythms(matchingItems.filter { $0.kind == .progress }) }
     private var assessments: [Assessment] {
         guard let course else { return [] }
         var seenRules = Set<String>()
@@ -115,7 +127,6 @@ struct ContentView: View {
                     HStack(alignment: .firstTextBaseline) {
                         Text(heading).font(.system(size: 26, weight: .bold)).lineLimit(1)
                         Spacer()
-                        if selection == "today" { Text(Date().formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())).font(.callout).foregroundStyle(.secondary).fixedSize() }
                         if let course { Button { editor = .course(course) } label: { Image(systemName: "ellipsis").frame(width: 36, height: 32).contentShape(Rectangle()) }.buttonStyle(.plain).help("Edit list") }
                     }.padding(.horizontal, 22).padding(.vertical, 18)
                     }
@@ -162,7 +173,7 @@ struct ContentView: View {
                                             VStack(alignment: .leading, spacing: 3) {
                                                 HStack(spacing: 5) {
                                                     Text(item.title).font(.system(size: 14, weight: .medium)).lineLimit(2)
-                                                    if item.ruleID != nil { Image(systemName: "repeat").font(.system(size: 10)).foregroundStyle(.secondary) }
+                                                    if item.ruleID != nil { RepeatBadge() }
                                                 }
                                                 Text(Day.label(item.day) + (item.confirmed ? "" : " · Tentative"))
                                                     .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -171,7 +182,30 @@ struct ContentView: View {
                                         }.padding(.vertical, 5).contentShape(Rectangle())
                                     }.buttonStyle(.plain).listRowSeparator(.hidden)
                                 }
-                            }
+                            }.listSectionSeparator(.hidden)
+                        }
+                        if !progressItems.isEmpty {
+                            Section("Progress") {
+                                ForEach(progressItems) { item in
+                                    ProgressLine(store: store, task: item) {
+                                        selectedTask = item.id
+                                        if !wide { narrowTask = item }
+                                    }
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(selectedTask == item.id && wide ? Color.accentColor.opacity(0.065) : Color.clear)
+                                    .popover(isPresented: Binding(get: { !wide && narrowTask?.id == item.id }, set: { if !$0 { narrowTask = nil } })) {
+                                        TaskInspector(store: store, task: item) { narrowTask = nil }.frame(width: 350, height: 530)
+                                    }
+                                    .contextMenu {
+                                        Button("Details") { selectedTask = item.id; if !wide { narrowTask = item } }
+                                        Menu("Move to list") {
+                                            Button("Inbox") { var copy = item; copy.courseID = nil; store.save(copy) }
+                                            ForEach(store.state.courses) { list in Button(list.name) { var copy = item; copy.courseID = list.id; store.save(copy) } }
+                                        }
+                                        Button("Delete", role: .destructive) { store.deleteTask(item.id) }
+                                    }
+                                }
+                            }.listSectionSeparator(.hidden)
                         }
                         Section {
                             ForEach(tasks) { task in
@@ -206,8 +240,8 @@ struct ContentView: View {
                                 Text("No matching tasks.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 12).listRowSeparator(.hidden)
                             }
                         } header: {
-                            if !assessments.isEmpty { Text("Tasks") }
-                        }
+                            if !assessments.isEmpty || !progressItems.isEmpty { Text("Tasks") }
+                        }.listSectionSeparator(.hidden)
                     }.listStyle(.inset).scrollContentBackground(.hidden)
                 }.frame(maxWidth: .infinity)
                 if wide, let id = selectedTask, let task = store.state.tasks.first(where: { $0.id == id }) {
@@ -244,9 +278,9 @@ struct ContentView: View {
         PillPicker("List", label: store.course(quickCourse)?.shortName ?? "Inbox", selection: $quickCourse) {
             Text("Inbox").tag(nil as String?)
             ForEach(store.state.courses) { Text($0.shortName).tag(Optional($0.id)) }
-        }.labelsHidden().frame(width: 120)
-        PillPicker("Track", label: quickKind == .progress ? "Reading progress" : quickKind.rawValue, selection: $quickKind) { ForEach([TaskKind.checkbox, .progress]) { Text($0 == .progress ? "Reading progress" : $0.rawValue).tag($0) } }.labelsHidden().fixedSize()
-        DateMenu(title: "Due date", value: $quickDue).font(.caption)
+        }.labelsHidden().fixedSize()
+        PillPicker("Type", label: quickKind == .progress ? "Progress" : quickKind.rawValue, selection: $quickKind) { ForEach([TaskKind.checkbox, .progress]) { Text($0.rawValue).tag($0) } }.labelsHidden().fixedSize()
+        DateMenu(title: "Due date", value: $quickDue, prefix: "Due")
     }
     private var routines: some View {
         VStack(alignment: .leading, spacing: 0) {

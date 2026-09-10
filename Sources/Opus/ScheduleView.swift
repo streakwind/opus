@@ -10,6 +10,18 @@ enum ScheduleLayout {
     static func minute(at y: CGFloat, hourHeight: CGFloat = 60) -> Int {
         min(1425, max(0, Int(y / hourHeight * 60 / 15) * 15))
     }
+    static func range(startY: CGFloat, endY: CGFloat, hourHeight: CGFloat = 60) -> (start: Int, duration: Int) {
+        let start = minute(at: startY, hourHeight: hourHeight)
+        let rawEnd = endY / hourHeight * 60
+        let snappedEnd = min(1440, max(0, Int((rawEnd / 15).rounded()) * 15))
+        let lower = min(start, snappedEnd)
+        let upper = max(start, snappedEnd)
+        return (lower, max(15, min(1440, upper == lower ? lower + 15 : upper) - lower))
+    }
+    static func block(day: String, startY: CGFloat, endY: CGFloat, hourHeight: CGFloat = 60) -> ScheduleBlock {
+        let range = range(startY: startY, endY: endY, hourHeight: hourHeight)
+        return ScheduleBlock(day: day, startMinute: range.start, duration: range.duration)
+    }
     static func placements(_ blocks: [ScheduleBlock]) -> [SchedulePlacement] {
         let sorted = blocks.sorted { $0.startMinute == $1.startMinute ? $0.id < $1.id : $0.startMinute < $1.startMinute }
         var result: [SchedulePlacement] = []
@@ -37,6 +49,7 @@ struct ScheduleView: View {
     @State private var anchor = Date()
     @State private var period = CalendarPeriod.week
     @State private var editing: ScheduleBlock?
+    @State private var creating: ScheduleBlock?
     @State private var editorDay = Day.today
     @State private var scrollOffset: CGFloat = 420
     @State private var selectedMinute = 7 * 60
@@ -44,7 +57,7 @@ struct ScheduleView: View {
     private var days: [String] { period == .day ? [Day.string(anchor)] : CalendarLayout.days(containing: anchor, week: true) }
     var body: some View {
         VStack(spacing: 0) {
-            CalendarHeading(anchor: $anchor, period: $period, schedule: true, workCount: period == .day ? workCount(on: days[0]) : nil)
+            CalendarHeading(anchor: $anchor, period: $period, schedule: true)
             if period == .week {
                 HStack(spacing: 0) {
                     Color.clear.frame(width: 56, height: 52)
@@ -54,18 +67,9 @@ struct ScheduleView: View {
                         } label: {
                             VStack(spacing: 3) {
                                 Text(Day.date(day).formatted(.dateTime.weekday(.abbreviated))).font(.caption).foregroundStyle(.secondary)
-                                ZStack(alignment: .topTrailing) {
-                                    Text(Day.date(day).formatted(.dateTime.day())).font(.system(size: 18)).foregroundStyle(day == Day.today ? .white : .primary).frame(width: 30, height: 30).background(day == Day.today ? Color.accentColor : .clear, in: Circle())
-                                    let count = workCount(on: day)
-                                    if count > 0 {
-                                        Text("\(count)").font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
-                                            .frame(minWidth: 15, minHeight: 15)
-                                            .background(Color.secondary, in: Capsule())
-                                            .offset(x: 9, y: -4)
-                                    }
-                                }
+                                Text(Day.date(day).formatted(.dateTime.day())).font(.system(size: 18)).foregroundStyle(day == Day.today ? .white : .primary).frame(width: 30, height: 30).background(day == Day.today ? Color.accentColor : .clear, in: Circle())
                             }.frame(maxWidth: .infinity)
-                        }.buttonStyle(.plain).help(workCountLabel(on: day))
+                        }.buttonStyle(.plain)
                     }
                 }.frame(height: 58).padding(.bottom, 8)
             }
@@ -113,7 +117,7 @@ struct ScheduleView: View {
         .onAppear { store.refreshOccurrences(through: days.last) }
     }
     private func dayColumn(_ day: String, width: CGFloat) -> some View {
-        let classes = store.state.courses.compactMap { $0.classBlock(on: day) }
+        let classes = store.state.courses.flatMap { $0.classBlocks(on: day) }
         let displayed = classes + store.state.schedule.filter { $0.id != editing?.id } + (editing.map { [$0] } ?? [])
         let blocks = displayed.filter { $0.day == day && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)) }
         return ZStack(alignment: .topLeading) {
@@ -125,23 +129,40 @@ struct ScheduleView: View {
                     }.frame(height: hourHeight)
                 }
             }.frame(width: width).background(Calendar.current.isDateInWeekend(Day.date(day)) ? Color.primary.opacity(0.025) : Color.clear)
-                .contentShape(Rectangle()).onTapGesture(coordinateSpace: .local) { point in
-                    selectedMinute = ScheduleLayout.minute(at: point.y, hourHeight: hourHeight)
-                    editorDay = day; editing = ScheduleBlock(day: day, startMinute: selectedMinute, duration: min(60, 1440 - selectedMinute))
-                }
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .local)
+                    .onChanged { value in
+                        creating = ScheduleLayout.block(day: day, startY: value.startLocation.y, endY: value.location.y, hourHeight: hourHeight)
+                    }
+                    .onEnded { value in
+                        let block = ScheduleLayout.block(day: day, startY: value.startLocation.y, endY: value.location.y, hourHeight: hourHeight)
+                        creating = nil
+                        editorDay = day
+                        selectedMinute = block.startMinute
+                        editing = block
+                    })
+            if let creating, creating.day == day {
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.accentColor.opacity(0.45))
+                    .overlay { RoundedRectangle(cornerRadius: 5).strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1, dash: [4, 3])) }
+                    .frame(width: max(10, width - 10), height: max(15, CGFloat(creating.duration) / 60 * hourHeight - 2))
+                    .offset(x: 1, y: CGFloat(creating.startMinute) / 60 * hourHeight)
+                    .allowsHitTesting(false)
+            }
             ForEach(ScheduleLayout.placements(blocks)) { placement in
                 let block = placement.block
-                let blockWidth = max(10, width / CGFloat(placement.columns) - 3)
+                let usableWidth = max(10, width - 9)
+                let blockWidth = max(10, usableWidth / CGFloat(placement.columns) - 3)
                 let blockHeight = max(15, CGFloat(block.duration) / 60 * hourHeight - 2)
                 Group {
                     if block.id.hasPrefix("class:"), let course = store.course(block.courseID) {
-                        ClassScheduleCard(store: store, course: course, day: day)
+                        ClassScheduleCard(store: store, course: course, block: block)
                     } else {
-                        ScheduleEventCard(block: block, tint: store.course(block.courseID)?.tint ?? .teal, edit: { editorDay = day; editing = block }, delete: { store.change { $0.schedule.removeAll { $0.id == block.id } } })
+                        ScheduleEventCard(block: block, fill: store.course(block.courseID)?.scheduleGradient ?? Course(name: "", color: "teal").scheduleGradient, edit: { editorDay = day; editing = block }, delete: { store.change { $0.schedule.removeAll { $0.id == block.id } } })
                     }
                 }
                 .frame(width: blockWidth, height: blockHeight).clipped()
-                .offset(x: CGFloat(placement.column) * width / CGFloat(placement.columns) + 1, y: CGFloat(block.startMinute) / 60 * hourHeight)
+                .offset(x: CGFloat(placement.column) * usableWidth / CGFloat(placement.columns) + 1, y: CGFloat(block.startMinute) / 60 * hourHeight)
 
 
             }
@@ -160,20 +181,11 @@ struct ScheduleView: View {
                 store.save(block); return store.error == nil
             }
     }
-    private func workCount(on day: String) -> Int {
-        let assessments = store.state.assessments.filter { $0.day == day }.count
-        let tasks = store.state.tasks.filter { !$0.completed && ($0.due == day || $0.planned == day) }.count
-        return assessments + tasks
-    }
-    private func workCountLabel(on day: String) -> String {
-        let count = workCount(on: day)
-        return count == 0 ? "No work due" : "\(count) \(count == 1 ? "item" : "items") due"
-    }
 }
 
 private struct ScheduleEventCard: View {
     var block: ScheduleBlock
-    var tint: Color
+    var fill: LinearGradient
     var edit: () -> Void
     var delete: () -> Void
     var body: some View {
@@ -181,13 +193,13 @@ private struct ScheduleEventCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(block.title.isEmpty ? "New event" : block.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
-                    if block.ruleID != nil { Image(systemName: "repeat").font(.system(size: 8, weight: .semibold)) }
+                    if block.ruleID != nil { RepeatBadge(style: .fill) }
                 }
                 if block.duration >= 45 { Text(ClockTime.label(block.startMinute)).font(.system(size: 10)).foregroundStyle(.white.opacity(0.8)).lineLimit(1) }
                 Spacer(minLength: 0)
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(4)
                 .foregroundStyle(.white)
-                .background(tint.gradient, in: RoundedRectangle(cornerRadius: 5))
+                .background(fill, in: RoundedRectangle(cornerRadius: 5))
         }.buttonStyle(.plain).help(block.title + " · " + block.timeLabel).draggable("schedule:" + block.id)
             .contextMenu { Button("Delete", role: .destructive, action: delete) }
     }

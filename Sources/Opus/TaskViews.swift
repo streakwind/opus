@@ -61,6 +61,32 @@ struct CompactTaskProgress: View {
     }
 }
 
+struct ProgressLine: View {
+    var store: Store
+    var task: StudyTask
+    var openDetails: () -> Void
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "chart.bar.fill")
+                .font(.system(size: 15))
+                .foregroundStyle(store.course(task.courseID)?.tint ?? Color.accentColor)
+                .frame(width: 18, height: 20)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(task.title).font(.system(size: 14, weight: .medium)).lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 5) {
+                    if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
+                    if let due = task.due { Text("· Goal " + Day.label(due)).foregroundStyle(due < Day.today ? Color.red : .secondary) }
+                    if task.ruleID != nil { RepeatBadge() }
+                }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).padding(.top, 1)
+            }
+            CompactTaskProgress(store: store, task: task).frame(width: 180, alignment: .trailing)
+        }
+        .padding(.vertical, 5).contentShape(Rectangle())
+        .onTapGesture(perform: openDetails)
+    }
+}
+
 struct TaskLine: View {
     var store: Store
     var task: StudyTask
@@ -81,7 +107,7 @@ struct TaskLine: View {
                         if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
                         if let due = task.due { Text("· Due " + Day.label(due)).foregroundStyle(due < Day.today && !task.completed ? Color.red : .secondary) }
                         if task.planned == Day.adding(1), task.due != task.planned { Text("· Tomorrow") }
-                        if task.ruleID != nil { Image(systemName: "repeat") }
+                        if task.ruleID != nil { RepeatBadge() }
                     }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                     .padding(.top, 1)
                 }
@@ -123,8 +149,8 @@ struct TaskInspector: View {
                         PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $draft.courseID) }
                         PropertyRow("Due") { DateMenu(title: "No deadline", value: $draft.due) }
                         PropertyRow("Type") {
-                            PillPicker("Type", label: draft.kind == .progress ? "Reading progress" : "Task", selection: $draft.kind) {
-                                ForEach([TaskKind.checkbox, .progress]) { Text($0 == .progress ? "Reading progress" : "Task").tag($0) }
+                            PillPicker("Type", label: draft.kind == .progress ? "Progress" : "Task", selection: $draft.kind) {
+                                ForEach([TaskKind.checkbox, .progress]) { Text($0.rawValue).tag($0) }
                             }.labelsHidden().fixedSize()
                         }
                     }
@@ -155,7 +181,7 @@ struct TaskInspector: View {
         guard valid, draft != baseline, let latest = store.state.tasks.first(where: { $0.id == draft.id }) else { return }
         var saved = StudyTask.merging(draft: draft, baseline: baseline, latest: latest)
         saved.title = saved.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if saved.kind == .progress && (saved.current != baseline.current || saved.target != baseline.target) { saved.completed = saved.current >= saved.target }
+        if saved.kind == .progress { saved.completed = false }
         store.save(saved)
         if store.error == nil { baseline = saved; draft = saved }
     }
@@ -164,11 +190,19 @@ struct TaskInspector: View {
 struct DateMenu: View {
     var title: String
     @Binding var value: String?
+    var prefix: String?
     @State private var calendar = false
+    init(title: String, value: Binding<String?>, prefix: String? = nil) {
+        self.title = title; _value = value; self.prefix = prefix
+    }
     var body: some View {
-        Button(value.map(Day.label) ?? title) { calendar = true }.roundedControls()
+        Button(label) { calendar = true }.buttonStyle(.plain).pillChrome().fixedSize()
             .popover(isPresented: $calendar) {
                 CompactDatePicker(value: $value, clearLabel: title == "Due date" || title == "No deadline" ? "No due date" : "No date") { calendar = false }
             }
+    }
+    private var label: String {
+        let date = value.map(Day.label) ?? title
+        return prefix.map { "\($0) · \(date)" } ?? date
     }
 }

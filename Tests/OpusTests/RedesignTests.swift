@@ -20,6 +20,17 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(ScheduleLayout.minute(at: -10), 0)
         XCTAssertEqual(ScheduleLayout.minute(at: 315, hourHeight: 30), 630)
     }
+    func testScheduleDragRangeSnapsInBothDirectionsAndAllowsMinimumBlock() {
+        let forward = ScheduleLayout.range(startY: 482, endY: 541)
+        XCTAssertEqual(forward.start, 480)
+        XCTAssertEqual(forward.duration, 60)
+        let reverse = ScheduleLayout.range(startY: 541, endY: 482)
+        XCTAssertEqual(reverse.start, 480)
+        XCTAssertEqual(reverse.duration, 60)
+        XCTAssertEqual(ScheduleLayout.range(startY: 482, endY: 483).duration, 15)
+        let late = ScheduleLayout.block(day: "2026-09-09", startY: 1438, endY: 1500)
+        XCTAssertEqual(late.startMinute + late.duration, 1440)
+    }
     func testTodayIncludesTomorrowWithoutRecurringBacklog() {
         let today = "2026-09-09"
         XCTAssertTrue(StudyTask(title: "Tomorrow", planned: "2026-09-10").isInToday(on: today))
@@ -53,6 +64,21 @@ final class RedesignTests: XCTestCase {
         XCTAssertNil(copy.classBlock(on: "2026-09-12"))
         course.classStart = 600
         XCTAssertEqual(course.classBlock(on: "2026-09-09")?.startMinute, 600)
+    }
+    func testMultipleClassTimesHaveStableDistinctBlocksAndLegacyMirror() throws {
+        var course = Course(name: "Physics")
+        course.classTimes = [
+            ClassTime(id: "morning", startMinute: 480, endMinute: 530, days: [4]),
+            ClassTime(id: "lab", startMinute: 780, endMinute: 900, days: [4])
+        ]
+        course.syncLegacyClassTime()
+        let blocks = course.classBlocks(on: "2026-09-09")
+        XCTAssertEqual(blocks.map(\.startMinute), [480, 780])
+        XCTAssertEqual(Set(blocks.map(\.id)).count, 2)
+        XCTAssertEqual(course.classStart, 480)
+        XCTAssertEqual(course.classDuration, 50)
+        let copy = try JSONDecoder().decode(Course.self, from: JSONEncoder().encode(course))
+        XCTAssertEqual(copy.resolvedClassTimes, course.classTimes)
     }
     private func db() throws -> Database {
         try Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusV3-" + UUID().uuidString).appendingPathComponent("test.sqlite"))
@@ -143,6 +169,24 @@ final class RedesignTests: XCTestCase {
         XCTAssertNotEqual(placements[0].column, placements[1].column)
         XCTAssertEqual(placements[2].column, 0)
     }
+    func testCourseWorkSeparatesProgressAndCollapsesRhythms() {
+        let course = Course(name: "Example list")
+        let rule = "weekly"
+        var state = Snapshot()
+        state.assessments = [
+            Assessment(courseID: course.id, title: "Quiz", day: "2026-09-10", ruleID: rule),
+            Assessment(courseID: course.id, title: "Quiz", day: "2026-09-17", ruleID: rule),
+            Assessment(courseID: course.id, title: "Lab", day: "2026-09-12")
+        ]
+        state.tasks = [
+            StudyTask(courseID: course.id, title: "Review", due: "2026-09-10", ruleID: rule),
+            StudyTask(courseID: course.id, title: "Review", due: "2026-09-17", ruleID: rule),
+            StudyTask(courseID: course.id, title: "Chapter", kind: .progress, due: "2026-09-12")
+        ]
+        XCTAssertEqual(CourseWork.assessments(courseID: course.id, from: "2026-09-09", in: state).count, 2)
+        XCTAssertEqual(CourseWork.tasks(courseID: course.id, from: "2026-09-09", in: state, progress: false).count, 1)
+        XCTAssertEqual(CourseWork.tasks(courseID: course.id, from: "2026-09-09", in: state, progress: true).count, 1)
+    }
     func testNotesDraftMergesWithLiveProgress() {
         let original = StudyTask(title: "Notes", kind: .progress, current: 3)
         var draft = original; draft.notes = "Keep this edit"
@@ -160,7 +204,7 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(store.state.activities.count, 1)
         store.updateProgress(task.id, to: 999)
         XCTAssertEqual(store.state.tasks[0].current, 49)
-        XCTAssertTrue(store.state.tasks[0].completed)
+        XCTAssertFalse(store.state.tasks[0].completed)
         store.updateProgress(task.id, to: 0)
         XCTAssertEqual(store.state.tasks[0].current, 16)
         XCTAssertFalse(store.state.tasks[0].completed)
