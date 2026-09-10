@@ -177,4 +177,20 @@ final class CalendarInteractionTests: XCTestCase {
         store.undo()
         XCTAssertEqual(store.state.tasks.map(\.title), ["A", "B", "C"])
     }
+    @MainActor func testAssessmentCreationAndUpdate() throws {
+        let store = try Store(database: Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusAssess-" + UUID().uuidString).appendingPathComponent("test.sqlite")))
+        let course = Course(name: "Example F")
+        store.save(course)
+        let item = Assessment(courseID: course.id, title: "Unit test", day: "2026-09-15", confirmed: true, topics: "Ch. 4")
+        store.save(item)
+        XCTAssertEqual(store.state.assessments.count, 1)
+        var edited = store.state.assessments[0]
+        edited.title = "Unit exam"
+        edited.confirmed = false
+        store.save(edited)
+        XCTAssertEqual(store.state.assessments[0].title, "Unit exam")
+        XCTAssertFalse(store.state.assessments[0].confirmed)
+        store.undo()
+        XCTAssertEqual(store.state.assessments[0].title, "Unit test")
+    }
 }

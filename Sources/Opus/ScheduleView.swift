@@ -136,19 +136,25 @@ struct ScheduleView: View {
                 }
             }.frame(width: width).background(Calendar.current.isDateInWeekend(Day.date(day)) ? Color.primary.opacity(0.025) : Color.clear)
                 .contentShape(Rectangle())
-                .onTapGesture(coordinateSpace: .local) { point in
-                    selectedMinute = ScheduleLayout.minute(at: point.y, hourHeight: hourHeight)
-                    editing = ScheduleBlock(day: day, startMinute: selectedMinute, duration: min(30, 1440 - selectedMinute))
-                }
-                .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .local)
+                .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .local)
                     .onChanged { value in
-                        creating = ScheduleLayout.block(day: day, startY: value.startLocation.y, endY: value.location.y, hourHeight: hourHeight)
+                        let distance = hypot(value.translation.width, value.translation.height)
+                        if distance >= 8 {
+                            creating = ScheduleLayout.block(day: day, startY: value.startLocation.y, endY: value.location.y, hourHeight: hourHeight)
+                        }
                     }
                     .onEnded { value in
-                        let block = ScheduleLayout.block(day: day, startY: value.startLocation.y, endY: value.location.y, hourHeight: hourHeight)
-                        creating = nil
-                        selectedMinute = block.startMinute
-                        editing = block
+                        let distance = hypot(value.translation.width, value.translation.height)
+                        if distance >= 8 {
+                            let block = ScheduleLayout.block(day: day, startY: value.startLocation.y, endY: value.location.y, hourHeight: hourHeight)
+                            creating = nil
+                            selectedMinute = block.startMinute
+                            editing = block
+                        } else {
+                            creating = nil
+                            selectedMinute = ScheduleLayout.minute(at: value.startLocation.y, hourHeight: hourHeight)
+                            editing = ScheduleBlock(day: day, startMinute: selectedMinute, duration: min(30, 1440 - selectedMinute))
+                        }
                     })
             if let creating, creating.day == day {
                 RoundedRectangle(cornerRadius: 5)

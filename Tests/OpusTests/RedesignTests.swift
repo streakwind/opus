@@ -253,4 +253,57 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(store.state.tasks[0].current, 16)
         XCTAssertFalse(store.state.tasks[0].completed)
     }
+    @MainActor func testPracticeTasksAndRulesNormalizeToCheckbox() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("OpusPractice-" + UUID().uuidString).appendingPathComponent("test.sqlite")
+        let database = try Database(url: url)
+        var snapshot = Snapshot()
+        snapshot.setupComplete = true
+        snapshot.tasks = [StudyTask(title: "Drill", kind: .practice)]
+        var rule = QuizRule(title: "Practice set", itemKind: .task, startDate: Day.today)
+        rule.taskKind = .practice
+        snapshot.rules = [rule]
+        try database.save(snapshot)
+        let store = try Store(database: Database(url: url))
+        XCTAssertEqual(store.state.tasks.first?.kind, .checkbox)
+        XCTAssertEqual(store.state.rules.first?.taskKind, .checkbox)
+        XCTAssertEqual(try Database(url: url).load().tasks.first?.kind, .checkbox)
+    }
+    @MainActor func testProgressUpdatePreservesHistoryAndExplicitSaveSemantics() throws {
+        let store = try Store(database: db())
+        let task = StudyTask(title: "Chapter", kind: .progress, due: "2026-09-20", start: 1, target: 40, current: 10)
+        store.save(task)
+        store.updateProgress(task.id, to: 15)
+        XCTAssertEqual(store.state.activities.count, 1)
+        var edited = store.state.tasks[0]
+        edited.title = "Chapter 2"
+        edited.current = 15
+        store.save(edited)
+        store.updateProgress(edited.id, to: 18)
+        XCTAssertEqual(store.state.tasks[0].title, "Chapter 2")
+        XCTAssertEqual(store.state.tasks[0].current, 18)
+        XCTAssertEqual(store.state.activities.count, 2)
+        store.undo()
+        XCTAssertEqual(store.state.tasks[0].current, 15)
+    }
+    @MainActor func testEndToEndWorkflowSeed() throws {
+        let store = try Store(database: db())
+        store.setup(personalized: true)
+        XCTAssertEqual(store.state.courses.count, 8)
+        XCTAssertFalse(store.state.rules.isEmpty)
+        let lit = store.state.courses.first { $0.name == "Example B" }!
+        store.save(StudyTask(courseID: lit.id, title: "Read ch. 3", due: Day.adding(1)))
+        store.save(StudyTask(courseID: lit.id, title: "Pages", kind: .progress, due: Day.today, start: 10, target: 40, current: 12))
+        store.save(Assessment(courseID: lit.id, title: "Essay check", day: Day.adding(3), confirmed: true, topics: "Prompt A"))
+        store.save(ScheduleBlock(courseID: lit.id, title: "Office hours", day: Day.today, startMinute: 16 * 60, duration: 30))
+        XCTAssertEqual(store.state.tasks.filter { $0.courseID == lit.id }.count, 2)
+        XCTAssertEqual(CourseWork.tasks(courseID: lit.id, from: Day.today, in: store.state, progress: true, exactDay: true).count, 1)
+        XCTAssertEqual(CourseWork.assessments(courseID: lit.id, from: Day.today, in: store.state).count, 1)
+        var task = store.state.tasks.first { $0.title == "Read ch. 3" }!
+        task.completed = true
+        store.save(task)
+        store.deleteArchivedTasks()
+        XCTAssertNil(store.state.tasks.first { $0.title == "Read ch. 3" })
+        store.undo()
+        XCTAssertNotNil(store.state.tasks.first { $0.title == "Read ch. 3" })
+    }
 }
