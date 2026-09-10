@@ -37,8 +37,8 @@ struct PillPicker<Value: Hashable, Options: View>: View {
         Menu { Picker(title, selection: $selection) { options }.pickerStyle(.inline) } label: { Text(label) }
             .menuStyle(.borderlessButton).menuIndicator(.hidden)
             .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
-            .shadow(color: .black.opacity(0.04), radius: 5, y: 2)
+            .background(.regularMaterial, in: Capsule())
+            .overlay { Capsule().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.75) }
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityLabel(title + ": " + label)
     }

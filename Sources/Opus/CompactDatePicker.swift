@@ -3,9 +3,10 @@ import SwiftUI
 struct CompactDatePicker: View {
     @Binding var value: String?
     var close: () -> Void
+    var clearLabel = "No date"
     @State private var month: Date
-    init(value: Binding<String?>, close: @escaping () -> Void) {
-        _value = value; self.close = close
+    init(value: Binding<String?>, clearLabel: String = "No date", close: @escaping () -> Void) {
+        _value = value; self.clearLabel = clearLabel; self.close = close
         _month = State(initialValue: Day.date(value.wrappedValue ?? Day.today))
     }
     private var days: [String] { CalendarLayout.days(containing: month, week: false) }
@@ -14,9 +15,9 @@ struct CompactDatePicker: View {
             HStack {
                 Text(month.formatted(.dateTime.month(.wide).year())).font(.headline)
                 Spacer()
-                Button { move(-1) } label: { Image(systemName: "chevron.left") }
+                Button { move(-1) } label: { Image(systemName: "chevron.left").frame(width: 24, height: 24).contentShape(Rectangle()) }
                     .help("Previous month")
-                Button { move(1) } label: { Image(systemName: "chevron.right") }
+                Button { move(1) } label: { Image(systemName: "chevron.right").frame(width: 24, height: 24).contentShape(Rectangle()) }
                     .help("Next month")
             }.buttonStyle(.plain)
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(30), spacing: 4), count: 7), spacing: 4) {
@@ -39,11 +40,13 @@ struct CompactDatePicker: View {
             HStack {
                 Button("Today") { value = Day.today; close() }
                 Spacer()
-                if value != nil { Button("Clear") { value = nil; close() } }
+                if value != nil { Button(clearLabel) { value = nil; close() } }
             }.buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
         }.padding(16).frame(width: 266)
     }
     private func move(_ amount: Int) {
-        month = Calendar.current.date(byAdding: .month, value: amount, to: month)!
+        let calendar = Calendar.current
+        let start = calendar.dateInterval(of: .month, for: month)?.start ?? month
+        month = calendar.date(byAdding: .month, value: amount, to: start) ?? start
     }
 }

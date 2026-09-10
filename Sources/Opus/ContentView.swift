@@ -18,10 +18,11 @@ struct ContentView: View {
     @State private var quickTitle = ""
     @State private var quickKind: TaskKind = .checkbox
     @State private var quickCourse: String?
-    @State private var quickDue: String?
+    @State private var quickDue: String? = Day.adding(1)
     @State private var quickStart = 1
     @State private var quickEnd = 30
     @State private var newEntryRequest = 0
+    @AppStorage("appearance") private var appearance = "system"
     @FocusState private var quickFocused: Bool
     @Environment(\.scenePhase) private var scenePhase
     private var course: Course? { store.course(selection) }
@@ -30,7 +31,7 @@ struct ContentView: View {
         switch selection { case "today": "Today"; case "all": "Tasks"; case "inbox": "Inbox"; case "routines": "Rhythm"; default: course?.name ?? "Today" }
     }
     private var tasks: [StudyTask] {
-        store.state.tasks.filter { task in
+        let sorted = store.state.tasks.filter { task in
             let matches: Bool
             switch selection {
             case "all": matches = true
@@ -43,6 +44,28 @@ struct ContentView: View {
             if $0.completed != $1.completed { return !$0.completed }
             return dueOrder ? ($0.due ?? "9999") < ($1.due ?? "9999") : false
         }
+        var seenRules = Set<String>()
+        return sorted.filter { task in
+            guard let ruleID = task.ruleID else { return true }
+            return seenRules.insert(ruleID).inserted
+        }
+    }
+    private var assessments: [Assessment] {
+        guard let course else { return [] }
+        var seenRules = Set<String>()
+        return store.state.assessments
+            .filter {
+                $0.courseID == course.id && $0.day >= Day.today &&
+                (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) || $0.topics.localizedCaseInsensitiveContains(query))
+            }
+            .sorted { $0.day == $1.day ? $0.title < $1.title : $0.day < $1.day }
+            .filter { item in
+                guard let ruleID = item.ruleID else { return true }
+                return seenRules.insert(ruleID).inserted
+            }
+    }
+    private var preferredColorScheme: ColorScheme? {
+        appearance == "light" ? .light : appearance == "dark" ? .dark : nil
     }
     var body: some View {
         NavigationSplitView {
@@ -71,6 +94,12 @@ struct ContentView: View {
                     Button { editor = .course(Course(name: "")) } label: { Label("New list", systemImage: "plus") }.buttonStyle(.plain)
                     Spacer()
                     Menu {
+                        Picker("Appearance", selection: $appearance) {
+                            Label("System", systemImage: "circle.lefthalf.filled").tag("system")
+                            Label("Light", systemImage: "sun.max").tag("light")
+                            Label("Dark", systemImage: "moon").tag("dark")
+                        }
+                        Divider()
                         Button("Export all data…", action: exportData)
                         Button("Show database in Finder") { NSWorkspace.shared.activateFileViewerSelecting([store.location]) }
                     } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 28, height: 24)
@@ -82,7 +111,7 @@ struct ContentView: View {
                 else if selection == "upcoming" { AssessmentCalendar(store: store, query: query, newEntryRequest: newEntryRequest) }
                 else if selection == "schedule" { ScheduleView(store: store, query: query, newEntryRequest: newEntryRequest) }
                 else {
-                    if selection != "all" && selection != "inbox" {
+                    if selection != "all" && selection != "inbox" && selection != "routines" {
                     HStack(alignment: .firstTextBaseline) {
                         Text(heading).font(.system(size: 26, weight: .bold)).lineLimit(1)
                         Spacer()
@@ -106,6 +135,7 @@ struct ContentView: View {
         .onChange(of: selection) { _, _ in selectedTask = nil; narrowTask = nil; quickCourse = course?.id }
         .onChange(of: scenePhase) { _, phase in if phase == .active { store.refreshOccurrences() } }
         .onChange(of: store.state.tasks.map(\.id)) { _, ids in if let selectedTask, !ids.contains(selectedTask) { self.selectedTask = nil; narrowTask = nil } }
+        .preferredColorScheme(preferredColorScheme)
     }
     private var taskContent: some View {
         GeometryReader { geometry in
@@ -122,36 +152,61 @@ struct ContentView: View {
                         } label: { Image(systemName: "line.3.horizontal.decrease") }.menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 28, height: 24).help("List options")
                     }.padding(.horizontal, 22).padding(.vertical, 8)
                     List {
-                        ForEach(tasks) { task in
-                            TaskLine(store: store, task: task, selected: selectedTask == task.id) {
-                                selectedTask = task.id
-                                if !wide { narrowTask = task }
-                            }
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(selectedTask == task.id && wide ? Color.accentColor.opacity(0.065) : Color.clear)
-                            .popover(isPresented: Binding(get: { !wide && narrowTask?.id == task.id }, set: { if !$0 { narrowTask = nil } })) {
-                                TaskInspector(store: store, task: task) { narrowTask = nil }.frame(width: 350, height: 530)
-                            }
-                            .contextMenu {
-                                Button("Details") { selectedTask = task.id; if !wide { narrowTask = task } }
-                                Button("Plan for today") { var copy = task; copy.planned = Day.today; store.save(copy) }
-                                Button("Plan for tomorrow") { var copy = task; copy.planned = Day.adding(1); store.save(copy) }
-                                Button("Remove from plan") { var copy = task; copy.planned = nil; store.save(copy) }
-                                Menu("Move to list") {
-                                    Button("Inbox") { var copy = task; copy.courseID = nil; store.save(copy) }
-                                    ForEach(store.state.courses) { list in Button(list.name) { var copy = task; copy.courseID = list.id; store.save(copy) } }
+                        if !assessments.isEmpty {
+                            Section("Assessments") {
+                                ForEach(assessments) { item in
+                                    Button { openAssessment(item) } label: {
+                                        HStack(spacing: 10) {
+                                            Image(systemName: item.confirmed ? "calendar" : "questionmark.circle")
+                                                .foregroundStyle(course?.tint ?? .teal).frame(width: 18)
+                                            VStack(alignment: .leading, spacing: 3) {
+                                                HStack(spacing: 5) {
+                                                    Text(item.title).font(.system(size: 14, weight: .medium)).lineLimit(2)
+                                                    if item.ruleID != nil { Image(systemName: "repeat").font(.system(size: 10)).foregroundStyle(.secondary) }
+                                                }
+                                                Text(Day.label(item.day) + (item.confirmed ? "" : " · Tentative"))
+                                                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                                            }
+                                            Spacer()
+                                        }.padding(.vertical, 5).contentShape(Rectangle())
+                                    }.buttonStyle(.plain).listRowSeparator(.hidden)
                                 }
-                                            Button("Delete", role: .destructive) { store.deleteTask(task.id) }
                             }
-                        }.onMove { offsets, destination in
-                            guard !dueOrder else { return }
-                            var reordered = tasks; reordered.move(fromOffsets: offsets, toOffset: destination)
-                            let ids = Set(reordered.map(\.id))
-                            var iterator = reordered.makeIterator()
-                            store.change { state in state.tasks = state.tasks.map { ids.contains($0.id) ? iterator.next()! : $0 } }
-                        }.moveDisabled(dueOrder)
-                        if tasks.isEmpty {
-                            Text(query.isEmpty ? "Type a task above to get started." : "No matching tasks.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 12).listRowSeparator(.hidden)
+                        }
+                        Section {
+                            ForEach(tasks) { task in
+                                TaskLine(store: store, task: task, selected: selectedTask == task.id) {
+                                    selectedTask = task.id
+                                    if !wide { narrowTask = task }
+                                }
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(selectedTask == task.id && wide ? Color.accentColor.opacity(0.065) : Color.clear)
+                                .popover(isPresented: Binding(get: { !wide && narrowTask?.id == task.id }, set: { if !$0 { narrowTask = nil } })) {
+                                    TaskInspector(store: store, task: task) { narrowTask = nil }.frame(width: 350, height: 530)
+                                }
+                                .contextMenu {
+                                    Button("Details") { selectedTask = task.id; if !wide { narrowTask = task } }
+                                    Button("Plan for today") { var copy = task; copy.planned = Day.today; store.save(copy) }
+                                    Button("Plan for tomorrow") { var copy = task; copy.planned = Day.adding(1); store.save(copy) }
+                                    Button("Remove from plan") { var copy = task; copy.planned = nil; store.save(copy) }
+                                    Menu("Move to list") {
+                                        Button("Inbox") { var copy = task; copy.courseID = nil; store.save(copy) }
+                                        ForEach(store.state.courses) { list in Button(list.name) { var copy = task; copy.courseID = list.id; store.save(copy) } }
+                                    }
+                                    Button("Delete", role: .destructive) { store.deleteTask(task.id) }
+                                }
+                            }.onMove { offsets, destination in
+                                guard !dueOrder else { return }
+                                var reordered = tasks; reordered.move(fromOffsets: offsets, toOffset: destination)
+                                let ids = Set(reordered.map(\.id))
+                                var iterator = reordered.makeIterator()
+                                store.change { state in state.tasks = state.tasks.map { ids.contains($0.id) ? iterator.next()! : $0 } }
+                            }.moveDisabled(dueOrder)
+                            if tasks.isEmpty && !query.isEmpty {
+                                Text("No matching tasks.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 12).listRowSeparator(.hidden)
+                            }
+                        } header: {
+                            if !assessments.isEmpty { Text("Tasks") }
                         }
                     }.listStyle(.inset).scrollContentBackground(.hidden)
                 }.frame(maxWidth: .infinity)
@@ -190,7 +245,7 @@ struct ContentView: View {
             Text("Inbox").tag(nil as String?)
             ForEach(store.state.courses) { Text($0.shortName).tag(Optional($0.id)) }
         }.labelsHidden().frame(width: 120)
-        PillPicker("Track", label: quickKind == .progress ? "Textbook notes" : quickKind.rawValue, selection: $quickKind) { ForEach([TaskKind.checkbox, .progress]) { Text($0 == .progress ? "Textbook notes" : $0.rawValue).tag($0) } }.labelsHidden().fixedSize()
+        PillPicker("Track", label: quickKind == .progress ? "Reading progress" : quickKind.rawValue, selection: $quickKind) { ForEach([TaskKind.checkbox, .progress]) { Text($0 == .progress ? "Reading progress" : $0.rawValue).tag($0) } }.labelsHidden().fixedSize()
         DateMenu(title: "Due date", value: $quickDue).font(.caption)
     }
     private var routines: some View {
@@ -230,12 +285,19 @@ struct ContentView: View {
         guard !title.isEmpty, quickKind != .progress || (quickStart > 0 && quickEnd >= quickStart && quickEnd <= 1000000) else { return }
         let task = StudyTask(courseID: quickCourse, title: title, kind: quickKind, planned: selection == "today" ? Day.today : nil, due: quickDue, start: quickKind == .progress ? quickStart : 1, target: quickKind == .progress ? quickEnd : 30, current: quickKind == .progress ? quickStart - 1 : 0)
         store.save(task)
-        if store.error == nil { quickTitle = ""; quickFocused = true }
+        if store.error == nil { quickTitle = ""; quickDue = Day.adding(1); quickFocused = true }
     }
     private func add() {
         if isCalendar { newEntryRequest += 1 }
         else if selection == "routines" { editor = .rule(QuizRule(itemKind: .task, startDate: Day.today)) }
         else { quickFocused = true }
+    }
+    private func openAssessment(_ item: Assessment) {
+        selection = "upcoming"
+        Task { @MainActor in
+            await Task.yield()
+            store.calendarFocus = CalendarFocus(day: item.day)
+        }
     }
     private func exportData() {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = "Opus-\(Day.today).json"

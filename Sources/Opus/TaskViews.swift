@@ -3,37 +3,61 @@ import SwiftUI
 struct InlineProgress: View {
     var store: Store
     var task: StudyTask
-    var showsPace: Bool
     @State private var number: Int
     @FocusState private var editing: Bool
-    init(store: Store, task: StudyTask, showsPace: Bool = true) {
-        self.store = store; self.task = task; self.showsPace = showsPace
+    init(store: Store, task: StudyTask) {
+        self.store = store; self.task = task
         _number = State(initialValue: task.current)
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                Text(task.progressLabel).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 4)
+                Text("\(Int((task.fraction * 100).rounded()))%")
+                    .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+            }
+            ProgressView(value: task.fraction)
+                .tint(store.course(task.courseID)?.tint ?? Color.accentColor)
             controls
-            if showsPace, let pace = task.pacing(on: Day.today) {
+            if let pace = task.pacing(on: Day.today) {
                 Text(pace).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background {
+            RoundedRectangle(cornerRadius: 9).fill(Color.primary.opacity(0.045))
         }
         .onChange(of: editing) { old, new in if old && !new { apply(number) } }
         .onChange(of: task.current) { _, current in number = current }
     }
     private var controls: some View {
-        HStack(spacing: 6) {
-            Text("p.").font(.caption).foregroundStyle(.secondary).fixedSize()
+        HStack(spacing: 10) {
+            Text("Last page read").font(.caption).foregroundStyle(.secondary)
+            Spacer()
             TextField("Last page read", value: $number, format: .number.grouping(.never)).textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing)
-                .font(.system(size: 13, weight: .medium, design: .monospaced)).frame(width: 48).focused($editing).onSubmit { apply(number) }
+                .font(.system(size: 13, weight: .medium, design: .monospaced)).frame(width: 68).focused($editing).onSubmit { apply(number) }
                 .accessibilityLabel("Last page read").help("Enter a page and press Return")
-            Text("/ \(task.target)").font(.caption).foregroundStyle(.secondary).fixedSize()
-
-        }.fixedSize().help("Log the last page you read · " + task.progressLabel)
+        }.help("Log the last page you read · " + task.progressLabel)
     }
     private func apply(_ updated: Int) {
         let bounded = min(task.target, max(task.start - 1, updated))
         store.updateProgress(task.id, to: bounded)
         number = bounded
+    }
+}
+
+struct CompactTaskProgress: View {
+    var store: Store
+    var task: StudyTask
+    var body: some View {
+        HStack(spacing: 7) {
+            ProgressView(value: task.fraction)
+                .tint(store.course(task.courseID)?.tint ?? Color.accentColor)
+                .frame(width: 72)
+            Text(task.progressLabel).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+        }
     }
 }
 
@@ -59,15 +83,16 @@ struct TaskLine: View {
                         if task.planned == Day.adding(1), task.due != task.planned { Text("· Tomorrow") }
                         if task.ruleID != nil { Image(systemName: "repeat") }
                     }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                    .padding(.top, 1)
                 }
                 if task.kind == .progress {
-                    InlineProgress(store: store, task: task, showsPace: false)
+                    CompactTaskProgress(store: store, task: task)
+                        .frame(width: 180, alignment: .trailing)
                 }
             }
-
-
-
-        }.padding(.vertical, 5).contentShape(Rectangle()).opacity(task.completed ? 0.55 : 1)
+        }.padding(.vertical, 5).contentShape(Rectangle())
+            .onTapGesture(perform: openDetails)
+            .opacity(task.completed ? 0.55 : 1)
     }
 }
 
@@ -93,11 +118,15 @@ struct TaskInspector: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     TextField("Task title", text: $draft.title, axis: .vertical).textFieldStyle(.plain).font(.system(size: 19, weight: .semibold)).lineLimit(1...5)
+                    Divider()
                     VStack(spacing: 0) {
                         PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $draft.courseID) }
-                        PropertyRow("Plan") { DateMenu(title: "Anytime", value: $draft.planned) }
                         PropertyRow("Due") { DateMenu(title: "No deadline", value: $draft.due) }
-                        PropertyRow("Track") { PillPicker("Tracking", label: draft.kind == .progress ? "Textbook notes" : "Task", selection: $draft.kind) { ForEach([TaskKind.checkbox, .progress]) { Text($0 == .progress ? "Textbook notes" : "Task").tag($0) } }.labelsHidden().pickerStyle(.menu) }
+                        PropertyRow("Type") {
+                            PillPicker("Type", label: draft.kind == .progress ? "Reading progress" : "Task", selection: $draft.kind) {
+                                ForEach([TaskKind.checkbox, .progress]) { Text($0 == .progress ? "Reading progress" : "Task").tag($0) }
+                            }.labelsHidden().fixedSize()
+                        }
                     }
                     if draft.kind == .progress {
                         VStack(spacing: 0) {
@@ -139,7 +168,7 @@ struct DateMenu: View {
     var body: some View {
         Button(value.map(Day.label) ?? title) { calendar = true }.roundedControls()
             .popover(isPresented: $calendar) {
-                CompactDatePicker(value: $value) { calendar = false }
+                CompactDatePicker(value: $value, clearLabel: title == "Due date" || title == "No deadline" ? "No due date" : "No date") { calendar = false }
             }
     }
 }

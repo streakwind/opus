@@ -44,20 +44,31 @@ struct ScheduleView: View {
     private var days: [String] { period == .day ? [Day.string(anchor)] : CalendarLayout.days(containing: anchor, week: true) }
     var body: some View {
         VStack(spacing: 0) {
-            CalendarHeading(anchor: $anchor, period: $period, schedule: true)
-            HStack(spacing: 0) {
-                Color.clear.frame(width: 56, height: 52)
-                ForEach(days, id: \.self) { day in
-                    Button {
-                        anchor = Day.date(day); period = .day
-                    } label: {
-                        VStack(spacing: 3) {
-                            Text(Day.date(day).formatted(.dateTime.weekday(.abbreviated))).font(.caption).foregroundStyle(.secondary)
-                            Text(Day.date(day).formatted(.dateTime.day())).font(.system(size: 18)).foregroundStyle(day == Day.today ? .white : .primary).frame(width: 30, height: 30).background(day == Day.today ? Color.accentColor : .clear, in: Circle())
-                        }.frame(maxWidth: .infinity)
-                    }.buttonStyle(.plain)
-                }
-            }.frame(height: 58).padding(.bottom, 8)
+            CalendarHeading(anchor: $anchor, period: $period, schedule: true, workCount: period == .day ? workCount(on: days[0]) : nil)
+            if period == .week {
+                HStack(spacing: 0) {
+                    Color.clear.frame(width: 56, height: 52)
+                    ForEach(days, id: \.self) { day in
+                        Button {
+                            anchor = Day.date(day); period = .day
+                        } label: {
+                            VStack(spacing: 3) {
+                                Text(Day.date(day).formatted(.dateTime.weekday(.abbreviated))).font(.caption).foregroundStyle(.secondary)
+                                ZStack(alignment: .topTrailing) {
+                                    Text(Day.date(day).formatted(.dateTime.day())).font(.system(size: 18)).foregroundStyle(day == Day.today ? .white : .primary).frame(width: 30, height: 30).background(day == Day.today ? Color.accentColor : .clear, in: Circle())
+                                    let count = workCount(on: day)
+                                    if count > 0 {
+                                        Text("\(count)").font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
+                                            .frame(minWidth: 15, minHeight: 15)
+                                            .background(Color.secondary, in: Capsule())
+                                            .offset(x: 9, y: -4)
+                                    }
+                                }
+                            }.frame(maxWidth: .infinity)
+                        }.buttonStyle(.plain).help(workCountLabel(on: day))
+                    }
+                }.frame(height: 58).padding(.bottom, 8)
+            }
             GeometryReader { geometry in
                 let columnWidth = max(1, (geometry.size.width - 56) / CGFloat(days.count))
                 ScrollViewReader { reader in
@@ -149,6 +160,15 @@ struct ScheduleView: View {
                 store.save(block); return store.error == nil
             }
     }
+    private func workCount(on day: String) -> Int {
+        let assessments = store.state.assessments.filter { $0.day == day }.count
+        let tasks = store.state.tasks.filter { !$0.completed && ($0.due == day || $0.planned == day) }.count
+        return assessments + tasks
+    }
+    private func workCountLabel(on day: String) -> String {
+        let count = workCount(on: day)
+        return count == 0 ? "No work due" : "\(count) \(count == 1 ? "item" : "items") due"
+    }
 }
 
 private struct ScheduleEventCard: View {
@@ -159,12 +179,15 @@ private struct ScheduleEventCard: View {
     var body: some View {
         Button(action: edit) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(block.title.isEmpty ? "New event" : block.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
-                if block.duration >= 45 { Text(ClockTime.label(block.startMinute)).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1) }
+                HStack(spacing: 4) {
+                    Text(block.title.isEmpty ? "New event" : block.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
+                    if block.ruleID != nil { Image(systemName: "repeat").font(.system(size: 8, weight: .semibold)) }
+                }
+                if block.duration >= 45 { Text(ClockTime.label(block.startMinute)).font(.system(size: 10)).foregroundStyle(.white.opacity(0.8)).lineLimit(1) }
                 Spacer(minLength: 0)
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(4)
-                .background(tint.opacity(0.17), in: RoundedRectangle(cornerRadius: 4))
-                .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(tint).frame(width: 3) }
+                .foregroundStyle(.white)
+                .background(tint.gradient, in: RoundedRectangle(cornerRadius: 5))
         }.buttonStyle(.plain).help(block.title + " · " + block.timeLabel).draggable("schedule:" + block.id)
             .contextMenu { Button("Delete", role: .destructive, action: delete) }
     }

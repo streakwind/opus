@@ -7,10 +7,16 @@ struct CalendarHeading: View {
     @Binding var anchor: Date
     @Binding var period: CalendarPeriod
     var schedule = false
+    var workCount: Int? = nil
     var body: some View {
         HStack(spacing: 12) {
             Text(period == .day ? anchor.formatted(.dateTime.month(.abbreviated).day().year()) : anchor.formatted(.dateTime.month(.wide).year()))
                 .font(.system(size: 22, weight: .semibold)).lineLimit(1).layoutPriority(1)
+            if let workCount, workCount > 0 {
+                Text("\(workCount) due").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color.primary.opacity(0.06), in: Capsule())
+            }
             Spacer(minLength: 8)
             HStack(spacing: 2) {
                 ForEach((schedule ? [CalendarPeriod.day, .week] : [.week, .month]), id: \.self) { option in
@@ -79,18 +85,6 @@ struct AssessmentCalendar: View {
                     }
                 }
                 }
-                .overlay(alignment: .topLeading) {
-                    let index = days.firstIndex(of: selectedDay) ?? 0
-                    Color.clear.frame(width: 1, height: 1)
-                        .position(x: (CGFloat(index % columns) + 0.5) * geometry.size.width / CGFloat(columns),
-                                  y: min(geometry.size.height - 20, (CGFloat(index / columns) + 0.5) * height))
-                        .popover(item: $editing) { draft in
-                            CalendarEntryEditor(store: store, source: draft, onDateChange: { day in
-                                selectedDay = day
-                                if !days.contains(day) { anchor = Day.date(day) }
-                            }).id(draft.id)
-                        }
-                }
             }
         }
         .onChange(of: store.calendarFocus) { _, focus in
@@ -132,6 +126,9 @@ private struct CalendarDayCell: View {
                         .foregroundStyle(day == Day.today ? Color.white : inMonth ? Color.primary : Color.secondary.opacity(0.5))
                         .frame(width: 30, height: 30).background(day == Day.today ? Color.accentColor : .clear, in: Circle())
                 }.buttonStyle(.plain).help("Add task or assessment on " + day).accessibilityLabel("Add on " + day)
+                    .popover(item: localEditing) { draft in
+                        CalendarEntryEditor(store: store, source: draft).id(draft.id)
+                    }
             }.padding(.horizontal, 7).padding(.vertical, 3)
             ForEach(assessments.prefix(capacity)) { item in assessmentLine(item) }
             ForEach(tasks.prefix(max(0, capacity - assessments.count))) { task in taskLine(task) }
@@ -153,8 +150,7 @@ private struct CalendarDayCell: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(targeted || day == Day.today ? Color.accentColor.opacity(0.08) : background)
-        .overlay { if day == Day.today { Rectangle().strokeBorder(Color.accentColor.opacity(0.5), lineWidth: 1) } }
+        .background(targeted ? Color.accentColor.opacity(0.08) : background)
         .overlay(alignment: .trailing) { Rectangle().fill(Color.primary.opacity(0.13)).frame(width: 0.5) }
         .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.13)).frame(height: 0.5) }
         .contentShape(Rectangle()).onTapGesture { select(); editing = .new(day) }
@@ -168,6 +164,12 @@ private struct CalendarDayCell: View {
         }
         .onChange(of: newEntryRequest) { _, _ in if selected { editing = .new(day) } }
 
+    }
+    private var localEditing: Binding<CalendarDraft?> {
+        Binding(
+            get: { selected ? editing : nil },
+            set: { if $0 == nil { editing = nil } else { editing = $0 } }
+        )
     }
     private var background: Color {
         if !inMonth { return Color.primary.opacity(0.035) }
@@ -198,10 +200,9 @@ private struct CalendarDayCell: View {
                 var copy = task; copy.completed.toggle(); store.save(copy)
             } label: { Image(systemName: task.completed ? "checkmark.circle.fill" : "circle").font(.system(size: 11)) }.buttonStyle(.plain).help(task.completed ? "Reopen task" : "Complete task")
             Button { select(); overflow = false; editing = .task(task, day) } label: {
-                HStack(spacing: 4) {
-                    Text(task.title).strikethrough(task.completed).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                    if task.due == day { Image(systemName: "flag.fill").font(.system(size: 8)).foregroundStyle(.secondary) }
-                }.frame(maxWidth: .infinity, minHeight: 21).contentShape(Rectangle())
+                Text(task.title).strikethrough(task.completed).lineLimit(1)
+                    .frame(maxWidth: .infinity, minHeight: 21, alignment: .leading)
+                    .contentShape(Rectangle())
             }.buttonStyle(.plain)
         }.font(.system(size: wide ? 13 : 11)).frame(height: 21).padding(.horizontal, 5).opacity(task.completed ? 0.45 : 1)
             .help(task.title + (task.due == day ? " · Due" : " · Planned"))

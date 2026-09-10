@@ -29,6 +29,19 @@ final class RedesignTests: XCTestCase {
         XCTAssertFalse(StudyTask(title: "Past repeat", planned: "2026-09-08", ruleID: "r").isInToday(on: today))
         XCTAssertTrue(StudyTask(title: "Next repeat", planned: "2026-09-10", ruleID: "r").isInToday(on: today))
     }
+    @MainActor func testGenerationRetainsYesterdayTaskButNotPastCalendarEvents() {
+        let today = "2026-09-09"
+        let yesterday = "2026-09-08"
+        var tasks = Snapshot()
+        tasks.rules = [QuizRule(title: "Daily review", weekdays: Array(1...7), itemKind: .task, startDate: yesterday)]
+        Store.generate(in: &tasks, today: today)
+        XCTAssertTrue(tasks.tasks.contains { $0.planned == yesterday })
+
+        var assessments = Snapshot()
+        assessments.rules = [QuizRule(title: "Daily quiz", weekdays: Array(1...7), itemKind: .assessment, startDate: yesterday)]
+        Store.generate(in: &assessments, today: today)
+        XCTAssertFalse(assessments.assessments.contains { $0.day == yesterday })
+    }
     func testClassTimesDecodeLegacyAndFollowWeekdays() throws {
         let legacy = try JSONDecoder().decode(Course.self, from: Data(#"{"id":"c","name":"Example A","color":"blue"}"#.utf8))
         XCTAssertNil(legacy.classBlock(on: "2026-09-09"))
