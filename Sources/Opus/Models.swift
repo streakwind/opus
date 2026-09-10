@@ -96,11 +96,20 @@ struct QuizRule: Identifiable, Codable, Equatable {
     var days: Set<Int> { Set(weekdays ?? [weekday]) }
     var kind: RepeatItem { itemKind ?? .assessment }
     var summary: String {
+        let pattern = compactPattern
+        var parts = [pattern]
+        if (intervalWeeks ?? 1) > 1 { parts[0] = pattern + " · Every \(intervalWeeks!) weeks" }
+        if let endDate { parts.append("ends " + Day.label(endDate)) }
+        return parts.joined(separator: " · ")
+    }
+    var compactPattern: String {
         let names = Calendar.current.shortWeekdaySymbols
         let sorted = days.sorted { ($0 + 5) % 7 < ($1 + 5) % 7 }
-        let pattern = days.count == 7 ? "Every day" : days == Set(2...6) ? "Weekdays" : sorted.map { names[$0 - 1] }.joined(separator: ", ")
-        return pattern + ((intervalWeeks ?? 1) > 1 ? " · Every \(intervalWeeks!) weeks" : "")
+        if days.count == 7 { return "Every day" }
+        if days == Set(2...6) { return "Weekdays" }
+        return sorted.map { names[$0 - 1] }.joined(separator: ", ")
     }
+    var repeatsLabel: String { "Repeats " + compactPattern }
     func occurs(on day: String) -> Bool {
         guard enabled, days.contains(Calendar.current.component(.weekday, from: Day.date(day))), day >= (startDate ?? "0000"), day <= (endDate ?? "9999") else { return false }
         let interval = max(1, intervalWeeks ?? 1)
@@ -270,11 +279,28 @@ extension StudyTask {
 
 extension StudyTask {
     func isInToday(on today: String) -> Bool {
-        let tomorrow = Day.string(Calendar.current.date(byAdding: .day, value: 1, to: Day.date(today))!)
-        let plannedSoon = planned.map { day in
-            ruleID == nil ? day <= tomorrow : (day >= today && day <= tomorrow)
-        } ?? false
-        return plannedSoon || (due.map { $0 <= tomorrow } ?? false)
+        let tomorrow = Day.adding(1, to: today)
+        if let due {
+            if ruleID != nil { return due >= today && due <= tomorrow }
+            return due <= tomorrow
+        }
+        if let planned {
+            if ruleID != nil { return planned >= today && planned <= tomorrow }
+            return planned <= tomorrow
+        }
+        return false
+    }
+    func rhythmCaption(rule: QuizRule?, markNext: Bool) -> String? {
+        guard ruleID != nil else { return nil }
+        var parts: [String] = []
+        if markNext && !completed { parts.append("Next") }
+        if let due { parts.append("Due " + Day.label(due)) }
+        else if let planned { parts.append(Day.label(planned)) }
+        if let rule {
+            parts.append(rule.repeatsLabel)
+            if let end = rule.endDate { parts.append("ends " + Day.label(end)) }
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
 

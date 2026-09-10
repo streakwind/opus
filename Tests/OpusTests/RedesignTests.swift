@@ -37,8 +37,10 @@ final class RedesignTests: XCTestCase {
         XCTAssertTrue(StudyTask(title: "Due tomorrow", due: "2026-09-10").isInToday(on: today))
         XCTAssertTrue(StudyTask(title: "Overdue", due: "2026-09-08").isInToday(on: today))
         XCTAssertFalse(StudyTask(title: "Later", planned: "2026-09-11").isInToday(on: today))
-        XCTAssertFalse(StudyTask(title: "Past repeat", planned: "2026-09-08", ruleID: "r").isInToday(on: today))
-        XCTAssertTrue(StudyTask(title: "Next repeat", planned: "2026-09-10", ruleID: "r").isInToday(on: today))
+        XCTAssertFalse(StudyTask(title: "Past repeat", due: "2026-09-08", ruleID: "r").isInToday(on: today))
+        XCTAssertTrue(StudyTask(title: "Next repeat", due: "2026-09-10", ruleID: "r").isInToday(on: today))
+        XCTAssertFalse(StudyTask(title: "Legacy past repeat", planned: "2026-09-08", ruleID: "r").isInToday(on: today))
+        XCTAssertTrue(StudyTask(title: "Legacy next repeat", planned: "2026-09-10", ruleID: "r").isInToday(on: today))
     }
     @MainActor func testGenerationRetainsYesterdayTaskButNotPastCalendarEvents() {
         let today = "2026-09-09"
@@ -46,7 +48,7 @@ final class RedesignTests: XCTestCase {
         var tasks = Snapshot()
         tasks.rules = [QuizRule(title: "Daily review", weekdays: Array(1...7), itemKind: .task, startDate: yesterday)]
         Store.generate(in: &tasks, today: today)
-        XCTAssertTrue(tasks.tasks.contains { $0.planned == yesterday })
+        XCTAssertTrue(tasks.tasks.contains { $0.due == yesterday && $0.occurrence == yesterday && $0.planned == nil })
 
         var assessments = Snapshot()
         assessments.rules = [QuizRule(title: "Daily quiz", weekdays: Array(1...7), itemKind: .assessment, startDate: yesterday)]
@@ -119,7 +121,8 @@ final class RedesignTests: XCTestCase {
         var rule = QuizRule(title: "Vocabulary", weekdays: [2,3,4], itemKind: .task, startDate: "2026-09-07", endDate: "2026-09-16", taskKind: .practice)
         state.rules = [rule]
         Store.generate(in: &state, today: "2026-09-07")
-        XCTAssertEqual(state.tasks.compactMap(\.planned), ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-14", "2026-09-15", "2026-09-16"])
+        XCTAssertEqual(state.tasks.compactMap(\.due), ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-14", "2026-09-15", "2026-09-16"])
+        XCTAssertTrue(state.tasks.allSatisfy { $0.planned == nil && $0.due == $0.occurrence })
         XCTAssertTrue(state.assessments.isEmpty)
         Store.generate(in: &state, today: "2026-09-07")
         XCTAssertEqual(state.tasks.count, 6)
@@ -267,6 +270,65 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(store.state.tasks.first?.kind, .checkbox)
         XCTAssertEqual(store.state.rules.first?.taskKind, .checkbox)
         XCTAssertEqual(try Database(url: url).load().tasks.first?.kind, .checkbox)
+    }
+    @MainActor func testLegacyRhythmTasksMigratePlannedToDue() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("OpusRhythmMigrate-" + UUID().uuidString).appendingPathComponent("test.sqlite")
+        let database = try Database(url: url)
+        var snapshot = Snapshot()
+        snapshot.setupComplete = true
+        let rule = QuizRule(title: "Review", weekdays: Array(1...7), itemKind: .task, startDate: "2026-09-08", endDate: "2026-10-20")
+        let id = "occurrence-1"
+        snapshot.rules = [rule]
+        snapshot.tasks = [
+            StudyTask(id: id, title: "Review", planned: "2026-09-08", ruleID: rule.id, occurrence: "2026-09-08"),
+            StudyTask(title: "Edited", planned: "2026-09-09", due: "2026-09-12", ruleID: rule.id, occurrence: "2026-09-09")
+        ]
+        try database.save(snapshot)
+        let store = try Store(database: Database(url: url))
+        let migrated = try XCTUnwrap(store.state.tasks.first { $0.id == id })
+        XCTAssertEqual(migrated.due, "2026-09-08")
+        XCTAssertNil(migrated.planned)
+        XCTAssertEqual(migrated.occurrence, "2026-09-08")
+        let edited = try XCTUnwrap(store.state.tasks.first { $0.title == "Edited" })
+        XCTAssertEqual(edited.due, "2026-09-12")
+        XCTAssertEqual(edited.planned, "2026-09-09")
+        XCTAssertEqual(edited.id, store.state.tasks.first { $0.title == "Edited" }?.id)
+    }
+    func testRhythmCaptionMarksNextRepeatAndDeadline() {
+        let rule = QuizRule(title: "Review", weekdays: [3], itemKind: .task, startDate: "2026-09-01", endDate: "2026-10-20")
+        let task = StudyTask(title: "Review", due: "2026-09-14", ruleID: rule.id, occurrence: "2026-09-14")
+        XCTAssertEqual(task.rhythmCaption(rule: rule, markNext: true), "Next · Due Sep 14 · Repeats Tue · ends Oct 20")
+        XCTAssertEqual(task.rhythmCaption(rule: rule, markNext: false), "Due Sep 14 · Repeats Tue · ends Oct 20")
+    }
+    func testArchiveKeepsDistinctRhythmOccurrences() {
+        let rule = "weekly"
+        let items = [
+            StudyTask(title: "Review", due: "2026-09-10", completed: true, ruleID: rule, occurrence: "2026-09-10"),
+            StudyTask(title: "Review", due: "2026-09-17", completed: true, ruleID: rule, occurrence: "2026-09-17"),
+            StudyTask(title: "One-off", due: "2026-09-12", completed: true)
+        ]
+        var seen = Set<String>()
+        let collapsed = items.filter { task in
+            guard let ruleID = task.ruleID else { return true }
+            return seen.insert(ruleID).inserted
+        }
+        XCTAssertEqual(collapsed.count, 2)
+        XCTAssertEqual(items.count, 3)
+        XCTAssertEqual(Set(items.map(\.id)).count, 3)
+        XCTAssertEqual(items.map(\.due), ["2026-09-10", "2026-09-17", "2026-09-12"])
+    }
+    @MainActor func testEditingRhythmPreservesModifiedOccurrenceDates() throws {
+        let store = try Store(database: db())
+        var rule = QuizRule(title: "Drill", weekdays: Array(1...7), itemKind: .task, startDate: Day.today, endDate: Day.adding(10))
+        store.saveRule(rule)
+        var edited = try XCTUnwrap(store.state.tasks.first)
+        let originalID = edited.id
+        edited.due = Day.adding(3)
+        edited.notes = "Changed"
+        store.save(edited)
+        rule.title = "Drill updated"
+        store.saveRule(rule)
+        XCTAssertTrue(store.state.tasks.contains { $0.id == originalID && $0.due == Day.adding(3) && $0.notes == "Changed" })
     }
     @MainActor func testProgressUpdatePreservesHistoryAndExplicitSaveSemantics() throws {
         let store = try Store(database: db())

@@ -37,6 +37,17 @@ final class Store {
             state.rules[index].taskKind = .checkbox
             needsSave = true
         }
+        for index in state.tasks.indices {
+            var task = state.tasks[index]
+            guard task.ruleID != nil, task.due == nil, let planned = task.planned else { continue }
+            let occurrence = task.occurrence ?? planned
+            guard planned == occurrence else { continue }
+            task.due = planned
+            task.planned = nil
+            task.occurrence = occurrence
+            state.tasks[index] = task
+            needsSave = true
+        }
         if needsSave { try database.save(state) }
         refreshOccurrences()
     }
@@ -58,6 +69,7 @@ final class Store {
         catch { self.error = error.localizedDescription }
     }
     func course(_ id: String?) -> Course? { state.courses.first { $0.id == id } }
+    func rule(_ id: String?) -> QuizRule? { id.flatMap { ruleID in state.rules.first { $0.id == ruleID } } }
     func save(_ task: StudyTask) {
         change { state in
             if let index = state.tasks.firstIndex(where: { $0.id == task.id }) { state.tasks[index] = task }
@@ -129,12 +141,18 @@ final class Store {
                 case .assessment:
                     state.assessments.append(Assessment(courseID: rule.courseID, title: rule.title, day: day, confirmed: rule.confirmsAssessments, topics: rule.notes ?? "", ruleID: rule.id, occurrence: day))
                 case .task:
-                    let kind = rule.taskKind ?? .checkbox
-                    if kind == .progress {
-                        state.tasks.append(StudyTask(courseID: rule.courseID, title: rule.title, notes: rule.notes ?? "", kind: .progress, due: day, target: rule.targetCount ?? 30, ruleID: rule.id, occurrence: day))
-                    } else {
-                        state.tasks.append(StudyTask(courseID: rule.courseID, title: rule.title, notes: rule.notes ?? "", kind: kind, planned: day, target: rule.targetCount ?? 30, ruleID: rule.id, occurrence: day))
-                    }
+                    let kind = (rule.taskKind == .progress) ? TaskKind.progress : .checkbox
+                    state.tasks.append(StudyTask(
+                        courseID: rule.courseID,
+                        title: rule.title,
+                        notes: rule.notes ?? "",
+                        kind: kind,
+                        due: day,
+                        target: rule.targetCount ?? 30,
+                        current: kind == .progress ? 0 : 0,
+                        ruleID: rule.id,
+                        occurrence: day
+                    ))
                 case .schedule:
                     state.schedule.append(ScheduleBlock(courseID: rule.courseID, title: rule.title, day: day, startMinute: rule.startMinute ?? 540, duration: rule.duration ?? 60, notes: rule.notes ?? "", ruleID: rule.id, occurrence: day))
                 }
@@ -151,12 +169,12 @@ final class Store {
         let worked = Set(state.activities.map(\.taskID))
         state.tasks.removeAll { item in
             guard item.ruleID == rule.id, !item.completed, !worked.contains(item.id), item.courseID == rule.courseID else { return false }
-            guard item.title == rule.title, item.notes == (rule.notes ?? ""), item.current == 0, item.start == 1, item.target == (rule.targetCount ?? 30), item.kind == (rule.taskKind ?? .checkbox) else { return false }
+            guard item.title == rule.title, item.notes == (rule.notes ?? ""), item.current == 0, item.start == 1, item.target == (rule.targetCount ?? 30), item.kind == ((rule.taskKind == .progress) ? .progress : .checkbox) else { return false }
             let remove: Bool
             if item.kind == .progress {
                 remove = (item.due ?? "") >= Day.today && item.due == item.occurrence && item.planned == nil
             } else {
-                remove = (item.planned ?? "") >= Day.today && item.planned == item.occurrence && item.due == nil
+                remove = (item.due ?? "") >= Day.today && item.due == item.occurrence && item.planned == nil
             }
             if remove, let day = item.occurrence { removedDays.append(day) }
             return remove
