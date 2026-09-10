@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 enum RecurringDeleteScope { case thisEvent, thisAndFollowing, allEvents }
 
@@ -120,7 +121,12 @@ final class Store {
                 case .assessment:
                     state.assessments.append(Assessment(courseID: rule.courseID, title: rule.title, day: day, confirmed: rule.confirmsAssessments, topics: rule.notes ?? "", ruleID: rule.id, occurrence: day))
                 case .task:
-                    state.tasks.append(StudyTask(courseID: rule.courseID, title: rule.title, notes: rule.notes ?? "", kind: rule.taskKind ?? .checkbox, planned: day, target: rule.targetCount ?? 30, ruleID: rule.id, occurrence: day))
+                    let kind = rule.taskKind ?? .checkbox
+                    if kind == .progress {
+                        state.tasks.append(StudyTask(courseID: rule.courseID, title: rule.title, notes: rule.notes ?? "", kind: .progress, due: day, target: rule.targetCount ?? 30, ruleID: rule.id, occurrence: day))
+                    } else {
+                        state.tasks.append(StudyTask(courseID: rule.courseID, title: rule.title, notes: rule.notes ?? "", kind: kind, planned: day, target: rule.targetCount ?? 30, ruleID: rule.id, occurrence: day))
+                    }
                 case .schedule:
                     state.schedule.append(ScheduleBlock(courseID: rule.courseID, title: rule.title, day: day, startMinute: rule.startMinute ?? 540, duration: rule.duration ?? 60, notes: rule.notes ?? "", ruleID: rule.id, occurrence: day))
                 }
@@ -136,7 +142,14 @@ final class Store {
         }
         let worked = Set(state.activities.map(\.taskID))
         state.tasks.removeAll { item in
-            let remove = item.ruleID == rule.id && !item.completed && (item.planned ?? "") >= Day.today && item.planned == item.occurrence && item.title == rule.title && item.notes == (rule.notes ?? "") && item.current == 0 && item.start == 1 && item.target == (rule.targetCount ?? 30) && item.kind == (rule.taskKind ?? .checkbox) && item.due == nil && !worked.contains(item.id) && item.courseID == rule.courseID
+            guard item.ruleID == rule.id, !item.completed, !worked.contains(item.id), item.courseID == rule.courseID else { return false }
+            guard item.title == rule.title, item.notes == (rule.notes ?? ""), item.current == 0, item.start == 1, item.target == (rule.targetCount ?? 30), item.kind == (rule.taskKind ?? .checkbox) else { return false }
+            let remove: Bool
+            if item.kind == .progress {
+                remove = (item.due ?? "") >= Day.today && item.due == item.occurrence && item.planned == nil
+            } else {
+                remove = (item.planned ?? "") >= Day.today && item.planned == item.occurrence && item.due == nil
+            }
             if remove, let day = item.occurrence { removedDays.append(day) }
             return remove
         }
@@ -222,20 +235,44 @@ final class Store {
 }
 
 extension Course {
-    static let colors = ["blue", "purple", "pink", "orange", "red", "brown", "green", "teal"]
+    static let colors = ["blue", "purple", "pink", "orange", "red", "brown", "green", "teal", "indigo", "cyan", "mint", "yellow"]
+    static func hexColor(_ value: String) -> Color? {
+        guard value.hasPrefix("#"), value.count == 7 else { return nil }
+        let hex = value.dropFirst()
+        guard let number = UInt32(hex, radix: 16) else { return nil }
+        return Color(
+            red: Double((number >> 16) & 0xFF) / 255,
+            green: Double((number >> 8) & 0xFF) / 255,
+            blue: Double(number & 0xFF) / 255
+        )
+    }
+    static func hex(from color: Color) -> String {
+        let converted = NSColor(color).usingColorSpace(.sRGB) ?? NSColor(color)
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        converted.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        return String(format: "#%02X%02X%02X", Int((red * 255).rounded()), Int((green * 255).rounded()), Int((blue * 255).rounded()))
+    }
     var tint: Color {
+        if let custom = Self.hexColor(color) { return custom }
         switch color {
-        case "purple": .purple
-        case "pink": .pink
-        case "orange": .orange
-        case "red": .red
-        case "brown": .brown
-        case "green": .green
-        case "teal": .teal
-        default: .blue
+        case "purple": return .purple
+        case "pink": return .pink
+        case "orange": return .orange
+        case "red": return .red
+        case "brown": return .brown
+        case "green": return .green
+        case "teal": return .teal
+        case "indigo": return .indigo
+        case "cyan": return .cyan
+        case "mint": return .mint
+        case "yellow": return .yellow
+        default: return .blue
         }
     }
     var scheduleGradient: LinearGradient {
+        if let custom = Self.hexColor(color) {
+            return LinearGradient(colors: [custom, custom.opacity(0.78)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        }
         let colors: [Color]
         switch color {
         case "purple": colors = [Color(red: 0.47, green: 0.30, blue: 0.76), Color(red: 0.39, green: 0.23, blue: 0.66)]
@@ -245,6 +282,10 @@ extension Course {
         case "brown": colors = [Color(red: 0.58, green: 0.39, blue: 0.27), Color(red: 0.49, green: 0.31, blue: 0.21)]
         case "green": colors = [Color(red: 0.20, green: 0.58, blue: 0.38), Color(red: 0.14, green: 0.48, blue: 0.31)]
         case "teal": colors = [Color(red: 0.13, green: 0.57, blue: 0.61), Color(red: 0.09, green: 0.47, blue: 0.52)]
+        case "indigo": colors = [Color(red: 0.35, green: 0.34, blue: 0.84), Color(red: 0.27, green: 0.25, blue: 0.72)]
+        case "cyan": colors = [Color(red: 0.18, green: 0.64, blue: 0.76), Color(red: 0.12, green: 0.52, blue: 0.64)]
+        case "mint": colors = [Color(red: 0.20, green: 0.70, blue: 0.58), Color(red: 0.14, green: 0.58, blue: 0.48)]
+        case "yellow": colors = [Color(red: 0.86, green: 0.68, blue: 0.14), Color(red: 0.74, green: 0.56, blue: 0.08)]
         default: colors = [Color(red: 0.25, green: 0.48, blue: 0.86), Color(red: 0.18, green: 0.38, blue: 0.76)]
         }
         return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -261,16 +302,24 @@ extension Store {
         if payload.hasPrefix("assessment:"), var item = state.assessments.first(where: { $0.id == String(payload.dropFirst(11)) }) {
             item.day = day; save(item); return error == nil
         }
-        if payload.hasPrefix("planned:"), var task = state.tasks.first(where: { $0.id == String(payload.dropFirst(8)) }) {
-            task.planned = day; save(task); return error == nil
+        if payload.hasPrefix("planned:") || payload.hasPrefix("task:") {
+            let id = String(payload.dropFirst(payload.hasPrefix("planned:") ? 8 : 5))
+            guard var task = state.tasks.first(where: { $0.id == id }) else { return false }
+            task.moveCalendarDay(to: day)
+            save(task)
+            return error == nil
         }
         if payload.hasPrefix("schedule:"), var block = state.schedule.first(where: { $0.id == String(payload.dropFirst(9)) }) {
             block.day = day; save(block); return error == nil
         }
-        if payload.hasPrefix("task:"), var task = state.tasks.first(where: { $0.id == String(payload.dropFirst(5)) }) {
-            task.due = day; save(task); return error == nil
-        }
         return false
+    }
+    func deleteArchivedTasks() {
+        change { state in
+            let ids = Set(state.tasks.filter { $0.kind != .progress && $0.completed }.map(\.id))
+            state.tasks.removeAll { ids.contains($0.id) }
+            state.activities.removeAll { ids.contains($0.taskID) }
+        }
     }
     func moveTask(_ id: String, before target: String) {
         guard id != target, let task = state.tasks.first(where: { $0.id == id }), state.tasks.contains(where: { $0.id == target }) else { return }

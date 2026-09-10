@@ -8,8 +8,7 @@ struct ClassScheduleCard: View {
     @State private var showingWork = false
     private var assessments: [Assessment] { CourseWork.assessments(courseID: course.id, from: block.day, in: store.state) }
     private var tasks: [StudyTask] { CourseWork.tasks(courseID: course.id, from: block.day, in: store.state, progress: false) }
-    private var progress: [StudyTask] { CourseWork.tasks(courseID: course.id, from: block.day, in: store.state, progress: true) }
-    private var taskCount: Int { tasks.count + progress.count }
+    private var progress: [StudyTask] { CourseWork.tasks(courseID: course.id, from: block.day, in: store.state, progress: true, exactDay: true) }
     var body: some View {
         Button { showingWork = true } label: {
             ZStack(alignment: .topLeading) {
@@ -19,7 +18,8 @@ struct ClassScheduleCard: View {
                     HStack(spacing: 5) {
                         Text(ClockTime.label(block.startMinute)).lineLimit(1)
                         Spacer(minLength: 2)
-                        if taskCount > 0 { Label("\(taskCount)", systemImage: "checkmark.circle").labelStyle(.titleAndIcon) }
+                        if !tasks.isEmpty { Label("\(tasks.count)", systemImage: "checkmark.circle").labelStyle(.titleAndIcon) }
+                        if !progress.isEmpty { Label("\(progress.count)", systemImage: "chart.bar.fill").labelStyle(.titleAndIcon) }
                         if !assessments.isEmpty { Label("\(assessments.count)", systemImage: "calendar").labelStyle(.titleAndIcon) }
                     }.font(.system(size: 8, weight: .medium)).foregroundStyle(.white.opacity(0.86))
                 }.padding(4)
@@ -44,7 +44,7 @@ private struct CourseWorkPopover: View {
     var from: String
     private var assessments: [Assessment] { CourseWork.assessments(courseID: course.id, from: from, in: store.state) }
     private var tasks: [StudyTask] { CourseWork.tasks(courseID: course.id, from: from, in: store.state, progress: false) }
-    private var progress: [StudyTask] { CourseWork.tasks(courseID: course.id, from: from, in: store.state, progress: true) }
+    private var progress: [StudyTask] { CourseWork.tasks(courseID: course.id, from: from, in: store.state, progress: true, exactDay: true) }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
@@ -64,9 +64,12 @@ private struct CourseWorkPopover: View {
                             sectionTitle("Assessments", count: assessments.count)
                             ForEach(assessments) { assessmentRow($0) }
                         }
-                        if !tasks.isEmpty || !progress.isEmpty {
-                            sectionTitle("Tasks", count: tasks.count + progress.count)
+                        if !tasks.isEmpty {
+                            sectionTitle("Tasks", count: tasks.count)
                             ForEach(tasks) { taskRow($0) }
+                        }
+                        if !progress.isEmpty {
+                            sectionTitle("Progress", count: progress.count)
                             ForEach(progress) { progressRow($0) }
                         }
                     }
@@ -98,11 +101,13 @@ private struct CourseWorkPopover: View {
                 updated.completed.toggle()
                 store.save(updated)
             } label: {
-                Image(systemName: "circle").foregroundStyle(.secondary).frame(width: 16)
-            }.buttonStyle(.plain).help("Complete task")
+                Image(systemName: task.completed ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(task.completed ? course.tint : .secondary)
+                    .frame(width: 16)
+            }.buttonStyle(.plain).help(task.completed ? "Reopen task" : "Complete task")
             VStack(alignment: .leading, spacing: 5) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(task.title).lineLimit(2)
+                    Text(task.title).strikethrough(task.completed).lineLimit(2)
                     Spacer(minLength: 8)
                     if task.ruleID != nil { RepeatBadge() }
                     if let date = CourseWork.relevantDay(for: task, from: from) {
@@ -110,7 +115,7 @@ private struct CourseWorkPopover: View {
                     }
                 }
             }
-        }.font(.system(size: 13))
+        }.font(.system(size: 13)).opacity(task.completed ? 0.55 : 1)
     }
     private func progressRow(_ task: StudyTask) -> some View {
         HStack(alignment: .top, spacing: 9) {

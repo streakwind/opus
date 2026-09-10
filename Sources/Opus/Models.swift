@@ -165,7 +165,8 @@ struct Snapshot: Codable {
 
 enum CourseWork {
     static func relevantDay(for task: StudyTask, from day: String) -> String? {
-        [task.due, task.planned].compactMap { $0 }.filter { $0 >= day }.min()
+        guard let calendarDay = task.calendarDay, calendarDay >= day else { return nil }
+        return calendarDay
     }
     static func assessments(courseID: String, from day: String, in state: Snapshot) -> [Assessment] {
         var seenRules = Set<String>()
@@ -177,14 +178,14 @@ enum CourseWork {
                 return seenRules.insert(ruleID).inserted
             }
     }
-    static func tasks(courseID: String, from day: String, in state: Snapshot, progress: Bool) -> [StudyTask] {
+    static func tasks(courseID: String, from day: String, in state: Snapshot, progress: Bool, exactDay: Bool = false) -> [StudyTask] {
         var seenRules = Set<String>()
         return state.tasks
             .filter {
                 $0.courseID == courseID &&
                 ($0.kind == .progress) == progress &&
                 (progress || !$0.completed) &&
-                relevantDay(for: $0, from: day) != nil
+                relevantDay(for: $0, from: day).map { !exactDay || $0 == day } == true
             }
             .sorted {
                 let lhs = relevantDay(for: $0, from: day) ?? "9999"
@@ -220,6 +221,19 @@ enum Day {
 }
 
 extension StudyTask {
+    /// One calendar day for placement: due wins; otherwise planned.
+    var calendarDay: String? {
+        if kind == .progress { return due }
+        return due ?? planned
+    }
+    mutating func moveCalendarDay(to day: String) {
+        if kind == .progress || due != nil {
+            due = day
+            planned = nil
+        } else {
+            planned = day
+        }
+    }
     static func merging(draft: StudyTask, baseline: StudyTask, latest: StudyTask) -> StudyTask {
         var result = latest
         if draft.title != baseline.title { result.title = draft.title }

@@ -22,11 +22,18 @@ struct ContentView: View {
     @State private var quickStart = 1
     @State private var quickEnd = 30
     @State private var newEntryRequest = 0
+    @State private var showSettings = false
+    @State private var confirmDeleteArchive = false
     @AppStorage("appearance") private var appearance = "system"
     @FocusState private var quickFocused: Bool
     @Environment(\.scenePhase) private var scenePhase
     private var course: Course? { store.course(selection) }
     private var isCalendar: Bool { selection == "upcoming" || selection == "schedule" }
+    private var archivedCount: Int { store.state.tasks.filter { $0.kind != .progress && $0.completed }.count }
+    private var archiveDeleteMessage: String {
+        let noun = archivedCount == 1 ? "task" : "tasks"
+        return "Permanently removes \(archivedCount) completed \(noun). Undo with ⌥⌘Z."
+    }
     private var heading: String {
         switch selection {
         case "today": Date().formatted(.dateTime.weekday(.wide).month(.wide).day().year())
@@ -79,78 +86,165 @@ struct ContentView: View {
                 return seenRules.insert(ruleID).inserted
             }
     }
-    private var preferredColorScheme: ColorScheme? {
-        appearance == "light" ? .light : appearance == "dark" ? .dark : nil
-    }
     var body: some View {
+        root
+            .onAppear(perform: applyAppearance)
+            .onChange(of: appearance) { _, _ in applyAppearance() }
+    }
+    private var root: some View {
+        splitView
+            .sheet(item: $editor, content: editorSheet)
+            .sheet(isPresented: $showSettings) { settingsView }
+            .alert("Couldn't save changes", isPresented: saveErrorPresented) {
+                Button("OK") { store.error = nil }
+            } message: {
+                Text(store.error ?? "")
+            }
+            .confirmationDialog("Delete all archived tasks?", isPresented: $confirmDeleteArchive, titleVisibility: .visible) {
+                Button("Delete All", role: .destructive) { store.deleteArchivedTasks() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(archiveDeleteMessage)
+            }
+            .onChange(of: selection) { _, _ in selectedTask = nil; narrowTask = nil; quickCourse = course?.id }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { store.refreshOccurrences() } }
+            .onChange(of: store.state.tasks.map(\.id)) { _, ids in
+                if let selectedTask, !ids.contains(selectedTask) {
+                    self.selectedTask = nil
+                    narrowTask = nil
+                }
+            }
+    }
+    private func applyAppearance() {
+        switch appearance {
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: NSApp.appearance = nil
+        }
+    }
+    private var saveErrorPresented: Binding<Bool> {
+        Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })
+    }
+    @ViewBuilder private func editorSheet(_ item: Editor) -> some View {
+        switch item {
+        case .course(let course): CourseEditor(store: store, course: course)
+        case .rule(let rule): RuleEditor(store: store, rule: rule)
+        }
+    }
+    private var splitView: some View {
         NavigationSplitView {
-            VStack(spacing: 0) {
-                HStack(spacing: 10) {
-                    Image(systemName: "square.stack.3d.up.fill").font(.title2).foregroundStyle(.teal)
-                    Text("Opus").font(.title2.weight(.semibold)); Spacer()
-                }.padding(20)
-                List(selection: $selection) {
-                    Label("Today", systemImage: "sun.max").tag("today")
-                    Label("Tasks", systemImage: "checklist").tag("all")
-                    Label("Inbox", systemImage: "tray").tag("inbox")
-                    Label("Archive", systemImage: "archivebox").tag("archive")
-                    Section {
-                        Label("Calendar", systemImage: "calendar").tag("upcoming")
-                        Label("Schedule", systemImage: "clock").tag("schedule")
-                        Label("Rhythm", systemImage: "repeat").tag("routines")
-                    }
-                    Section("Your lists") {
-                        ForEach(store.state.courses) { course in
-                            Label { Text(course.name) } icon: { Circle().fill(course.tint).frame(width: 8, height: 8) }.tag(course.id)
-                                .contextMenu { Button("Edit list…") { editor = .course(course) } }
-                        }
-                    }
-                }.listStyle(.sidebar)
-                HStack {
-                    Button { editor = .course(Course(name: "")) } label: { Label("New list", systemImage: "plus") }.buttonStyle(.plain)
-                    Spacer()
-                    Menu {
-                        Picker("Appearance", selection: $appearance) {
-                            Label("System", systemImage: "circle.lefthalf.filled").tag("system")
-                            Label("Light", systemImage: "sun.max").tag("light")
-                            Label("Dark", systemImage: "moon").tag("dark")
-                        }
-                        Divider()
-                        Button("Export all data…", action: exportData)
-                        Button("Show database in Finder") { NSWorkspace.shared.activateFileViewerSelecting([store.location]) }
-                    } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 28, height: 24)
-                }.padding(16)
-            }.navigationSplitViewColumnWidth(min: 180, ideal: 215, max: 260)
+            sidebar
         } detail: {
-            VStack(alignment: .leading, spacing: 0) {
-                if !store.state.setupComplete { welcome }
-                else if selection == "upcoming" { AssessmentCalendar(store: store, query: query, newEntryRequest: newEntryRequest) }
-                else if selection == "schedule" { ScheduleView(store: store, query: query, newEntryRequest: newEntryRequest) }
-                else {
-                    if selection != "all" && selection != "inbox" && selection != "routines" {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(heading).font(.system(size: 26, weight: .bold)).lineLimit(1)
-                        Spacer()
-                        if let course { Button { editor = .course(course) } label: { Image(systemName: "ellipsis").frame(width: 36, height: 32).contentShape(Rectangle()) }.buttonStyle(.plain).help("Edit list") }
-                    }.padding(.horizontal, 22).padding(.vertical, 18)
+            detail
+        }
+    }
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "square.stack.3d.up.fill").font(.title2).foregroundStyle(.teal)
+                Text("Opus").font(.title2.weight(.semibold)); Spacer()
+            }.padding(20)
+            List(selection: $selection) {
+                Label("Today", systemImage: "sun.max").tag("today")
+                Label("Tasks", systemImage: "checklist").tag("all")
+                Label("Inbox", systemImage: "tray").tag("inbox")
+                Label("Archive", systemImage: "archivebox").tag("archive")
+                Section {
+                    Label("Calendar", systemImage: "calendar").tag("upcoming")
+                    Label("Schedule", systemImage: "clock").tag("schedule")
+                    Label("Rhythm", systemImage: "repeat").tag("routines")
+                }
+                Section("Your lists") {
+                    ForEach(store.state.courses) { course in
+                        Label { Text(course.name) } icon: { Circle().fill(course.tint).frame(width: 8, height: 8) }.tag(course.id)
+                            .contextMenu { Button("Edit list…") { editor = .course(course) } }
                     }
-                    if selection == "routines" { routines } else { taskContent }
                 }
-            }.background(Color(nsColor: .textBackgroundColor))
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) { Button { store.undo() } label: { Image(systemName: "arrow.uturn.backward") }.disabled(!store.canUndo).help("Undo change (⌥⌘Z)") }
-                    ToolbarItem(placement: .primaryAction) { Button(action: add) { Label("Add", systemImage: "plus") }.keyboardShortcut("n").help("Add (⌘N)") }
+            }.listStyle(.sidebar)
+            HStack {
+                Button { editor = .course(Course(name: "")) } label: { Label("New list", systemImage: "plus") }.buttonStyle(.plain)
+                Spacer()
+                Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                    .buttonStyle(.plain).help("Settings").frame(width: 28, height: 24)
+            }.padding(16)
+        }.navigationSplitViewColumnWidth(min: 180, ideal: 215, max: 260)
+    }
+    private var detail: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !store.state.setupComplete { welcome }
+            else if selection == "upcoming" { AssessmentCalendar(store: store, query: query, newEntryRequest: newEntryRequest) }
+            else if selection == "schedule" { ScheduleView(store: store, query: query, newEntryRequest: newEntryRequest) }
+            else {
+                if selection != "all" && selection != "inbox" && selection != "routines" {
+                    detailHeading
                 }
-                .searchable(text: $query, placement: .toolbar, prompt: "Search")
+                if selection == "routines" { routines } else { taskContent }
+            }
         }
-        .sheet(item: $editor) { item in
-            switch item { case .course(let course): CourseEditor(store: store, course: course); case .rule(let rule): RuleEditor(store: store, rule: rule) }
+        .background(Color(nsColor: .textBackgroundColor))
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) { Button { store.undo() } label: { Image(systemName: "arrow.uturn.backward") }.disabled(!store.canUndo).help("Undo change (⌥⌘Z)") }
+            ToolbarItem(placement: .primaryAction) { Button(action: add) { Label("Add", systemImage: "plus") }.keyboardShortcut("n").help("Add (⌘N)") }
         }
-        .alert("Couldn't save changes", isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) { Button("OK") { store.error = nil } } message: { Text(store.error ?? "") }
-        .onChange(of: selection) { _, _ in selectedTask = nil; narrowTask = nil; quickCourse = course?.id }
-        .onChange(of: scenePhase) { _, phase in if phase == .active { store.refreshOccurrences() } }
-        .onChange(of: store.state.tasks.map(\.id)) { _, ids in if let selectedTask, !ids.contains(selectedTask) { self.selectedTask = nil; narrowTask = nil } }
-        .preferredColorScheme(preferredColorScheme)
+        .searchable(text: $query, placement: .toolbar, prompt: "Search")
+    }
+    private var detailHeading: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(heading).font(.system(size: 26, weight: .bold)).lineLimit(1)
+            Spacer()
+            if selection == "archive" {
+                Button("Delete All") { confirmDeleteArchive = true }
+                    .disabled(archivedCount == 0)
+                    .help("Delete all archived tasks")
+            }
+            if let course {
+                Button { editor = .course(course) } label: {
+                    Image(systemName: "gearshape").frame(width: 36, height: 32).contentShape(Rectangle())
+                }.buttonStyle(.plain).help("Edit list")
+            }
+        }.padding(.horizontal, 22).padding(.top, 18).padding(.bottom, course != nil ? 28 : 18)
+    }
+    private var settingsView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Settings").font(.system(size: 22, weight: .semibold))
+                Spacer()
+                Button("Done") { showSettings = false }.keyboardShortcut(.defaultAction)
+            }
+            .padding(.bottom, 24)
+
+            Text("Appearance").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                .padding(.bottom, 8)
+            Picker("Appearance", selection: $appearance) {
+                Label("System", systemImage: "circle.lefthalf.filled").tag("system")
+                Label("Light", systemImage: "sun.max").tag("light")
+                Label("Dark", systemImage: "moon").tag("dark")
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+
+            Divider().padding(.vertical, 22)
+
+            Text("Data").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                .padding(.bottom, 8)
+            VStack(spacing: 8) {
+                Button { exportData() } label: {
+                    Label("Export all data…", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([store.location])
+                } label: {
+                    Label("Show database in Finder", systemImage: "folder")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(24)
+        .frame(width: 440)
+        .fixedSize(horizontal: false, vertical: true)
+        .roundedControls()
     }
     private var taskContent: some View {
         GeometryReader { geometry in
@@ -322,7 +416,8 @@ struct ContentView: View {
     private func capture() {
         let title = quickTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty, quickKind != .progress || (quickStart > 0 && quickEnd >= quickStart && quickEnd <= 1000000) else { return }
-        let task = StudyTask(courseID: quickCourse, title: title, kind: quickKind, planned: selection == "today" ? Day.today : nil, due: quickDue, start: quickKind == .progress ? quickStart : 1, target: quickKind == .progress ? quickEnd : 30, current: quickKind == .progress ? quickStart - 1 : 0)
+        let planned = selection == "today" && quickDue == nil ? Day.today : nil
+        let task = StudyTask(courseID: quickCourse, title: title, kind: quickKind, planned: planned, due: quickDue, start: quickKind == .progress ? quickStart : 1, target: quickKind == .progress ? quickEnd : 30, current: quickKind == .progress ? quickStart - 1 : 0)
         store.save(task)
         if store.error == nil { quickTitle = ""; quickDue = Day.adding(1); quickFocused = true }
     }

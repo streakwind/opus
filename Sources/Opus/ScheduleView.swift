@@ -85,10 +85,28 @@ struct ScheduleView: View {
                                 dayColumn(day, width: columnWidth)
                             }
                         }.frame(height: hourHeight * 24)
-                    }.coordinateSpace(name: "scheduleViewport")
+                    }
                     .onAppear { reader.scrollTo(selectedMinute / 60, anchor: .top) }
                     .onChange(of: period) { _, _ in reader.scrollTo(selectedMinute / 60, anchor: .top) }
                     .onChange(of: anchor) { _, _ in reader.scrollTo(selectedMinute / 60, anchor: .top) }
+                }
+            }
+        }
+        .overlay {
+            if let draft = editing {
+                EditorCardBackdrop {
+                    ScheduleEditor(
+                        store: store,
+                        block: draft,
+                        onChange: { updated in
+                            editing = updated
+                            selectedMinute = updated.startMinute
+                            if !days.contains(updated.day) { anchor = Day.date(updated.day) }
+                        },
+                        onDismiss: { editing = nil }
+                    )
+                    .id(draft.id)
+                    .editorCard()
                 }
             }
         }
@@ -144,17 +162,14 @@ struct ScheduleView: View {
                     if block.id.hasPrefix("class:"), let course = store.course(block.courseID) {
                         ClassScheduleCard(store: store, course: course, block: block)
                     } else {
-                        ScheduleEventCard(store: store, block: block, fill: store.course(block.courseID)?.scheduleGradient ?? Course(name: "", color: "teal").scheduleGradient, editing: $editing, onChange: { updated in
-                            editing = updated
-                            selectedMinute = updated.startMinute
-                            if updated.day != day { anchor = Day.date(updated.day) }
+                        ScheduleEventCard(store: store, block: block, fill: store.course(block.courseID)?.scheduleGradient ?? Course(name: "", color: "teal").scheduleGradient, edit: {
+                            editing = block
+                            selectedMinute = block.startMinute
                         })
                     }
                 }
                 .frame(width: blockWidth, height: blockHeight).clipped()
                 .offset(x: CGFloat(placement.column) * usableWidth / CGFloat(placement.columns) + 1, y: CGFloat(block.startMinute) / 60 * hourHeight)
-
-
             }
             TimelineView(.periodic(from: .now, by: 60)) { context in
                 if day == Day.string(context.date) {
@@ -172,15 +187,13 @@ struct ScheduleView: View {
             }
     }
 }
-
 private struct ScheduleEventCard: View {
     var store: Store
     var block: ScheduleBlock
     var fill: LinearGradient
-    @Binding var editing: ScheduleBlock?
-    var onChange: (ScheduleBlock) -> Void
+    var edit: () -> Void
     var body: some View {
-        Button { editing = block } label: {
+        Button(action: edit) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(block.title.isEmpty ? "New event" : block.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
@@ -192,9 +205,6 @@ private struct ScheduleEventCard: View {
                 .foregroundStyle(.white)
                 .background(fill, in: RoundedRectangle(cornerRadius: 5))
         }.buttonStyle(.plain).help(block.title + " · " + block.timeLabel).draggable("schedule:" + block.id)
-            .popover(item: Binding(get: { editing?.id == block.id ? editing : nil }, set: { editing = $0 })) { draft in
-                ScheduleEditor(store: store, block: draft, onChange: onChange).id(draft.id)
-            }
             .contextMenu {
                 if block.ruleID != nil {
                     Button("Delete this event") { store.deleteSchedule(block, scope: .thisEvent) }

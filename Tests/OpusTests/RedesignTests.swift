@@ -216,6 +216,21 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(CourseWork.tasks(courseID: course.id, from: "2026-09-09", in: state, progress: false).count, 1)
         XCTAssertEqual(CourseWork.tasks(courseID: course.id, from: "2026-09-09", in: state, progress: true).count, 1)
     }
+    func testProgressAppearsOnlyOnDueCalendarDay() {
+        let course = Course(name: "English")
+        var state = Snapshot()
+        state.tasks = [
+            StudyTask(courseID: course.id, title: "Pages", kind: .progress, planned: "2026-09-08", due: "2026-09-12"),
+            StudyTask(courseID: course.id, title: "Essay", planned: "2026-09-09", due: "2026-09-10")
+        ]
+        XCTAssertEqual(CourseWork.relevantDay(for: state.tasks[0], from: "2026-09-08"), "2026-09-12")
+        XCTAssertEqual(state.tasks[0].calendarDay, "2026-09-12")
+        XCTAssertEqual(state.tasks[1].calendarDay, "2026-09-10")
+        XCTAssertEqual(CourseWork.tasks(courseID: course.id, from: "2026-09-11", in: state, progress: true).count, 1)
+        XCTAssertEqual(CourseWork.tasks(courseID: course.id, from: "2026-09-11", in: state, progress: true, exactDay: true).count, 0)
+        XCTAssertEqual(CourseWork.tasks(courseID: course.id, from: "2026-09-12", in: state, progress: true, exactDay: true).count, 1)
+        XCTAssertEqual(CourseWork.tasks(courseID: course.id, from: "2026-09-13", in: state, progress: true).count, 0)
+    }
     func testNotesDraftMergesWithLiveProgress() {
         let original = StudyTask(title: "Notes", kind: .progress, current: 3)
         var draft = original; draft.notes = "Keep this edit"

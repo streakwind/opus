@@ -22,13 +22,23 @@ struct CourseEditor: View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("List name", text: $course.name).textFieldStyle(.plain).font(.system(size: 19, weight: .semibold))
             PropertyRow("Color") {
-                HStack(spacing: 9) {
-                    ForEach(Course.colors, id: \.self) { color in
-                        Button { course.color = color } label: {
-                            Circle().fill(Course(name: "", color: color).tint).frame(width: 20, height: 20)
-                                .overlay { if course.color == color { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white) } }
-                        }.buttonStyle(.plain).accessibilityLabel(color).accessibilityValue(course.color == color ? "Selected" : "")
+                VStack(alignment: .leading, spacing: 10) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(24), spacing: 8), count: 6), alignment: .leading, spacing: 8) {
+                        ForEach(Course.colors, id: \.self) { color in
+                            Button { course.color = color } label: {
+                                Circle().fill(Course(name: "", color: color).tint).frame(width: 20, height: 20)
+                                    .overlay { if course.color == color { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white) } }
+                            }.buttonStyle(.plain).accessibilityLabel(color).accessibilityValue(course.color == color ? "Selected" : "")
+                        }
                     }
+                    ColorPicker(
+                        "Custom",
+                        selection: Binding(
+                            get: { course.tint },
+                            set: { course.color = Course.hex(from: $0) }
+                        ),
+                        supportsOpacity: false
+                    )
                 }
             }
             HStack {

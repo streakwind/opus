@@ -24,13 +24,25 @@ struct CourseMenu: View {
 enum CalendarDraft: Identifiable {
     case new(String), task(StudyTask, String), assessment(Assessment)
     var id: String {
-        switch self { case .new(let day): "new:" + day; case .task(let task, let day): task.id + ":" + day; case .assessment(let item): item.id }
+        switch self {
+        case .new: "new"
+        case .task(let task, _): "task:" + task.id
+        case .assessment(let item): "assessment:" + item.id
+        }
+    }
+    var day: String {
+        switch self {
+        case .new(let day): day
+        case .task(_, let day): day
+        case .assessment(let item): item.day
+        }
     }
 }
 struct CalendarEntryEditor: View {
     var store: Store
     var source: CalendarDraft
     var onDateChange: (String) -> Void
+    var onDismiss: () -> Void
     @State private var title: String
     @State private var course: String?
     @State private var day: String?
@@ -39,9 +51,8 @@ struct CalendarEntryEditor: View {
     @State private var notes: String
     @State private var notesVisible: Bool
     @FocusState private var titleFocused: Bool
-    @Environment(\.dismiss) private var dismiss
-    init(store: Store, source: CalendarDraft, onDateChange: @escaping (String) -> Void = { _ in }) {
-        self.store = store; self.source = source; self.onDateChange = onDateChange
+    init(store: Store, source: CalendarDraft, onDateChange: @escaping (String) -> Void = { _ in }, onDismiss: @escaping () -> Void = {}) {
+        self.store = store; self.source = source; self.onDateChange = onDateChange; self.onDismiss = onDismiss
         switch source {
         case .new(let day):
             _title = State(initialValue: ""); _day = State(initialValue: day); _kind = State(initialValue: .task); _confirmed = State(initialValue: true); _notes = State(initialValue: ""); _notesVisible = State(initialValue: false)
@@ -77,7 +88,7 @@ struct CalendarEntryEditor: View {
             HStack {
                 if !isNew { Button(role: .destructive, action: delete) { Image(systemName: "trash") }.buttonStyle(.plain).help("Delete") }
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel", action: onDismiss).keyboardShortcut(.cancelAction)
                 Button(isNew ? "Add" : "Done", action: save).keyboardShortcut(.defaultAction).disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }.padding(18).frame(width: 340).roundedControls()
@@ -89,18 +100,20 @@ struct CalendarEntryEditor: View {
         guard !name.isEmpty else { return }
         switch source {
         case .new:
-            if kind == .task { store.save(StudyTask(courseID: course, title: name, notes: notes, planned: day ?? Day.today)) }
+            if kind == .task {
+                let on = day ?? Day.today
+                store.save(StudyTask(courseID: course, title: name, notes: notes, due: on))
+            }
             else { store.save(Assessment(courseID: course, title: name, day: day ?? Day.today, confirmed: confirmed, topics: notes)) }
-        case .task(let original, let originalDay):
-            guard var current = store.state.tasks.first(where: { $0.id == original.id }) else { dismiss(); return }
+        case .task(let original, _):
+            guard var current = store.state.tasks.first(where: { $0.id == original.id }) else { onDismiss(); return }
             current.title = name; current.notes = notes; current.courseID = course
-            if original.due == originalDay { current.due = day }
-            else { current.planned = day }
+            if let day { current.moveCalendarDay(to: day) }
             store.save(current)
         case .assessment(var item):
             item.title = name; item.topics = notes; item.day = day ?? Day.today; item.confirmed = confirmed; item.courseID = course; store.save(item)
         }
-        if store.error == nil { store.calendarFocus = CalendarFocus(day: day ?? Day.today); dismiss() }
+        if store.error == nil { store.calendarFocus = CalendarFocus(day: day ?? Day.today); onDismiss() }
     }
     private func delete() {
         switch source {
@@ -108,7 +121,7 @@ struct CalendarEntryEditor: View {
         case .assessment(let item): store.change { $0.assessments.removeAll { $0.id == item.id } }
         case .new: break
         }
-        dismiss()
+        onDismiss()
     }
 }
 
@@ -116,16 +129,17 @@ struct ScheduleEditor: View {
     var store: Store
     @State var block: ScheduleBlock
     var onChange: (ScheduleBlock) -> Void = { _ in }
+    var onDismiss: () -> Void
     @State private var repeatBlock = false
     @State private var repeatDays: Set<Int> = []
     @State private var repeatEnd: String?
     private let originalRepeatEnd: String?
     @FocusState private var titleFocused: Bool
-    @Environment(\.dismiss) private var dismiss
-    init(store: Store, block: ScheduleBlock, onChange: @escaping (ScheduleBlock) -> Void = { _ in }) {
+    init(store: Store, block: ScheduleBlock, onChange: @escaping (ScheduleBlock) -> Void = { _ in }, onDismiss: @escaping () -> Void = {}) {
         self.store = store
         _block = State(initialValue: block)
         self.onChange = onChange
+        self.onDismiss = onDismiss
         let end = block.ruleID.flatMap { id in store.state.rules.first { $0.id == id }?.endDate }
         _repeatEnd = State(initialValue: end)
         originalRepeatEnd = end
@@ -167,7 +181,7 @@ struct ScheduleEditor: View {
                     }
                 }
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel", action: onDismiss).keyboardShortcut(.cancelAction)
                 Button(existing ? "Done" : "Add", action: save).keyboardShortcut(.defaultAction).disabled(!valid)
             }
         }.padding(18).frame(width: 350).roundedControls()
@@ -184,11 +198,11 @@ struct ScheduleEditor: View {
             store.save(block)
             if let ruleID = block.ruleID, repeatEnd != originalRepeatEnd { store.setScheduleRuleEnd(ruleID, to: repeatEnd) }
         }
-        if store.error == nil { dismiss() }
+        if store.error == nil { onDismiss() }
     }
     private func delete(_ scope: RecurringDeleteScope) {
         store.deleteSchedule(block, scope: scope)
-        if store.error == nil { dismiss() }
+        if store.error == nil { onDismiss() }
     }
 }
 

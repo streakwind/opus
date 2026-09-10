@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import Opus
 
 final class StorageTests: XCTestCase {
@@ -128,8 +129,43 @@ final class CalendarInteractionTests: XCTestCase {
         store.save(task)
         XCTAssertTrue(store.reschedule("task:" + task.id, to: "2026-09-14"))
         XCTAssertEqual(store.state.tasks.first?.due, "2026-09-14")
-        XCTAssertEqual(store.state.tasks.first?.planned, "2026-09-08")
+        XCTAssertNil(store.state.tasks.first?.planned)
+        XCTAssertEqual(store.state.tasks.first?.calendarDay, "2026-09-14")
         XCTAssertFalse(store.reschedule("arbitrary text", to: "2026-09-14"))
+    }
+    @MainActor func testCalendarDayPrefersDueAndRescheduleClearsPlanned() throws {
+        let store = try Store(database: Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusDay-" + UUID().uuidString).appendingPathComponent("test.sqlite")))
+        var task = StudyTask(title: "Essay", planned: "2026-09-09", due: "2026-09-10")
+        store.save(task)
+        XCTAssertEqual(store.state.tasks[0].calendarDay, "2026-09-10")
+        task = store.state.tasks[0]
+        task.moveCalendarDay(to: "2026-09-11")
+        store.save(task)
+        XCTAssertEqual(store.state.tasks[0].due, "2026-09-11")
+        XCTAssertNil(store.state.tasks[0].planned)
+        XCTAssertEqual(store.state.tasks[0].calendarDay, "2026-09-11")
+        var plannedOnly = StudyTask(title: "Inbox", planned: "2026-09-08")
+        store.save(plannedOnly)
+        plannedOnly = store.state.tasks.first { $0.title == "Inbox" }!
+        plannedOnly.moveCalendarDay(to: "2026-09-12")
+        store.save(plannedOnly)
+        XCTAssertEqual(store.state.tasks.first { $0.title == "Inbox" }?.planned, "2026-09-12")
+        XCTAssertNil(store.state.tasks.first { $0.title == "Inbox" }?.due)
+    }
+    @MainActor func testDeleteArchivedTasksClearsCompletedOnly() throws {
+        let store = try Store(database: Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusArchive-" + UUID().uuidString).appendingPathComponent("test.sqlite")))
+        store.save(StudyTask(title: "Done", completed: true))
+        store.save(StudyTask(title: "Open"))
+        store.deleteArchivedTasks()
+        XCTAssertEqual(store.state.tasks.map(\.title), ["Open"])
+        store.undo()
+        XCTAssertEqual(Set(store.state.tasks.map(\.title)), Set(["Done", "Open"]))
+    }
+    func testCustomCourseHexColorsRoundTrip() {
+        XCTAssertEqual(Course.hexColor("#112233").map(Course.hex(from:)), "#112233")
+        XCTAssertEqual(Course.hex(from: Color(red: 1, green: 0, blue: 0.5)), "#FF0080")
+        XCTAssertEqual(Course(name: "Y", color: "#FF0080").color, "#FF0080")
+        XCTAssertEqual(Course.hex(from: Course(name: "Y", color: "#FF0080").tint), "#FF0080")
     }
     @MainActor func testManualReorderingSurvivesReopening() throws {
         let database = try Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusOrder-" + UUID().uuidString).appendingPathComponent("test.sqlite"))

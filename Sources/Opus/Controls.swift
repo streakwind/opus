@@ -14,6 +14,35 @@ extension View {
     func roundedControls() -> some View { modifier(RoundedControls()) }
 }
 
+struct EditorCardBackdrop<Content: View>: View {
+    @ViewBuilder var content: Content
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.12)
+            content
+        }
+        .ignoresSafeArea()
+        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+        .zIndex(100)
+    }
+}
+
+struct EditorCard: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.75)
+            }
+            .shadow(color: .black.opacity(0.22), radius: 24, y: 10)
+    }
+}
+extension View {
+    func editorCard() -> some View { modifier(EditorCard()) }
+}
+
 struct PillChrome: ViewModifier {
     func body(content: Content) -> some View {
         content
