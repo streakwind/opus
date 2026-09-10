@@ -13,8 +13,6 @@ struct ContentView: View {
     @State private var editor: Editor?
     @State private var selectedTask: String?
     @State private var narrowTask: StudyTask?
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var sidebarWidth: CGFloat = 0
     @State private var quickTitle = ""
     @State private var quickKind: TaskKind = .checkbox
     @State private var quickCourse: String?
@@ -135,12 +133,11 @@ struct ContentView: View {
         }
     }
     private var splitView: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        NavigationSplitView {
             sidebar
         } detail: {
             detail
         }
-        .onPreferenceChange(SidebarWidthKey.self) { sidebarWidth = $0 }
     }
     private var sidebar: some View {
         VStack(spacing: 0) {
@@ -172,21 +169,16 @@ struct ContentView: View {
                     .buttonStyle(.plain).help("Settings").frame(width: 28, height: 24)
             }.padding(16)
         }
-        .background {
-            GeometryReader { geometry in
-                Color.clear.preference(key: SidebarWidthKey.self, value: geometry.size.width)
-            }
-        }
         .navigationSplitViewColumnWidth(min: 180, ideal: 215, max: 260)
     }
     private var detail: some View {
         VStack(alignment: .leading, spacing: 0) {
             if !store.state.setupComplete { welcome }
             else if selection == "upcoming" {
-                AssessmentCalendar(store: store, query: query, newEntryRequest: newEntryRequest, editorLeadingInset: editorLeadingInset)
+                AssessmentCalendar(store: store, query: query, newEntryRequest: newEntryRequest)
             }
             else if selection == "schedule" {
-                ScheduleView(store: store, query: query, newEntryRequest: newEntryRequest, editorLeadingInset: editorLeadingInset)
+                ScheduleView(store: store, query: query, newEntryRequest: newEntryRequest)
             }
             else {
                 if selection != "all" && selection != "inbox" && selection != "routines" {
@@ -212,9 +204,6 @@ struct ContentView: View {
                     .help("Delete all archived tasks")
             }
         }.padding(.horizontal, 22).padding(.top, 18).padding(.bottom, course != nil ? 2 : 12)
-    }
-    private var editorLeadingInset: CGFloat {
-        columnVisibility == .detailOnly ? 0 : sidebarWidth
     }
     private var settingsView: some View {
         VStack(alignment: .leading, spacing: 0) {

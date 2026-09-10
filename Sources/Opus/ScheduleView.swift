@@ -46,7 +46,6 @@ struct ScheduleView: View {
     var store: Store
     var query: String
     var newEntryRequest: Int
-    var editorLeadingInset: CGFloat = 0
     @State private var anchor = Date()
     @State private var period = CalendarPeriod.week
     @State private var editing: ScheduleBlock?
@@ -95,7 +94,7 @@ struct ScheduleView: View {
         }
         .overlay {
             if let draft = editing {
-                EditorCardBackdrop(leadingInset: editorLeadingInset) {
+                EditorCardBackdrop {
                     ScheduleEditor(
                         store: store,
                         block: draft,

@@ -155,21 +155,18 @@ struct TaskInspector: View {
             .padding(.vertical, 14)
             Divider()
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 14) {
                     TextField("Task title", text: $draft.title, axis: .vertical)
                         .textFieldStyle(.plain)
                         .font(.system(size: 22, weight: .semibold))
                         .lineLimit(1...5)
-                        .padding(12)
-                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
+                    Divider()
 
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("DETAILS")
-                            .font(.system(size: 10, weight: .semibold))
+                        Text("Details")
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .padding(.horizontal, 12)
-                            .padding(.top, 11)
-                            .padding(.bottom, 4)
+                            .padding(.bottom, 5)
                         PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $draft.courseID) }
                         PropertyRow("Due") { DateMenu(title: "No deadline", value: $draft.due) }
                         PropertyRow("Type") {
@@ -178,17 +175,14 @@ struct TaskInspector: View {
                             }.labelsHidden().fixedSize()
                         }
                     }
-                    .padding(.bottom, 7)
-                    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
 
                     if draft.kind == .progress {
+                        Divider()
                         VStack(alignment: .leading, spacing: 0) {
-                            Text("TRACKING")
-                                .font(.system(size: 10, weight: .semibold))
+                            Text("Tracking")
+                                .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
-                                .padding(.horizontal, 12)
-                                .padding(.top, 11)
-                                .padding(.bottom, 4)
+                                .padding(.bottom, 5)
                             PropertyRow("Range") {
                                 HStack {
                                     TextField("Start", value: $draft.start, format: .number.grouping(.never)).frame(width: 55)
@@ -197,8 +191,6 @@ struct TaskInspector: View {
                                 }.textFieldStyle(.roundedBorder)
                             }
                         }
-                        .padding(.bottom, 7)
-                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
                         InlineProgress(store: store, task: store.state.tasks.first { $0.id == draft.id } ?? draft)
                     }
                     if !valid { Text("Check the title and progress range.").font(.caption).foregroundStyle(.orange) }
@@ -206,7 +198,7 @@ struct TaskInspector: View {
                 .padding(18)
             }
         }
-        .background(.regularMaterial)
+        .background(Color(nsColor: .textBackgroundColor))
         .overlay(alignment: .leading) { Divider() }
         .task(id: draft) { do { try await Task.sleep(for: .milliseconds(400)); commit() } catch { } }
         .onDisappear { commit() }

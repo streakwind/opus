@@ -15,31 +15,17 @@ extension View {
 }
 
 struct EditorCardBackdrop<Content: View>: View {
-    var leadingInset: CGFloat
     @ViewBuilder var content: Content
-    init(leadingInset: CGFloat = 0, @ViewBuilder content: () -> Content) {
-        self.leadingInset = leadingInset
-        self.content = content()
-    }
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                Color.black.opacity(0.12)
-                content.position(
-                    x: geometry.size.width / 2 + leadingInset / 2,
-                    y: geometry.size.height / 2
-                )
-            }
+        ZStack {
+            Color.black.opacity(0.12)
+            content
         }
-        .ignoresSafeArea()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transition(.opacity.combined(with: .scale(scale: 0.98)))
         .zIndex(100)
     }
-}
-
-struct SidebarWidthKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 struct EditorCard: ViewModifier {
