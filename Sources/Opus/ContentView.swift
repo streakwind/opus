@@ -32,6 +32,7 @@ struct ContentView: View {
         case "today": Date().formatted(.dateTime.weekday(.wide).month(.wide).day().year())
         case "all": "Tasks"
         case "inbox": "Inbox"
+        case "archive": "Archive"
         case "routines": "Rhythm"
         default: course?.name ?? "Today"
         }
@@ -42,10 +43,11 @@ struct ContentView: View {
             switch selection {
             case "all": matches = true
             case "inbox": matches = task.courseID == nil
+            case "archive": matches = task.kind != .progress && task.completed
             case "today": matches = task.isInToday(on: Day.today)
             default: matches = task.courseID == selection
             }
-            let visible = task.kind == .progress || showCompleted || !task.completed
+            let visible = selection == "archive" || task.kind == .progress || showCompleted || !task.completed
             return matches && visible && (query.isEmpty || task.title.localizedCaseInsensitiveContains(query) || task.notes.localizedCaseInsensitiveContains(query))
         }.sorted {
             if $0.completed != $1.completed { return !$0.completed }
@@ -91,6 +93,7 @@ struct ContentView: View {
                     Label("Today", systemImage: "sun.max").tag("today")
                     Label("Tasks", systemImage: "checklist").tag("all")
                     Label("Inbox", systemImage: "tray").tag("inbox")
+                    Label("Archive", systemImage: "archivebox").tag("archive")
                     Section {
                         Label("Calendar", systemImage: "calendar").tag("upcoming")
                         Label("Schedule", systemImage: "clock").tag("schedule")
@@ -154,7 +157,7 @@ struct ContentView: View {
             let wide = geometry.size.width >= 740
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    quickEntry
+                    if selection != "archive" { quickEntry }
                     List {
                         if !assessments.isEmpty {
                             listHeading("Assessments")

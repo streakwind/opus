@@ -76,6 +76,7 @@ struct ProgressLine: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 5) {
                     if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
+                    else { Text("Inbox") }
                     if let due = task.due { Text("· Goal " + Day.label(due)).foregroundStyle(due < Day.today ? Color.red : .secondary) }
                     if task.ruleID != nil { RepeatBadge() }
                 }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).padding(.top, 1)
@@ -105,6 +106,7 @@ struct TaskLine: View {
                     Button(action: openDetails) { Text(task.title).font(.system(size: 14, weight: .medium)).strikethrough(task.completed).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.plain)
                     HStack(spacing: 5) {
                         if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
+                        else { Text("Inbox") }
                         if let due = task.due { Text("· Due " + Day.label(due)).foregroundStyle(due < Day.today && !task.completed ? Color.red : .secondary) }
                         if task.planned == Day.adding(1), task.due != task.planned { Text("· Tomorrow") }
                         if task.ruleID != nil { RepeatBadge() }
