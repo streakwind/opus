@@ -120,7 +120,12 @@ struct ScheduleView: View {
     private func dayColumn(_ day: String, width: CGFloat) -> some View {
         let classes = store.state.courses.flatMap { $0.classBlocks(on: day) }
         let displayed = classes + store.state.schedule.filter { $0.id != editing?.id } + (editing.map { [$0] } ?? [])
-        let blocks = displayed.filter { $0.day == day && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)) }
+        let blocks = displayed.filter {
+            $0.day == day &&
+            (query.isEmpty ||
+             $0.title.localizedCaseInsensitiveContains(query) ||
+             (store.course($0.courseID)?.name.localizedCaseInsensitiveContains(query) ?? false))
+        }
         return ZStack(alignment: .topLeading) {
             VStack(spacing: 0) {
                 ForEach(0..<24) { _ in

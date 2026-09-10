@@ -127,12 +127,17 @@ private struct CalendarDayCell: View {
     @Binding var editing: CalendarDraft?
     @State private var overflow = false
     @State private var targeted = false
+    private func matches(_ title: String, courseID: String?) -> Bool {
+        query.isEmpty ||
+        title.localizedCaseInsensitiveContains(query) ||
+        (store.course(courseID)?.name.localizedCaseInsensitiveContains(query) ?? false)
+    }
     private var assessments: [Assessment] {
-        store.state.assessments.filter { $0.day == day && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) || (store.course($0.courseID)?.name.localizedCaseInsensitiveContains(query) ?? false)) }.sorted { $0.title < $1.title }
+        store.state.assessments.filter { $0.day == day && matches($0.title, courseID: $0.courseID) }.sorted { $0.title < $1.title }
     }
     private var tasks: [StudyTask] {
         store.state.tasks.filter {
-            $0.calendarDay == day && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query))
+            $0.calendarDay == day && matches($0.title, courseID: $0.courseID)
         }.sorted { !$0.completed && $1.completed }
     }
     private var count: Int { assessments.count + tasks.count }

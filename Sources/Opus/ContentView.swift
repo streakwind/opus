@@ -34,6 +34,12 @@ struct ContentView: View {
         let noun = archivedCount == 1 ? "task" : "tasks"
         return "Permanently removes \(archivedCount) completed \(noun). Undo with ⌥⌘Z."
     }
+    private func matchesQuery(title: String, details: String = "", courseID: String?) -> Bool {
+        query.isEmpty ||
+        title.localizedCaseInsensitiveContains(query) ||
+        details.localizedCaseInsensitiveContains(query) ||
+        (store.course(courseID)?.name.localizedCaseInsensitiveContains(query) ?? false)
+    }
     private var heading: String {
         switch selection {
         case "today": Date().formatted(.dateTime.weekday(.wide).month(.wide).day().year())
@@ -55,7 +61,7 @@ struct ContentView: View {
             default: matches = task.courseID == selection
             }
             let visible = selection == "archive" || task.kind == .progress || showCompleted || !task.completed
-            return matches && visible && (query.isEmpty || task.title.localizedCaseInsensitiveContains(query) || task.notes.localizedCaseInsensitiveContains(query))
+            return matches && visible && matchesQuery(title: task.title, details: task.notes, courseID: task.courseID)
         }.sorted {
             if $0.completed != $1.completed { return !$0.completed }
             return dueOrder ? ($0.due ?? "9999") < ($1.due ?? "9999") : false
@@ -78,7 +84,7 @@ struct ContentView: View {
         return store.state.assessments
             .filter {
                 (courseID == nil || $0.courseID == courseID) && $0.day >= Day.today &&
-                (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) || $0.topics.localizedCaseInsensitiveContains(query))
+                matchesQuery(title: $0.title, details: $0.topics, courseID: $0.courseID)
             }
             .sorted { $0.day == $1.day ? $0.title < $1.title : $0.day < $1.day }
             .filter { item in
@@ -202,7 +208,7 @@ struct ContentView: View {
                     Image(systemName: "gearshape").frame(width: 36, height: 32).contentShape(Rectangle())
                 }.buttonStyle(.plain).help("Edit list")
             }
-        }.padding(.horizontal, 22).padding(.top, 18).padding(.bottom, course != nil ? 28 : 18)
+        }.padding(.horizontal, 22).padding(.top, 18).padding(.bottom, course != nil ? 2 : 12)
     }
     private var settingsView: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -347,7 +353,6 @@ struct ContentView: View {
     private var quickEntry: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                Image(systemName: "plus").foregroundStyle(.secondary)
                 TextField(quickKind == .progress ? "Add progress…" : "Add a task…", text: $quickTitle).textFieldStyle(.plain).font(.system(size: 14)).focused($quickFocused).onSubmit(capture)
                 if !quickTitle.isEmpty { Button(action: capture) { Image(systemName: "return") }.buttonStyle(.plain).help("Add task") }
                 Menu {
@@ -371,7 +376,7 @@ struct ContentView: View {
                     }.textFieldStyle(.roundedBorder).font(.callout)
                 }
             }
-        }.padding(.horizontal, 22).padding(.vertical, 14)
+        }.padding(.horizontal, 22).padding(.vertical, 10)
     }
     @ViewBuilder private var entryOptions: some View {
         PillPicker("List", label: store.course(quickCourse)?.shortName ?? "Inbox", selection: $quickCourse) {
@@ -384,7 +389,7 @@ struct ContentView: View {
     private var routines: some View {
         VStack(alignment: .leading, spacing: 0) {
             List {
-                ForEach(store.state.rules.filter { $0.kind != .schedule && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)) }) { rule in
+                ForEach(store.state.rules.filter { $0.kind != .schedule && matchesQuery(title: $0.title, details: $0.notes ?? "", courseID: $0.courseID) }) { rule in
                     HStack(spacing: 12) {
                         Image(systemName: rule.kind == .task ? "checkmark.circle" : rule.kind == .assessment ? "calendar" : "clock").foregroundStyle(store.course(rule.courseID)?.tint ?? .teal)
                         Button { editor = .rule(rule) } label: {

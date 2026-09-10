@@ -18,9 +18,14 @@ struct EditorCardBackdrop<Content: View>: View {
     @ViewBuilder var content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.12)
-            content
+        GeometryReader { geometry in
+            ZStack {
+                Color.black.opacity(0.12)
+                content.position(
+                    x: geometry.size.width / 2 + geometry.safeAreaInsets.leading / 2,
+                    y: geometry.size.height / 2
+                )
+            }
         }
         .ignoresSafeArea()
         .transition(.opacity.combined(with: .scale(scale: 0.98)))
