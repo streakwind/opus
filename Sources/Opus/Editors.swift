@@ -4,6 +4,10 @@ struct CourseEditor: View {
     var store: Store
     @State var course: Course
     @Environment(\.dismiss) private var dismiss
+    private var suggestedClassStart: Int {
+        let starts: [String: Int] = [:]
+        return starts[course.name] ?? 540
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("List name", text: $course.name).textFieldStyle(.plain).font(.system(size: 19, weight: .semibold))
@@ -16,6 +20,16 @@ struct CourseEditor: View {
                         }.buttonStyle(.plain).accessibilityLabel(color).accessibilityValue(course.color == color ? "Selected" : "")
                     }
                 }
+            }
+            Toggle("Class time", isOn: Binding(get: { course.classStart != nil }, set: { course.classStart = $0 ? suggestedClassStart : nil }))
+            if course.classStart != nil {
+                PropertyRow("Starts") { TimeControl(minutes: Binding(get: { course.classStart ?? 465 }, set: { course.classStart = $0 })) }
+                PropertyRow("Length") {
+                    PillPicker("Length", label: "\(course.classDuration ?? 50) min", selection: Binding(get: { course.classDuration ?? 50 }, set: { course.classDuration = $0 })) {
+                        ForEach([30,45,50,60,75,90], id: \.self) { Text("\($0) minutes").tag($0) }
+                    }
+                }
+                WeekdayPicker(days: Binding(get: { Set(course.classDays ?? Array(2...6)) }, set: { course.classDays = $0.sorted() }))
             }
             HStack {
                 if store.state.courses.contains(where: { $0.id == course.id }) {

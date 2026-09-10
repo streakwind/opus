@@ -23,9 +23,9 @@ struct InlineProgress: View {
     private var controls: some View {
         HStack(spacing: 6) {
             Text("p.").font(.caption).foregroundStyle(.secondary).fixedSize()
-            TextField("Last page read", value: $number, format: .number.grouping(.never)).textFieldStyle(.plain).multilineTextAlignment(.trailing)
-                .font(.system(size: 13, weight: .medium, design: .monospaced)).frame(width: 34).focused($editing).onSubmit { apply(number) }
-                .padding(.horizontal, 5).padding(.vertical, 3).background(editing ? Color.primary.opacity(0.06) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+            TextField("Last page read", value: $number, format: .number.grouping(.never)).textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing)
+                .font(.system(size: 13, weight: .medium, design: .monospaced)).frame(width: 48).focused($editing).onSubmit { apply(number) }
+                .accessibilityLabel("Last page read").help("Enter a page and press Return")
             Text("/ \(task.target)").font(.caption).foregroundStyle(.secondary).fixedSize()
 
         }.fixedSize().help("Log the last page you read · " + task.progressLabel)
@@ -114,19 +114,6 @@ struct TaskInspector: View {
                             }
                         }
                         InlineProgress(store: store, task: store.state.tasks.first { $0.id == draft.id } ?? draft)
-                    }
-                    let entries = store.state.activities.filter { $0.taskID == draft.id }.suffix(5).reversed()
-                    if !entries.isEmpty {
-                        DisclosureGroup("Recent activity") {
-                            VStack(alignment: .leading, spacing: 10) {
-                                ForEach(entries) { entry in
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(entry.note)
-                                        Text(entry.date.formatted(date: .abbreviated, time: .shortened)).foregroundStyle(.secondary)
-                                    }.font(.caption)
-                                }
-                            }.padding(.top, 8)
-                        }.font(.caption).foregroundStyle(.secondary)
                     }
                     if !valid { Text("Check the title and progress range.").font(.caption).foregroundStyle(.orange) }
                 }.padding(.horizontal, 16).padding(.bottom, 16)

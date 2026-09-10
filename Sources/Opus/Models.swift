@@ -4,6 +4,13 @@ struct Course: Identifiable, Codable, Hashable {
     var id = UUID().uuidString
     var name: String
     var color: String = "blue"
+    var classStart: Int?
+    var classDuration: Int?
+    var classDays: [Int]?
+    func classBlock(on day: String) -> ScheduleBlock? {
+        guard let start = classStart, (classDays ?? Array(2...6)).contains(Calendar.current.component(.weekday, from: Day.date(day))) else { return nil }
+        return ScheduleBlock(id: "class:" + id + ":" + day, courseID: id, title: name, day: day, startMinute: start, duration: min(classDuration ?? 50, 1440 - start))
+    }
 }
 
 enum TaskKind: String, CaseIterable, Codable, Identifiable {
@@ -188,3 +195,5 @@ extension StudyTask {
         return plannedSoon || (due.map { $0 <= tomorrow } ?? false)
     }
 }
+
+struct CalendarFocus: Equatable { var id = UUID(); var day: String }

@@ -3,6 +3,7 @@ import SwiftUI
 @MainActor @Observable
 final class Store {
     var state: Snapshot
+    var calendarFocus: CalendarFocus?
     var error: String?
     private let database: Database
     private var undoStates: [Snapshot] = []

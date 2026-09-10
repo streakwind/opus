@@ -57,19 +57,31 @@ struct AssessmentCalendar: View {
                 let columns = period == .day ? 1 : 7
                 let rows = days.count / columns
                 let height = max(period == .month ? 96 : 180, geometry.size.height / CGFloat(rows))
+                ScrollViewReader { reader in
                 ScrollView {
                     VStack(spacing: 0) {
                         ForEach(0..<rows, id: \.self) { row in
                             HStack(spacing: 0) {
                                 ForEach(Array(days[(row*columns)..<(row*columns+columns)]), id: \.self) { day in
                                     CalendarDayCell(store: store, day: day, inMonth: period != .month || Calendar.current.isDate(Day.date(day), equalTo: anchor, toGranularity: .month), query: query, capacity: max(1, Int((height - 52) / 23)), wide: period == .day, selected: selectedDay == day, newEntryRequest: newEntryRequest, select: { selectedDay = day })
-                                        .frame(width: geometry.size.width / CGFloat(columns), height: height)
+                                        .frame(width: geometry.size.width / CGFloat(columns), height: height).id(day)
                                 }
                             }
                         }
                     }
                 }.scrollIndicators(.hidden).id(period.rawValue + (days.first ?? ""))
+                .onChange(of: store.calendarFocus) { _, focus in
+                    guard let focus else { return }
+                    Task { @MainActor in
+                        await Task.yield()
+                        reader.scrollTo(focus.day, anchor: .center)
+                    }
+                }
+                }
             }
+        }
+        .onChange(of: store.calendarFocus) { _, focus in
+            guard let focus else { return }; selectedDay = focus.day; anchor = Day.date(focus.day)
         }
         .onChange(of: anchor) { _, _ in selectedDay = Day.string(anchor); ensureOccurrences() }
         .onChange(of: period) { _, _ in anchor = Day.date(selectedDay); ensureOccurrences() }
@@ -128,8 +140,8 @@ private struct CalendarDayCell: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(targeted || selected ? Color.accentColor.opacity(0.08) : background)
-        .overlay { if selected { Rectangle().strokeBorder(Color.accentColor.opacity(0.5), lineWidth: 1) } }
+        .background(targeted || day == Day.today ? Color.accentColor.opacity(0.08) : background)
+        .overlay { if day == Day.today { Rectangle().strokeBorder(Color.accentColor.opacity(0.5), lineWidth: 1) } }
         .overlay(alignment: .trailing) { Rectangle().fill(Color.primary.opacity(0.13)).frame(width: 0.5) }
         .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.13)).frame(height: 0.5) }
         .contentShape(Rectangle()).onTapGesture { select(); editing = .new(day) }

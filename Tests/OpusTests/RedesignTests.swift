@@ -29,6 +29,18 @@ final class RedesignTests: XCTestCase {
         XCTAssertFalse(StudyTask(title: "Past repeat", planned: "2026-09-08", ruleID: "r").isInToday(on: today))
         XCTAssertTrue(StudyTask(title: "Next repeat", planned: "2026-09-10", ruleID: "r").isInToday(on: today))
     }
+    func testClassTimesDecodeLegacyAndFollowWeekdays() throws {
+        let legacy = try JSONDecoder().decode(Course.self, from: Data(#"{"id":"c","name":"Example A","color":"blue"}"#.utf8))
+        XCTAssertNil(legacy.classBlock(on: "2026-09-09"))
+        var course = legacy
+        course.classStart = 465; course.classDuration = 50; course.classDays = [2,3,4,5,6]
+        let copy = try JSONDecoder().decode(Course.self, from: JSONEncoder().encode(course))
+        XCTAssertEqual(copy.classBlock(on: "2026-09-09")?.startMinute, 465)
+        XCTAssertEqual(copy.classBlock(on: "2026-09-09")?.duration, 50)
+        XCTAssertNil(copy.classBlock(on: "2026-09-12"))
+        course.classStart = 600
+        XCTAssertEqual(course.classBlock(on: "2026-09-09")?.startMinute, 600)
+    }
     private func db() throws -> Database {
         try Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusV3-" + UUID().uuidString).appendingPathComponent("test.sqlite"))
     }

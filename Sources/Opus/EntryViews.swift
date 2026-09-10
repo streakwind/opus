@@ -98,7 +98,7 @@ struct CalendarEntryEditor: View {
         case .assessment(var item):
             item.title = name; item.topics = notes; item.day = day ?? Day.today; item.confirmed = confirmed; item.courseID = course; store.save(item)
         }
-        if store.error == nil { dismiss() }
+        if store.error == nil { store.calendarFocus = CalendarFocus(day: day ?? Day.today); dismiss() }
     }
     private func delete() {
         switch source {

@@ -82,7 +82,8 @@ struct ScheduleView: View {
         .onAppear { store.refreshOccurrences(through: days.last) }
     }
     private func dayColumn(_ day: String, width: CGFloat) -> some View {
-        let displayed = store.state.schedule.filter { $0.id != editing?.id } + (editing.map { [$0] } ?? [])
+        let classes = store.state.courses.compactMap { $0.classBlock(on: day) }
+        let displayed = classes + store.state.schedule.filter { $0.id != editing?.id } + (editing.map { [$0] } ?? [])
         let blocks = displayed.filter { $0.day == day && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)) }
         return ZStack(alignment: .topLeading) {
             VStack(spacing: 0) {
@@ -101,9 +102,16 @@ struct ScheduleView: View {
                 let block = placement.block
                 let blockWidth = max(10, width / CGFloat(placement.columns) - 3)
                 let blockHeight = max(15, CGFloat(block.duration) / 60 * hourHeight - 2)
-                ScheduleEventCard(block: block, tint: store.course(block.courseID)?.tint ?? .teal, edit: { editorDay = day; editing = block }, delete: { store.change { $0.schedule.removeAll { $0.id == block.id } } })
-                    .frame(width: blockWidth, height: blockHeight).clipped()
-                    .offset(x: CGFloat(placement.column) * width / CGFloat(placement.columns) + 1, y: CGFloat(block.startMinute) / 60 * hourHeight)
+                Group {
+                    if block.id.hasPrefix("class:"), let course = store.course(block.courseID) {
+                        ClassScheduleCard(store: store, course: course, day: day)
+                    } else {
+                        ScheduleEventCard(block: block, tint: store.course(block.courseID)?.tint ?? .teal, edit: { editorDay = day; editing = block }, delete: { store.change { $0.schedule.removeAll { $0.id == block.id } } })
+                    }
+                }
+                .frame(width: blockWidth, height: blockHeight).clipped()
+                .offset(x: CGFloat(placement.column) * width / CGFloat(placement.columns) + 1, y: CGFloat(block.startMinute) / 60 * hourHeight)
+
 
             }
             TimelineView(.periodic(from: .now, by: 60)) { context in
