@@ -36,25 +36,29 @@ struct CourseEditor: View {
                 Spacer()
                 Button { addClassTime() } label: { Label("Add time", systemImage: "plus") }
             }
-            ForEach($classTimes) { $time in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Time block").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        Spacer()
-                        Button(role: .destructive) { classTimes.removeAll { $0.id == time.id } } label: {
-                            Image(systemName: "trash")
-                        }.buttonStyle(.plain).help("Remove class time")
-                    }
-                    PropertyRow("Starts") { TimeControl(minutes: $time.startMinute) }
-                    PropertyRow("Ends") { TimeControl(minutes: $time.endMinute) }
-                    WeekdayPicker(days: Binding(get: { Set(time.days) }, set: { time.days = $0.sorted() }))
-                    if time.endMinute <= time.startMinute {
-                        Text("End time must be after start time.").font(.caption).foregroundStyle(.orange)
+            ScrollView {
+                VStack(spacing: 10) {
+                    ForEach($classTimes) { $time in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Time block").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                Spacer()
+                                Button(role: .destructive) { classTimes.removeAll { $0.id == time.id } } label: {
+                                    Image(systemName: "trash")
+                                }.buttonStyle(.plain).help("Remove class time")
+                            }
+                            PropertyRow("Starts") { TimeControl(minutes: $time.startMinute) }
+                            PropertyRow("Ends") { TimeControl(minutes: $time.endMinute) }
+                            WeekdayPicker(days: Binding(get: { Set(time.days) }, set: { time.days = $0.sorted() }))
+                            if time.endMinute <= time.startMinute {
+                                Text("End time must be after start time.").font(.caption).foregroundStyle(.orange)
+                            }
+                        }
+                        .padding(12)
+                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
                     }
                 }
-                .padding(12)
-                .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
-            }
+            }.frame(maxHeight: 440)
             HStack {
                 if store.state.courses.contains(where: { $0.id == course.id }) {
                     Button("Remove list", role: .destructive) { store.deleteCourse(course.id); dismiss() }.help("Move its tasks to Inbox and keep its calendar entries")

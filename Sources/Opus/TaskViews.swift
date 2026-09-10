@@ -137,7 +137,7 @@ struct TaskInspector: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Task details").font(.caption).foregroundStyle(.secondary)
+                Text(draft.kind == .progress ? "Progress details" : "Task details").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button(action: close) { Image(systemName: "xmark").font(.caption) }.buttonStyle(.plain).help("Close details")
             }.padding(16)

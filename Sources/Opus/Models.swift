@@ -23,7 +23,7 @@ struct Course: Identifiable, Codable, Hashable {
     }
     func classBlocks(on day: String) -> [ScheduleBlock] {
         let weekday = Calendar.current.component(.weekday, from: Day.date(day))
-        return resolvedClassTimes.filter { $0.days.contains(weekday) && $0.endMinute > $0.startMinute }.map { time in
+        return resolvedClassTimes.filter { $0.days.contains(weekday) && $0.startMinute >= 0 && $0.startMinute < 1440 && $0.endMinute > $0.startMinute }.map { time in
             ScheduleBlock(id: "class:\(id):\(time.id):\(day)", courseID: id, title: name, day: day, startMinute: time.startMinute, duration: min(1440, time.endMinute) - time.startMinute)
         }
     }
