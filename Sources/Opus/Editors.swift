@@ -167,7 +167,9 @@ struct RuleEditor: View {
                 }
                 if rule.kind == .task {
                     PropertyRow("Track") {
-                        PillPicker("Track", label: (rule.taskKind ?? .checkbox).rawValue, selection: Binding(get: { rule.taskKind ?? .checkbox }, set: { rule.taskKind = $0 })) { ForEach(TaskKind.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().pickerStyle(.menu)
+                        PillPicker("Track", label: (rule.taskKind == .progress ? TaskKind.progress : .checkbox).rawValue, selection: Binding(get: { rule.taskKind == .progress ? TaskKind.progress : .checkbox }, set: { rule.taskKind = $0 })) {
+                            ForEach([TaskKind.checkbox, .progress]) { Text($0.rawValue).tag($0) }
+                        }.labelsHidden().pickerStyle(.menu)
                     }
                     if rule.taskKind == .progress {
                         PropertyRow("Goal") { TextField("Pages", value: Binding(get: { rule.targetCount ?? 30 }, set: { rule.targetCount = max(1, $0) }), format: .number).frame(width: 80) }

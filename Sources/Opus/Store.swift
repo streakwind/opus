@@ -29,6 +29,14 @@ final class Store {
             state.tasks[index].completed = false
             needsSave = true
         }
+        for index in state.tasks.indices where state.tasks[index].kind == .practice {
+            state.tasks[index].kind = .checkbox
+            needsSave = true
+        }
+        for index in state.rules.indices where state.rules[index].taskKind == .practice {
+            state.rules[index].taskKind = .checkbox
+            needsSave = true
+        }
         if needsSave { try database.save(state) }
         refreshOccurrences()
     }
