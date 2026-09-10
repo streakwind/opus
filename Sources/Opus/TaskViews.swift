@@ -66,25 +66,29 @@ struct ProgressLine: View {
     var task: StudyTask
     var openDetails: () -> Void
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "chart.bar.fill")
-                .font(.system(size: 15))
-                .foregroundStyle(store.course(task.courseID)?.tint ?? Color.accentColor)
-                .frame(width: 18, height: 20)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(task.title).font(.system(size: 14, weight: .medium)).lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                HStack(spacing: 5) {
-                    if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
-                    else { Text("Inbox") }
-                    if let due = task.due { Text("· Goal " + Day.label(due)).foregroundStyle(due < Day.today ? Color.red : .secondary) }
-                    if task.ruleID != nil { RepeatBadge() }
-                }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).padding(.top, 1)
+        Button(action: openDetails) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 15))
+                    .foregroundStyle(store.course(task.courseID)?.tint ?? Color.accentColor)
+                    .frame(width: 18, height: 20)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(task.title).font(.system(size: 14, weight: .medium)).lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 5) {
+                        if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
+                        else { Text("Inbox") }
+                        if let due = task.due { Text("· Goal " + Day.label(due)).foregroundStyle(due < Day.today ? Color.red : .secondary) }
+                        if task.ruleID != nil { RepeatBadge() }
+                    }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).padding(.top, 1)
+                }
+                CompactTaskProgress(store: store, task: task).frame(width: 180, alignment: .trailing)
             }
-            CompactTaskProgress(store: store, task: task).frame(width: 180, alignment: .trailing)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 5).contentShape(Rectangle())
-        .onTapGesture(perform: openDetails)
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("progress-row-\(task.id)")
     }
 }
 
@@ -94,16 +98,21 @@ struct TaskLine: View {
     var selected: Bool
     var openDetails: () -> Void
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .top, spacing: 10) {
-                Button {
-                    var updated = task; updated.completed.toggle(); store.save(updated)
-                } label: {
-                    Image(systemName: task.completed ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 18)).foregroundStyle(task.completed ? Color.accentColor : Color.secondary)
-                }.buttonStyle(.borderless).help(task.completed ? "Reopen task" : "Complete task")
+        HStack(alignment: .top, spacing: 10) {
+            Button {
+                var updated = task; updated.completed.toggle(); store.save(updated)
+            } label: {
+                Image(systemName: task.completed ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18)).foregroundStyle(task.completed ? Color.accentColor : Color.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help(task.completed ? "Reopen task" : "Complete task")
+            .accessibilityIdentifier("task-complete-\(task.id)")
+
+            Button(action: openDetails) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Button(action: openDetails) { Text(task.title).font(.system(size: 14, weight: .medium)).strikethrough(task.completed).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.plain)
+                    Text(task.title).font(.system(size: 14, weight: .medium)).strikethrough(task.completed).lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     HStack(spacing: 5) {
                         if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
                         else { Text("Inbox") }
@@ -113,107 +122,13 @@ struct TaskLine: View {
                     }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                     .padding(.top, 1)
                 }
-                if task.kind == .progress {
-                    CompactTaskProgress(store: store, task: task)
-                        .frame(width: 180, alignment: .trailing)
-                }
+                .contentShape(Rectangle())
             }
-        }.padding(.vertical, 5).contentShape(Rectangle())
-            .onTapGesture(perform: openDetails)
-            .opacity(task.completed ? 0.55 : 1)
-    }
-}
-
-struct TaskInspector: View {
-    var store: Store
-    @State var draft: StudyTask
-    @State private var baseline: StudyTask
-    var close: () -> Void
-    init(store: Store, task: StudyTask, close: @escaping () -> Void) {
-        self.store = store; self.close = close
-        _draft = State(initialValue: task); _baseline = State(initialValue: task)
-    }
-    private var valid: Bool {
-        !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (draft.kind != .progress || (draft.start > 0 && draft.target >= draft.start && draft.target <= 1000000 && draft.current >= draft.start - 1 && draft.current <= draft.target))
-    }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 9) {
-                Image(systemName: draft.kind == .progress ? "chart.bar.fill" : "checkmark.circle")
-                    .foregroundStyle(store.course(draft.courseID)?.tint ?? Color.accentColor)
-                Text(draft.kind == .progress ? "Progress" : "Task")
-                    .font(.system(size: 14, weight: .semibold))
-                Spacer()
-                Button(action: close) {
-                    Image(systemName: "xmark").frame(width: 24, height: 24)
-                        .background(Color.primary.opacity(0.07), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .help("Close details")
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    TextField("Task title", text: $draft.title, axis: .vertical)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 22, weight: .semibold))
-                        .lineLimit(1...5)
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("Details")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.bottom, 5)
-                        PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $draft.courseID) }
-                        PropertyRow("Due") { DateMenu(title: "No deadline", value: $draft.due) }
-                        PropertyRow("Type") {
-                            PillPicker("Type", label: draft.kind == .progress ? "Progress" : "Task", selection: $draft.kind) {
-                                ForEach([TaskKind.checkbox, .progress]) { Text($0.rawValue).tag($0) }
-                            }.labelsHidden().fixedSize()
-                        }
-                    }
-
-                    if draft.kind == .progress {
-                        Divider()
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("Tracking")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .padding(.bottom, 5)
-                            PropertyRow("Range") {
-                                HStack {
-                                    TextField("Start", value: $draft.start, format: .number.grouping(.never)).frame(width: 55)
-                                    Text("to").foregroundStyle(.secondary)
-                                    TextField("End", value: $draft.target, format: .number.grouping(.never)).frame(width: 55)
-                                }.textFieldStyle(.roundedBorder)
-                            }
-                        }
-                        InlineProgress(store: store, task: store.state.tasks.first { $0.id == draft.id } ?? draft)
-                    }
-                    if !valid { Text("Check the title and progress range.").font(.caption).foregroundStyle(.orange) }
-                }
-                .padding(18)
-            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("task-row-\(task.id)")
         }
-        .background(Color(nsColor: .textBackgroundColor))
-        .overlay(alignment: .leading) { Divider() }
-        .task(id: draft) { do { try await Task.sleep(for: .milliseconds(400)); commit() } catch { } }
-        .onDisappear { commit() }
-        .onChange(of: draft.start) { old, new in if draft.current == old - 1 { draft.current = new - 1 } }
-        .onChange(of: store.state.tasks.first { $0.id == draft.id }) { _, current in
-            if let current, current != baseline { let merged = StudyTask.merging(draft: draft, baseline: baseline, latest: current); baseline = current; draft = merged }
-        }
-    }
-    private func commit() {
-        guard valid, draft != baseline, let latest = store.state.tasks.first(where: { $0.id == draft.id }) else { return }
-        var saved = StudyTask.merging(draft: draft, baseline: baseline, latest: latest)
-        saved.title = saved.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if saved.kind == .progress { saved.completed = false }
-        store.save(saved)
-        if store.error == nil { baseline = saved; draft = saved }
+        .padding(.vertical, 5)
+        .opacity(task.completed ? 0.55 : 1)
     }
 }
 
@@ -230,6 +145,7 @@ struct DateMenu: View {
             .popover(isPresented: $calendar) {
                 CompactDatePicker(value: $value, clearLabel: title == "Due date" || title == "No deadline" ? "No due date" : "No date") { calendar = false }
             }
+            .accessibilityIdentifier("date-menu")
     }
     private var label: String {
         let date = value.map(Day.label) ?? title

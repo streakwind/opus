@@ -64,7 +64,7 @@ struct AssessmentCalendar: View {
                         ForEach(0..<rows, id: \.self) { row in
                             HStack(spacing: 0) {
                                 ForEach(Array(days[(row*columns)..<(row*columns+columns)]), id: \.self) { day in
-                                    CalendarDayCell(store: store, day: day, inMonth: period != .month || Calendar.current.isDate(Day.date(day), equalTo: anchor, toGranularity: .month), query: query, capacity: max(1, Int((height - 52) / 23)), wide: period == .day, selected: selectedDay == day, newEntryRequest: newEntryRequest, select: { selectedDay = day }, editing: $editing)
+                                    CalendarDayCell(store: store, day: day, inMonth: period != .month || Calendar.current.isDate(Day.date(day), equalTo: anchor, toGranularity: .month), query: query, capacity: max(1, Int((height - 52) / 23)), wide: period == .day, select: { selectedDay = day }, editing: $editing)
                                         .frame(width: geometry.size.width / CGFloat(columns), height: height).id(day)
                                 }
                             }
@@ -109,6 +109,9 @@ struct AssessmentCalendar: View {
             if editing == nil { anchor = Day.date(selectedDay) }
             ensureOccurrences()
         }
+        .onChange(of: newEntryRequest) { _, _ in
+            editing = .new(day: selectedDay, courseID: nil, title: "", kind: .task)
+        }
         .onAppear(perform: ensureOccurrences)
     }
     private func ensureOccurrences() { store.refreshOccurrences(through: days.last) }
@@ -121,8 +124,6 @@ private struct CalendarDayCell: View {
     var query: String
     var capacity: Int
     var wide: Bool
-    var selected: Bool
-    var newEntryRequest: Int
     var select: () -> Void
     @Binding var editing: CalendarDraft?
     @State private var overflow = false
@@ -145,7 +146,7 @@ private struct CalendarDayCell: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Spacer()
-                Button { select(); editing = .new(day) } label: {
+                Button { select(); editing = .new(day: day, courseID: nil, title: "", kind: .task) } label: {
                     Text(Day.date(day).formatted(.dateTime.day())).font(.system(size: 17, weight: .regular))
                         .foregroundStyle(day == Day.today ? Color.white : inMonth ? Color.primary : Color.secondary.opacity(0.5))
                         .frame(width: 30, height: 30).background(day == Day.today ? Color.accentColor : .clear, in: Circle())
@@ -164,7 +165,7 @@ private struct CalendarDayCell: View {
                                     ForEach(tasks) { taskLine($0) }
                                 }
                             }.frame(maxHeight: 330)
-                            Button("Add…") { overflow = false; select(); editing = .new(day) }
+                            Button("Add…") { overflow = false; select(); editing = .new(day: day, courseID: nil, title: "", kind: .task) }
                         }.padding(16).frame(width: 320)
                     }
             }
@@ -174,7 +175,7 @@ private struct CalendarDayCell: View {
         .background(targeted ? Color.accentColor.opacity(0.08) : background)
         .overlay(alignment: .trailing) { Rectangle().fill(Color.primary.opacity(0.13)).frame(width: 0.5) }
         .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.13)).frame(height: 0.5) }
-        .contentShape(Rectangle()).onTapGesture { select(); editing = .new(day) }
+        .contentShape(Rectangle()).onTapGesture { select(); editing = .new(day: day, courseID: nil, title: "", kind: .task) }
         .onDrop(of: [UTType.text], isTargeted: $targeted) { providers in
             guard let provider = providers.first else { return false }
             let targetDay = day; let targetStore = store
@@ -183,8 +184,6 @@ private struct CalendarDayCell: View {
             }
             return true
         }
-        .onChange(of: newEntryRequest) { _, _ in if selected { editing = .new(day) } }
-
     }
     private var background: Color {
         if !inMonth { return Color.primary.opacity(0.035) }
@@ -218,7 +217,7 @@ private struct CalendarDayCell: View {
                     var copy = task; copy.completed.toggle(); store.save(copy)
                 } label: { Image(systemName: task.completed ? "checkmark.circle.fill" : "circle").font(.system(size: 11)) }.buttonStyle(.plain).help(task.completed ? "Reopen task" : "Complete task")
             }
-            Button { select(); overflow = false; editing = .task(task, day) } label: {
+            Button { select(); overflow = false; editing = .task(task) } label: {
                 HStack(spacing: 4) {
                     Text(task.title).strikethrough(task.kind != .progress && task.completed).lineLimit(1)
                     if task.ruleID != nil { RepeatBadge() }
