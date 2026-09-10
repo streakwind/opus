@@ -177,3 +177,14 @@ extension StudyTask {
         return "\(goal) · \(quota) \(unit)/day over \(days) \(days == 1 ? "day" : "days")"
     }
 }
+
+
+extension StudyTask {
+    func isInToday(on today: String) -> Bool {
+        let tomorrow = Day.string(Calendar.current.date(byAdding: .day, value: 1, to: Day.date(today))!)
+        let plannedSoon = planned.map { day in
+            ruleID == nil ? day <= tomorrow : (day >= today && day <= tomorrow)
+        } ?? false
+        return plannedSoon || (due.map { $0 <= tomorrow } ?? false)
+    }
+}

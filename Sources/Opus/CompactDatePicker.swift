@@ -20,7 +20,7 @@ struct CompactDatePicker: View {
                     .help("Next month")
             }.buttonStyle(.plain)
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(30), spacing: 4), count: 7), spacing: 4) {
-                ForEach(Array(days.prefix(7)), id: \.self) { day in
+                ForEach(Array(days.prefix(7).enumerated()), id: \.offset) { _, day in
                     Text(Day.date(day).formatted(.dateTime.weekday(.narrow)))
                         .font(.caption).foregroundStyle(.secondary).frame(height: 24)
                 }

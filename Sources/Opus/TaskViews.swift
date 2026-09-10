@@ -22,13 +22,13 @@ struct InlineProgress: View {
     }
     private var controls: some View {
         HStack(spacing: 6) {
-            Text(task.unit == "pages" ? "Page" : "Done").font(.caption).foregroundStyle(.secondary).fixedSize()
-            TextField("Current progress", value: $number, format: .number.grouping(.never)).textFieldStyle(.plain).multilineTextAlignment(.trailing)
-                .font(.system(size: 13, weight: .medium, design: .monospaced)).frame(width: 45).focused($editing).onSubmit { apply(number) }
-                .padding(.horizontal, 5).padding(.vertical, 3).background(Color.primary.opacity(0.05), in: Capsule())
+            Text("p.").font(.caption).foregroundStyle(.secondary).fixedSize()
+            TextField("Last page read", value: $number, format: .number.grouping(.never)).textFieldStyle(.plain).multilineTextAlignment(.trailing)
+                .font(.system(size: 13, weight: .medium, design: .monospaced)).frame(width: 34).focused($editing).onSubmit { apply(number) }
+                .padding(.horizontal, 5).padding(.vertical, 3).background(editing ? Color.primary.opacity(0.06) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
             Text("/ \(task.target)").font(.caption).foregroundStyle(.secondary).fixedSize()
 
-        }.fixedSize()
+        }.fixedSize().help("Log the last page you read · " + task.progressLabel)
     }
     private func apply(_ updated: Int) {
         let bounded = min(task.target, max(task.start - 1, updated))
@@ -48,13 +48,19 @@ struct TaskLine: View {
                 Button {
                     var updated = task; updated.completed.toggle(); store.save(updated)
                 } label: {
-                    Image(systemName: task.completed ? "checkmark.circle.fill" : "circle").font(.system(size: 18)).foregroundStyle(task.completed ? Color.accentColor : Color.secondary)
+                    ZStack {
+                        Image(systemName: task.completed ? "checkmark.circle.fill" : "circle").font(.system(size: 18)).foregroundStyle(task.completed ? Color.accentColor : Color.secondary)
+                        if task.kind == .progress && !task.completed {
+                            Circle().trim(from: 0, to: task.fraction).stroke(store.course(task.courseID)?.tint ?? .accentColor, style: StrokeStyle(lineWidth: 2, lineCap: .round)).rotationEffect(.degrees(-90)).frame(width: 15, height: 15)
+                        }
+                    }.frame(width: 18, height: 18)
                 }.buttonStyle(.borderless).help(task.completed ? "Reopen task" : "Complete task")
                 VStack(alignment: .leading, spacing: 3) {
                     Button(action: openDetails) { Text(task.title).font(.system(size: 14, weight: .medium)).strikethrough(task.completed).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.plain)
                     HStack(spacing: 5) {
                         if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
                         if let due = task.due { Text("· Due " + Day.label(due)).foregroundStyle(due < Day.today && !task.completed ? Color.red : .secondary) }
+                        if task.planned == Day.adding(1), task.due != task.planned { Text("· Tomorrow") }
                         if task.ruleID != nil { Image(systemName: "repeat") }
                     }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
@@ -62,9 +68,7 @@ struct TaskLine: View {
                     InlineProgress(store: store, task: task, showsPace: false)
                 }
             }
-            if task.kind == .progress, let pace = task.pacing(on: Day.today) {
-                Text(pace).font(.caption).foregroundStyle(.secondary).padding(.leading, 28)
-            }
+
 
 
         }.padding(.vertical, 5).contentShape(Rectangle()).opacity(task.completed ? 0.55 : 1)
@@ -97,11 +101,10 @@ struct TaskInspector: View {
                         PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $draft.courseID) }
                         PropertyRow("Plan") { DateMenu(title: "Anytime", value: $draft.planned) }
                         PropertyRow("Due") { DateMenu(title: "No deadline", value: $draft.due) }
-                        PropertyRow("Track") { PillPicker("Tracking", label: draft.kind.rawValue, selection: $draft.kind) { ForEach([TaskKind.checkbox, .progress]) { Text($0.rawValue).tag($0) } }.labelsHidden().pickerStyle(.menu) }
+                        PropertyRow("Track") { PillPicker("Tracking", label: draft.kind == .progress ? "Textbook notes" : "Task", selection: $draft.kind) { ForEach([TaskKind.checkbox, .progress]) { Text($0 == .progress ? "Textbook notes" : "Task").tag($0) } }.labelsHidden().pickerStyle(.menu) }
                     }
                     if draft.kind == .progress {
                         VStack(spacing: 0) {
-                            PropertyRow("Unit") { TextField("pages", text: $draft.unit).textFieldStyle(.plain) }
                             PropertyRow("Range") {
                                 HStack {
                                     TextField("Start", value: $draft.start, format: .number.grouping(.never)).frame(width: 55)

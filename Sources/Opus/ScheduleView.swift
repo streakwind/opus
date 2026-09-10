@@ -134,8 +134,8 @@ private struct ScheduleEventCard: View {
     var body: some View {
         Button(action: edit) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(block.title.isEmpty ? "New event" : block.title).font(.system(size: 11, weight: .medium)).lineLimit(block.duration >= 60 ? 2 : 1)
-                if block.duration >= 45 { Text(ClockTime.label(block.startMinute)).font(.system(size: 10)).foregroundStyle(.secondary) }
+                Text(block.title.isEmpty ? "New event" : block.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
+                if block.duration >= 45 { Text(ClockTime.label(block.startMinute)).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1) }
                 Spacer(minLength: 0)
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(4)
                 .background(tint.opacity(0.17), in: RoundedRectangle(cornerRadius: 4))

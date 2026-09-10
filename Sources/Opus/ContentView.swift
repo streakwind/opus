@@ -35,7 +35,7 @@ struct ContentView: View {
             switch selection {
             case "all": matches = true
             case "inbox": matches = task.courseID == nil
-            case "today": matches = (task.planned.map { task.ruleID == nil ? $0 <= Day.today : $0 == Day.today } ?? false) || (task.due.map { $0 <= Day.today } ?? false)
+            case "today": matches = task.isInToday(on: Day.today)
             default: matches = task.courseID == selection
             }
             return matches && (showCompleted || !task.completed) && (query.isEmpty || task.title.localizedCaseInsensitiveContains(query) || task.notes.localizedCaseInsensitiveContains(query))
@@ -190,12 +190,11 @@ struct ContentView: View {
             Text("Inbox").tag(nil as String?)
             ForEach(store.state.courses) { Text($0.shortName).tag(Optional($0.id)) }
         }.labelsHidden().frame(width: 120)
-        PillPicker("Track", label: quickKind.rawValue, selection: $quickKind) { ForEach([TaskKind.checkbox, .progress]) { Text($0.rawValue).tag($0) } }.labelsHidden().frame(width: 100)
+        PillPicker("Track", label: quickKind == .progress ? "Textbook notes" : quickKind.rawValue, selection: $quickKind) { ForEach([TaskKind.checkbox, .progress]) { Text($0 == .progress ? "Textbook notes" : $0.rawValue).tag($0) } }.labelsHidden().fixedSize()
         DateMenu(title: "Due date", value: $quickDue).font(.caption)
     }
     private var routines: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Repeat tasks, assessments, and time blocks on the days you choose.").font(.callout).foregroundStyle(.secondary).padding(20)
             List {
                 ForEach(store.state.rules.filter { query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) }) { rule in
                     HStack(spacing: 12) {
@@ -207,7 +206,7 @@ struct ContentView: View {
                             }.frame(maxWidth: .infinity, alignment: .leading)
                         }.buttonStyle(.plain)
                         Text(store.course(rule.courseID)?.shortName ?? rule.kind.rawValue).font(.caption).foregroundStyle(.secondary)
-                    }.padding(.vertical, 6).contextMenu {
+                    }.padding(.vertical, 6).listRowSeparator(.hidden).contextMenu {
                         Button(rule.enabled ? "Pause" : "Resume") { var copy = rule; copy.enabled.toggle(); store.saveRule(copy) }
                         Button("Delete", role: .destructive) { store.deleteRule(rule.id) }
                     }

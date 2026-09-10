@@ -12,13 +12,16 @@ struct CalendarHeading: View {
             Text(period == .day ? anchor.formatted(.dateTime.month(.abbreviated).day().year()) : anchor.formatted(.dateTime.month(.wide).year()))
                 .font(.system(size: 22, weight: .semibold)).lineLimit(1).layoutPriority(1)
             Spacer(minLength: 8)
-            HStack(spacing: 4) {
+            HStack(spacing: 2) {
                 ForEach((schedule ? [CalendarPeriod.day, .week] : [.week, .month]), id: \.self) { option in
-                    Button(option.rawValue) { period = option }
-                        .tint(period == option ? Color.accentColor : Color.secondary)
-                        .accessibilityAddTraits(period == option ? .isSelected : [])
+                    Button { period = option } label: {
+                        Text(option.rawValue).font(.system(size: 12, weight: period == option ? .medium : .regular))
+                            .foregroundStyle(period == option ? .primary : .secondary)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(period == option ? Color.primary.opacity(0.09) : .clear, in: Capsule())
+                    }.buttonStyle(.plain).accessibilityAddTraits(period == option ? .isSelected : [])
                 }
-            }.roundedControls().fixedSize()
+            }.padding(3).background(Color.primary.opacity(0.035), in: Capsule()).fixedSize()
             HStack(spacing: 4) {
                 Button { advance(-1) } label: { Image(systemName: "chevron.left").frame(width: 16) }
                     .help("Previous " + period.rawValue.lowercased())

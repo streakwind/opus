@@ -20,6 +20,15 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(ScheduleLayout.minute(at: -10), 0)
         XCTAssertEqual(ScheduleLayout.minute(at: 315, hourHeight: 30), 630)
     }
+    func testTodayIncludesTomorrowWithoutRecurringBacklog() {
+        let today = "2026-09-09"
+        XCTAssertTrue(StudyTask(title: "Tomorrow", planned: "2026-09-10").isInToday(on: today))
+        XCTAssertTrue(StudyTask(title: "Due tomorrow", due: "2026-09-10").isInToday(on: today))
+        XCTAssertTrue(StudyTask(title: "Overdue", due: "2026-09-08").isInToday(on: today))
+        XCTAssertFalse(StudyTask(title: "Later", planned: "2026-09-11").isInToday(on: today))
+        XCTAssertFalse(StudyTask(title: "Past repeat", planned: "2026-09-08", ruleID: "r").isInToday(on: today))
+        XCTAssertTrue(StudyTask(title: "Next repeat", planned: "2026-09-10", ruleID: "r").isInToday(on: today))
+    }
     private func db() throws -> Database {
         try Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusV3-" + UUID().uuidString).appendingPathComponent("test.sqlite"))
     }

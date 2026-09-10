@@ -15,8 +15,8 @@ Open `Package.swift` in Xcode to edit and run the executable, or use `swift run`
 
 New installations start empty; users create their own lists and rhythms.
 - **⌘N** adds in context: inline task entry in lists, an entry on the selected calendar date, or a timed Schedule block. Type a title and press Return to add it and keep typing. List, task type, and optional deadline appear when the entry field is focused. Select a row for an autosaving details/notes panel.
-- **Today** includes planned work from today or earlier and tasks due today or overdue. **All tasks** also shows unscheduled work. Right-click a task to plan it for today or tomorrow.
-- For notes on pages 206–235, use Start 206, Finish 235, Finished through 205. Record a new stopping point from the task card. Lower the stopping point to correct an entry. A simple pace suggestion divides remaining work across calendar days through the deadline.
+- **Today** includes work planned or due through tomorrow, plus overdue work. Old recurring tasks do not accumulate unless overdue. **All tasks** also shows unscheduled work. Right-click a task to plan it for today or tomorrow.
+- For notes on pages 206–235, use Start 206, Finish 235, Finished through 205. Edit the last-read page directly beside the task title; a small arc around the checkbox shows completion. Lower the stopping point to correct an entry. A simple pace suggestion divides remaining work across calendar days through the deadline.
 - Practice and vocabulary tasks use the same checkbox interaction as other tasks. Existing session history remains available in Details. New tasks offer simple tasks or page progress.
 - **Calendar** combines planned tasks, deadlines, and assessments in week and month views. Click a date to add there, click an item to edit, and use the checkbox to complete a task directly. The toolbar Add action follows the last selected date. Overflow opens the full day list.
 - **Schedule** keeps timed classes and study blocks separate, with day/week timelines and side-by-side overlapping events.
