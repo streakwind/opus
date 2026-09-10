@@ -95,7 +95,7 @@ struct RuleEditor: View {
             VStack(spacing: 0) {
                 PropertyRow("Add to") {
                     PillPicker("Kind", label: rule.kind.rawValue, selection: Binding(get: { rule.kind }, set: { rule.itemKind = $0 })) {
-                        ForEach(RepeatItem.allCases) { Text($0.rawValue).tag($0) }
+                        ForEach([RepeatItem.task, .assessment]) { Text($0.rawValue).tag($0) }
                     }.labelsHidden().pickerStyle(.menu)
                 }
                 PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $rule.courseID) }
@@ -116,9 +116,12 @@ struct RuleEditor: View {
                     }
                 }
                 if rule.kind == .schedule {
-                    PropertyRow("At") { TimeControl(minutes: Binding(get: { rule.startMinute ?? 540 }, set: { rule.startMinute = $0 })) }
-                    PropertyRow("For") {
-                        PillPicker("Duration", label: "\(rule.duration ?? 60) minutes", selection: Binding(get: { rule.duration ?? 60 }, set: { rule.duration = $0 })) { ForEach([15,30,45,60,90,120,180], id: \.self) { Text("\($0) minutes").tag($0) } }.labelsHidden()
+                    PropertyRow("Starts") { TimeControl(minutes: Binding(get: { rule.startMinute ?? 540 }, set: { rule.startMinute = $0 })) }
+                    PropertyRow("Ends") {
+                        TimeControl(minutes: Binding(
+                            get: { min(1440, (rule.startMinute ?? 540) + (rule.duration ?? 60)) },
+                            set: { rule.duration = max(15, min(1440, $0) - (rule.startMinute ?? 540)) }
+                        ))
                     }
                 }
             }

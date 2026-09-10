@@ -129,12 +129,8 @@ struct ScheduleEditor: View {
             VStack(spacing: 0) {
                 PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $block.courseID) }
                 PropertyRow("Date") { DateMenu(title: "Date", value: Binding(get: { block.day }, set: { block.day = $0 ?? Day.today })) }
-                PropertyRow("From") { TimeControl(minutes: $block.startMinute) }
-                PropertyRow("For") {
-                    PillPicker("Duration", label: "\(block.duration) minutes", selection: $block.duration) {
-                        ForEach(Array(Set([15,30,45,60,90,120,180,block.duration])).sorted(), id: \.self) { Text("\($0) minutes").tag($0) }
-                    }.labelsHidden().pickerStyle(.menu)
-                }
+                PropertyRow("Starts") { TimeControl(minutes: $block.startMinute) }
+                PropertyRow("Ends") { TimeControl(minutes: Binding(get: { block.endMinute }, set: { block.endMinute = $0 })) }
             }
             if !existing {
                 Toggle("Repeat", isOn: $repeatBlock).toggleStyle(.checkbox)

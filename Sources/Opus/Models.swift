@@ -125,6 +125,10 @@ struct ScheduleBlock: Identifiable, Codable, Equatable {
     var notes = ""
     var ruleID: String?
     var occurrence: String?
+    var endMinute: Int {
+        get { min(1440, startMinute + duration) }
+        set { duration = max(15, min(1440, newValue) - startMinute) }
+    }
     var timeLabel: String { ClockTime.label(startMinute) + "–" + ClockTime.label(startMinute + duration) }
 }
 enum ClockTime {

@@ -289,7 +289,7 @@ struct ContentView: View {
     private var routines: some View {
         VStack(alignment: .leading, spacing: 0) {
             List {
-                ForEach(store.state.rules.filter { query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) }) { rule in
+                ForEach(store.state.rules.filter { $0.kind != .schedule && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)) }) { rule in
                     HStack(spacing: 12) {
                         Image(systemName: rule.kind == .task ? "checkmark.circle" : rule.kind == .assessment ? "calendar" : "clock").foregroundStyle(store.course(rule.courseID)?.tint ?? .teal)
                         Button { editor = .rule(rule) } label: {

@@ -102,7 +102,7 @@ final class Store {
         let horizon = max(56, through.map { (Calendar.current.dateComponents([.day], from: Day.date(today), to: Day.date($0)).day ?? 0) + 1 } ?? 56)
         for rule in state.rules where rule.enabled {
             for offset in -1..<horizon {
-                if offset < 0 && rule.kind != .task { continue }
+                if offset < 0 && rule.kind == .assessment { continue }
                 let day = Day.adding(offset, to: today)
                 guard rule.occurs(on: day) else { continue }
                 let key = "\(rule.id):\(day)"

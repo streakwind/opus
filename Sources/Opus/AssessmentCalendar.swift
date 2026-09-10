@@ -64,7 +64,10 @@ struct AssessmentCalendar: View {
                         ForEach(0..<rows, id: \.self) { row in
                             HStack(spacing: 0) {
                                 ForEach(Array(days[(row*columns)..<(row*columns+columns)]), id: \.self) { day in
-                                    CalendarDayCell(store: store, day: day, inMonth: period != .month || Calendar.current.isDate(Day.date(day), equalTo: anchor, toGranularity: .month), query: query, capacity: max(1, Int((height - 52) / 23)), wide: period == .day, selected: selectedDay == day, newEntryRequest: newEntryRequest, select: { selectedDay = day }, editing: $editing)
+                                    CalendarDayCell(store: store, day: day, inMonth: period != .month || Calendar.current.isDate(Day.date(day), equalTo: anchor, toGranularity: .month), query: query, capacity: max(1, Int((height - 52) / 23)), wide: period == .day, selected: selectedDay == day, newEntryRequest: newEntryRequest, select: { selectedDay = day }, moveEditor: { newDay in
+                                        selectedDay = newDay
+                                        if !days.contains(newDay) { anchor = Day.date(newDay) }
+                                    }, editing: $editing)
                                         .frame(width: geometry.size.width / CGFloat(columns), height: height).id(day)
                                 }
                             }
@@ -101,6 +104,7 @@ private struct CalendarDayCell: View {
     var selected: Bool
     var newEntryRequest: Int
     var select: () -> Void
+    var moveEditor: (String) -> Void
     @Binding var editing: CalendarDraft?
     @State private var overflow = false
     @State private var targeted = false
@@ -108,7 +112,10 @@ private struct CalendarDayCell: View {
         store.state.assessments.filter { $0.day == day && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) || (store.course($0.courseID)?.name.localizedCaseInsensitiveContains(query) ?? false)) }.sorted { $0.title < $1.title }
     }
     private var tasks: [StudyTask] {
-        store.state.tasks.filter { ($0.planned == day || $0.due == day) && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)) }.sorted { !$0.completed && $1.completed }
+        store.state.tasks.filter {
+            let occurs = $0.kind == .progress ? $0.due == day : ($0.planned == day || $0.due == day)
+            return occurs && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query))
+        }.sorted { !$0.completed && $1.completed }
     }
     private var count: Int { assessments.count + tasks.count }
     var body: some View {
@@ -121,7 +128,7 @@ private struct CalendarDayCell: View {
                         .frame(width: 30, height: 30).background(day == Day.today ? Color.accentColor : .clear, in: Circle())
                 }.buttonStyle(.plain).help("Add task or assessment on " + day).accessibilityLabel("Add on " + day)
                     .popover(item: localEditing) { draft in
-                        CalendarEntryEditor(store: store, source: draft).id(draft.id)
+                        CalendarEntryEditor(store: store, source: draft, onDateChange: moveEditor).id(draft.id)
                     }
             }.padding(.horizontal, 7).padding(.vertical, 3)
             ForEach(assessments.prefix(capacity)) { item in assessmentLine(item) }

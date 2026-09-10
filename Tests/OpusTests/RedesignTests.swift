@@ -52,6 +52,11 @@ final class RedesignTests: XCTestCase {
         assessments.rules = [QuizRule(title: "Daily quiz", weekdays: Array(1...7), itemKind: .assessment, startDate: yesterday)]
         Store.generate(in: &assessments, today: today)
         XCTAssertFalse(assessments.assessments.contains { $0.day == yesterday })
+
+        var schedule = Snapshot()
+        schedule.rules = [QuizRule(title: "Practice", weekdays: Array(1...7), itemKind: .schedule, startDate: yesterday)]
+        Store.generate(in: &schedule, today: today)
+        XCTAssertTrue(schedule.schedule.contains { $0.day == yesterday })
     }
     func testClassTimesDecodeLegacyAndFollowWeekdays() throws {
         let legacy = try JSONDecoder().decode(Course.self, from: Data(#"{"id":"c","name":"Example A","color":"blue"}"#.utf8))

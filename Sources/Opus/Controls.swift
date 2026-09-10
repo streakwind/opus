@@ -70,7 +70,7 @@ struct TimeControl: View {
     @Binding var minutes: Int
     @State private var editing = false
     var body: some View {
-        Button(ClockTime.label(minutes)) { editing = true }.roundedControls()
+        Button(ClockTime.label(minutes)) { editing = true }.buttonStyle(.plain).pillChrome().fixedSize()
             .popover(isPresented: $editing) {
                 VStack(spacing: 12) {
                     DatePicker("Time", selection: Binding(get: { ClockTime.date(minutes) }, set: { minutes = ClockTime.minutes($0) }), displayedComponents: .hourAndMinute)

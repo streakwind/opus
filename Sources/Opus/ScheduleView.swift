@@ -50,8 +50,6 @@ struct ScheduleView: View {
     @State private var period = CalendarPeriod.week
     @State private var editing: ScheduleBlock?
     @State private var creating: ScheduleBlock?
-    @State private var editorDay = Day.today
-    @State private var scrollOffset: CGFloat = 420
     @State private var selectedMinute = 7 * 60
     private let hourHeight: CGFloat = 60
     private var days: [String] { period == .day ? [Day.string(anchor)] : CalendarLayout.days(containing: anchor, week: true) }
@@ -87,32 +85,17 @@ struct ScheduleView: View {
                                 dayColumn(day, width: columnWidth)
                             }
                         }.frame(height: hourHeight * 24)
-                        .background(GeometryReader { content in
-                            Color.clear.preference(key: ScheduleScrollOffset.self, value: -content.frame(in: .named("scheduleViewport")).minY)
-                        })
                     }.coordinateSpace(name: "scheduleViewport")
-                    .onPreferenceChange(ScheduleScrollOffset.self) { scrollOffset = $0 }
                     .onAppear { reader.scrollTo(selectedMinute / 60, anchor: .top) }
                     .onChange(of: period) { _, _ in reader.scrollTo(selectedMinute / 60, anchor: .top) }
                     .onChange(of: anchor) { _, _ in reader.scrollTo(selectedMinute / 60, anchor: .top) }
                 }
-                .overlay(alignment: .topLeading) {
-                    let column = days.firstIndex(of: editing?.day ?? editorDay) ?? 0
-                    Color.clear.frame(width: 1, height: 1)
-                        .position(x: 56 + (CGFloat(column) + 0.5) * columnWidth,
-                                  y: min(geometry.size.height - 20, max(20, CGFloat(editing?.startMinute ?? 540) - scrollOffset)))
-                        .popover(item: $editing) { draft in
-                            ScheduleEditor(store: store, block: draft, onChange: { updated in
-                                editing = updated; selectedMinute = updated.startMinute
-                                if editorDay != updated.day {
-                                    editorDay = updated.day; anchor = Day.date(updated.day)
-                                }
-                            }).id(draft.id)
-                        }
-                }
             }
         }
-        .onChange(of: newEntryRequest) { _, _ in editorDay = Day.string(anchor); editing = ScheduleBlock(day: editorDay, startMinute: min(1380, ClockTime.minutes(Date()) / 15 * 15)) }
+        .onChange(of: newEntryRequest) { _, _ in
+            let day = Day.string(anchor)
+            editing = ScheduleBlock(day: day, startMinute: min(1410, ClockTime.minutes(Date()) / 15 * 15), duration: 30)
+        }
         .onChange(of: anchor) { _, _ in store.refreshOccurrences(through: days.last) }
         .onAppear { store.refreshOccurrences(through: days.last) }
     }
@@ -130,6 +113,10 @@ struct ScheduleView: View {
                 }
             }.frame(width: width).background(Calendar.current.isDateInWeekend(Day.date(day)) ? Color.primary.opacity(0.025) : Color.clear)
                 .contentShape(Rectangle())
+                .onTapGesture(coordinateSpace: .local) { point in
+                    selectedMinute = ScheduleLayout.minute(at: point.y, hourHeight: hourHeight)
+                    editing = ScheduleBlock(day: day, startMinute: selectedMinute, duration: min(30, 1440 - selectedMinute))
+                }
                 .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .local)
                     .onChanged { value in
                         creating = ScheduleLayout.block(day: day, startY: value.startLocation.y, endY: value.location.y, hourHeight: hourHeight)
@@ -137,7 +124,6 @@ struct ScheduleView: View {
                     .onEnded { value in
                         let block = ScheduleLayout.block(day: day, startY: value.startLocation.y, endY: value.location.y, hourHeight: hourHeight)
                         creating = nil
-                        editorDay = day
                         selectedMinute = block.startMinute
                         editing = block
                     })
@@ -158,7 +144,11 @@ struct ScheduleView: View {
                     if block.id.hasPrefix("class:"), let course = store.course(block.courseID) {
                         ClassScheduleCard(store: store, course: course, block: block)
                     } else {
-                        ScheduleEventCard(block: block, fill: store.course(block.courseID)?.scheduleGradient ?? Course(name: "", color: "teal").scheduleGradient, edit: { editorDay = day; editing = block }, delete: { store.change { $0.schedule.removeAll { $0.id == block.id } } })
+                        ScheduleEventCard(store: store, block: block, fill: store.course(block.courseID)?.scheduleGradient ?? Course(name: "", color: "teal").scheduleGradient, editing: $editing, onChange: { updated in
+                            editing = updated
+                            selectedMinute = updated.startMinute
+                            if updated.day != day { anchor = Day.date(updated.day) }
+                        }, delete: { store.change { $0.schedule.removeAll { $0.id == block.id } } })
                     }
                 }
                 .frame(width: blockWidth, height: blockHeight).clipped()
@@ -184,12 +174,14 @@ struct ScheduleView: View {
 }
 
 private struct ScheduleEventCard: View {
+    var store: Store
     var block: ScheduleBlock
     var fill: LinearGradient
-    var edit: () -> Void
+    @Binding var editing: ScheduleBlock?
+    var onChange: (ScheduleBlock) -> Void
     var delete: () -> Void
     var body: some View {
-        Button(action: edit) {
+        Button { editing = block } label: {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(block.title.isEmpty ? "New event" : block.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
@@ -201,11 +193,9 @@ private struct ScheduleEventCard: View {
                 .foregroundStyle(.white)
                 .background(fill, in: RoundedRectangle(cornerRadius: 5))
         }.buttonStyle(.plain).help(block.title + " · " + block.timeLabel).draggable("schedule:" + block.id)
+            .popover(item: Binding(get: { editing?.id == block.id ? editing : nil }, set: { editing = $0 })) { draft in
+                ScheduleEditor(store: store, block: draft, onChange: onChange).id(draft.id)
+            }
             .contextMenu { Button("Delete", role: .destructive, action: delete) }
     }
-}
-
-private struct ScheduleScrollOffset: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
