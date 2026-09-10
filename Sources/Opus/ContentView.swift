@@ -167,17 +167,24 @@ struct ContentView: View {
                         if !assessments.isEmpty {
                             listHeading("Assessments")
                             ForEach(assessments) { item in
+                                let itemCourse = store.course(item.courseID)
                                 Button { openAssessment(item) } label: {
                                     HStack(spacing: 10) {
                                         Image(systemName: item.confirmed ? "calendar" : "questionmark.circle")
-                                            .foregroundStyle(course?.tint ?? .teal).frame(width: 18)
+                                            .foregroundStyle(itemCourse?.tint ?? .teal).frame(width: 18)
                                         VStack(alignment: .leading, spacing: 3) {
                                             HStack(spacing: 5) {
                                                 Text(item.title).font(.system(size: 14, weight: .medium)).lineLimit(2)
                                                 if item.ruleID != nil { RepeatBadge() }
                                             }
-                                            Text(Day.label(item.day) + (item.confirmed ? "" : " · Tentative"))
-                                                .font(.system(size: 11)).foregroundStyle(.secondary)
+                                            HStack(spacing: 5) {
+                                                if let itemCourse {
+                                                    Circle().fill(itemCourse.tint).frame(width: 5, height: 5)
+                                                    Text(itemCourse.shortName)
+                                                    Text("·")
+                                                }
+                                                Text(Day.label(item.day) + (item.confirmed ? "" : " · Tentative"))
+                                            }.font(.system(size: 11)).foregroundStyle(.secondary)
                                         }
                                         Spacer()
                                     }.padding(.vertical, 5).contentShape(Rectangle())
