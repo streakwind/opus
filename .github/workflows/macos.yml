@@ -1,0 +1,36 @@
+name: macOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+      - name: Swift version
+        run: swift --version
+      - name: Run tests
+        run: swift test --scratch-path /tmp/opus-build
+
+  build:
+    name: Build app
+    runs-on: macos-15
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+      - name: Build Opus.app
+        run: ./scripts/build-app.sh
+      - name: Upload Opus.app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Opus-macos
+          path: dist/Opus.app

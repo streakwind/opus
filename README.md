@@ -37,13 +37,16 @@ JSON export is a portable snapshot, not a live SQLite file copy. Do not copy onl
 
 ```sh
 swift test --scratch-path /tmp/opus-build
+./scripts/build-app.sh
 ```
 
-Tests cover reopening SQLite with Unicode and multiline content, failed-transaction rollback, page arithmetic, recurrence deduplication/skipping/moving, list deletion and undo, progress correction, and calendar date boundaries, month/week grid boundaries, drag rescheduling, persisted manual task order, legacy database migration, custom recurrence days and intervals, overlapping schedule blocks, and concurrent notes/progress edits.
+Tests cover reopening SQLite with Unicode and multiline content, failed-transaction rollback, page arithmetic, recurrence deduplication/skipping/moving, list deletion and undo, progress correction, calendar date boundaries, month/week grid boundaries, drag rescheduling with a single calendar day per task, archive delete-all, custom list colors, persisted manual task order, legacy database migration, custom recurrence days and intervals, overlapping schedule blocks, and concurrent notes/progress edits.
+
+GitHub Actions runs the same test command on macOS and uploads `dist/Opus.app` as an artifact (see `.github/workflows/macos.yml`). Linux packaging is deferred.
 
 ## Current scope
 
-The app includes editable lists/tasks, direct textbook progress, practice history, a unified calendar, a separate timed schedule, flexible repeating rules, undo, and JSON export. It does not yet include sync, JSON import, automatic backups, reminders, or archived lists. Preparation tasks copy assessment details when created; they are not linked for automatic updates. App signing is local/ad hoc, not notarized distribution.
+The app includes editable lists/tasks, direct textbook progress, practice history, a unified calendar, a separate timed schedule, flexible repeating rules, undo, JSON export, an Archive with delete-all, and System/Light/Dark appearance. It does not yet include sync, JSON import, automatic backups, reminders, or archived lists. Preparation tasks copy assessment details when created; they are not linked for automatic updates. App signing is local/ad hoc, not notarized distribution.
 
 ## Interface references
 
