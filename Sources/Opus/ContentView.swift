@@ -458,14 +458,17 @@ struct ContentView: View {
         let title = quickTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
         if quickKind == .assessment {
-            workDetail = .new(
-                day: quickDue ?? Day.today,
+            store.save(Assessment(
                 courseID: quickCourse,
                 title: title,
-                kind: .assessment
-            )
-            quickTitle = ""
-            quickFocused = false
+                day: quickDue ?? Day.today,
+                confirmed: true
+            ))
+            if store.error == nil {
+                quickTitle = ""
+                quickDue = Day.adding(1)
+                quickFocused = true
+            }
             return
         }
         guard quickKind != .progress || (quickStart > 0 && quickEnd >= quickStart && quickEnd <= 1_000_000) else { return }

@@ -185,16 +185,7 @@ struct RuleEditor: View {
                     }
                 }
             }
-            HStack {
-                Text("Repeat on").font(.callout.weight(.medium))
-                Spacer()
-                Menu("Presets") {
-                    Button("Every day") { days = Set(1...7) }
-                    Button("Weekdays") { days = Set(2...6) }
-                    Button("Mon, Tue, Wed") { days = [2,3,4] }
-                    Button("Weekends") { days = [1,7] }
-                }.menuStyle(.borderlessButton).fixedSize()
-            }
+            Text("Repeat on").font(.callout.weight(.medium))
             WeekdayPicker(days: $days)
             VStack(spacing: 0) {
                 PropertyRow("Every") {
