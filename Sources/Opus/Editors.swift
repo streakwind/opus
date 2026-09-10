@@ -18,59 +18,104 @@ struct CourseEditor: View {
         !course.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         classTimes.allSatisfy { !$0.days.isEmpty && $0.startMinute >= 0 && $0.endMinute > $0.startMinute && $0.endMinute <= 1440 }
     }
+    private var existing: Bool { store.state.courses.contains(where: { $0.id == course.id }) }
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            TextField("List name", text: $course.name).textFieldStyle(.plain).font(.system(size: 19, weight: .semibold))
-            PropertyRow("Color") {
-                VStack(alignment: .leading, spacing: 10) {
-                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(24), spacing: 8), count: 6), alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(existing ? "Edit list" : "New list").font(.system(size: 20, weight: .semibold))
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark").frame(width: 24, height: 24)
+                        .background(Color.primary.opacity(0.07), in: Circle())
+                }.buttonStyle(.plain).help("Close")
+            }
+            .padding(20)
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("NAME").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                        TextField("List name", text: $course.name)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 18, weight: .semibold))
+                            .padding(11)
+                            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("COLOR").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                        HStack(spacing: 9) {
                         ForEach(Course.colors, id: \.self) { color in
                             Button { course.color = color } label: {
                                 Circle().fill(Course(name: "", color: color).tint).frame(width: 20, height: 20)
                                     .overlay { if course.color == color { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white) } }
                             }.buttonStyle(.plain).accessibilityLabel(color).accessibilityValue(course.color == color ? "Selected" : "")
                         }
-                    }
-                    ColorPicker(
-                        "Custom",
-                        selection: Binding(
-                            get: { course.tint },
-                            set: { course.color = Course.hex(from: $0) }
-                        ),
-                        supportsOpacity: false
-                    )
-                }
-            }
-            HStack {
-                Text("Class times").font(.callout.weight(.medium))
-                Spacer()
-                Button { addClassTime() } label: { Label("Add time", systemImage: "plus") }
-            }
-            ScrollView {
-                VStack(spacing: 10) {
-                    ForEach($classTimes) { $time in
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Time block").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                                Spacer()
-                                Button(role: .destructive) { classTimes.removeAll { $0.id == time.id } } label: {
-                                    Image(systemName: "trash")
-                                }.buttonStyle(.plain).help("Remove class time")
-                            }
-                            PropertyRow("Starts") { TimeControl(minutes: $time.startMinute) }
-                            PropertyRow("Ends") { TimeControl(minutes: $time.endMinute) }
-                            WeekdayPicker(days: Binding(get: { Set(time.days) }, set: { time.days = $0.sorted() }))
-                            if time.endMinute <= time.startMinute {
-                                Text("End time must be after start time.").font(.caption).foregroundStyle(.orange)
-                            }
                         }
-                        .padding(12)
-                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
+                        ColorPicker(
+                            "Custom color",
+                            selection: Binding(
+                                get: { course.tint },
+                                set: { course.color = Course.hex(from: $0) }
+                            ),
+                            supportsOpacity: false
+                        )
+                        .font(.callout)
+                        .fixedSize()
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("CLASS TIMES").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                            Spacer()
+                            Button { addClassTime() } label: { Label("Add time", systemImage: "plus") }
+                        }
+                        if classTimes.isEmpty {
+                            Text("No class times").font(.callout).foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(14)
+                                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                        }
+                        ForEach($classTimes) { $time in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text(ClockTime.label(time.startMinute) + "–" + ClockTime.label(time.endMinute))
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Button(role: .destructive) { classTimes.removeAll { $0.id == time.id } } label: {
+                                        Image(systemName: "trash")
+                                    }.buttonStyle(.plain).help("Remove class time")
+                                }
+                                HStack(spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        Text("Starts").font(.caption).foregroundStyle(.secondary)
+                                        TimeControl(minutes: $time.startMinute)
+                                    }
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        Text("Ends").font(.caption).foregroundStyle(.secondary)
+                                        TimeControl(minutes: $time.endMinute)
+                                    }
+                                    Spacer()
+                                }
+                                WeekdayPicker(days: Binding(get: { Set(time.days) }, set: { time.days = $0.sorted() }))
+                                if time.endMinute <= time.startMinute {
+                                    Text("End time must be after start time.").font(.caption).foregroundStyle(.orange)
+                                }
+                            }
+                            .padding(13)
+                            .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
+                        }
                     }
                 }
-            }.frame(maxHeight: 440)
+            }
+            .padding(20)
+            .frame(maxHeight: 520)
+
+            Divider()
             HStack {
-                if store.state.courses.contains(where: { $0.id == course.id }) {
+                if existing {
                     Button("Remove list", role: .destructive) { store.deleteCourse(course.id); dismiss() }.help("Move its tasks to Inbox and keep its calendar entries")
                 }
                 Spacer()
@@ -83,7 +128,10 @@ struct CourseEditor: View {
                     if store.error == nil { dismiss() }
                 }.keyboardShortcut(.defaultAction).disabled(!valid)
             }
-        }.padding(20).frame(width: 420).roundedControls()
+            .padding(20)
+        }
+        .frame(width: 460)
+        .roundedControls()
     }
     private func addClassTime() {
         let start = classTimes.last?.endMinute ?? suggestedClassStart

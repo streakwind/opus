@@ -138,16 +138,38 @@ struct TaskInspector: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(draft.kind == .progress ? "Progress details" : "Task details").font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 9) {
+                Image(systemName: draft.kind == .progress ? "chart.bar.fill" : "checkmark.circle")
+                    .foregroundStyle(store.course(draft.courseID)?.tint ?? Color.accentColor)
+                Text(draft.kind == .progress ? "Progress" : "Task")
+                    .font(.system(size: 14, weight: .semibold))
                 Spacer()
-                Button(action: close) { Image(systemName: "xmark").font(.caption) }.buttonStyle(.plain).help("Close details")
-            }.padding(16)
+                Button(action: close) {
+                    Image(systemName: "xmark").frame(width: 24, height: 24)
+                        .background(Color.primary.opacity(0.07), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Close details")
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            Divider()
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    TextField("Task title", text: $draft.title, axis: .vertical).textFieldStyle(.plain).font(.system(size: 19, weight: .semibold)).lineLimit(1...5)
-                    Divider()
-                    VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 18) {
+                    TextField("Task title", text: $draft.title, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 22, weight: .semibold))
+                        .lineLimit(1...5)
+                        .padding(12)
+                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("DETAILS")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.top, 11)
+                            .padding(.bottom, 4)
                         PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $draft.courseID) }
                         PropertyRow("Due") { DateMenu(title: "No deadline", value: $draft.due) }
                         PropertyRow("Type") {
@@ -156,8 +178,17 @@ struct TaskInspector: View {
                             }.labelsHidden().fixedSize()
                         }
                     }
+                    .padding(.bottom, 7)
+                    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
+
                     if draft.kind == .progress {
-                        VStack(spacing: 0) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("TRACKING")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 12)
+                                .padding(.top, 11)
+                                .padding(.bottom, 4)
                             PropertyRow("Range") {
                                 HStack {
                                     TextField("Start", value: $draft.start, format: .number.grouping(.never)).frame(width: 55)
@@ -166,12 +197,17 @@ struct TaskInspector: View {
                                 }.textFieldStyle(.roundedBorder)
                             }
                         }
+                        .padding(.bottom, 7)
+                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
                         InlineProgress(store: store, task: store.state.tasks.first { $0.id == draft.id } ?? draft)
                     }
                     if !valid { Text("Check the title and progress range.").font(.caption).foregroundStyle(.orange) }
-                }.padding(.horizontal, 16).padding(.bottom, 16)
+                }
+                .padding(18)
             }
-        }.background(Color(nsColor: .controlBackgroundColor).opacity(0.4))
+        }
+        .background(.regularMaterial)
+        .overlay(alignment: .leading) { Divider() }
         .task(id: draft) { do { try await Task.sleep(for: .milliseconds(400)); commit() } catch { } }
         .onDisappear { commit() }
         .onChange(of: draft.start) { old, new in if draft.current == old - 1 { draft.current = new - 1 } }

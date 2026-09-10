@@ -13,8 +13,8 @@ struct ContentView: View {
     @State private var editor: Editor?
     @State private var selectedTask: String?
     @State private var narrowTask: StudyTask?
-    @State private var showCompleted = false
-    @State private var dueOrder = false
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var sidebarWidth: CGFloat = 0
     @State private var quickTitle = ""
     @State private var quickKind: TaskKind = .checkbox
     @State private var quickCourse: String?
@@ -60,11 +60,8 @@ struct ContentView: View {
             case "today": matches = task.isInToday(on: Day.today)
             default: matches = task.courseID == selection
             }
-            let visible = selection == "archive" || task.kind == .progress || showCompleted || !task.completed
+            let visible = selection == "archive" || task.kind == .progress || !task.completed
             return matches && visible && matchesQuery(title: task.title, details: task.notes, courseID: task.courseID)
-        }.sorted {
-            if $0.completed != $1.completed { return !$0.completed }
-            return dueOrder ? ($0.due ?? "9999") < ($1.due ?? "9999") : false
         }
         return sorted
     }
@@ -138,11 +135,12 @@ struct ContentView: View {
         }
     }
     private var splitView: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
         } detail: {
             detail
         }
+        .onPreferenceChange(SidebarWidthKey.self) { sidebarWidth = $0 }
     }
     private var sidebar: some View {
         VStack(spacing: 0) {
@@ -173,13 +171,23 @@ struct ContentView: View {
                 Button { showSettings = true } label: { Image(systemName: "gearshape") }
                     .buttonStyle(.plain).help("Settings").frame(width: 28, height: 24)
             }.padding(16)
-        }.navigationSplitViewColumnWidth(min: 180, ideal: 215, max: 260)
+        }
+        .background {
+            GeometryReader { geometry in
+                Color.clear.preference(key: SidebarWidthKey.self, value: geometry.size.width)
+            }
+        }
+        .navigationSplitViewColumnWidth(min: 180, ideal: 215, max: 260)
     }
     private var detail: some View {
         VStack(alignment: .leading, spacing: 0) {
             if !store.state.setupComplete { welcome }
-            else if selection == "upcoming" { AssessmentCalendar(store: store, query: query, newEntryRequest: newEntryRequest) }
-            else if selection == "schedule" { ScheduleView(store: store, query: query, newEntryRequest: newEntryRequest) }
+            else if selection == "upcoming" {
+                AssessmentCalendar(store: store, query: query, newEntryRequest: newEntryRequest, editorLeadingInset: editorLeadingInset)
+            }
+            else if selection == "schedule" {
+                ScheduleView(store: store, query: query, newEntryRequest: newEntryRequest, editorLeadingInset: editorLeadingInset)
+            }
             else {
                 if selection != "all" && selection != "inbox" && selection != "routines" {
                     detailHeading
@@ -203,12 +211,10 @@ struct ContentView: View {
                     .disabled(archivedCount == 0)
                     .help("Delete all archived tasks")
             }
-            if let course {
-                Button { editor = .course(course) } label: {
-                    Image(systemName: "gearshape").frame(width: 36, height: 32).contentShape(Rectangle())
-                }.buttonStyle(.plain).help("Edit list")
-            }
         }.padding(.horizontal, 22).padding(.top, 18).padding(.bottom, course != nil ? 2 : 12)
+    }
+    private var editorLeadingInset: CGFloat {
+        columnVisibility == .detailOnly ? 0 : sidebarWidth
     }
     private var settingsView: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -314,9 +320,6 @@ struct ContentView: View {
                                 }
                                 .contextMenu {
                                     Button("Details") { selectedTask = task.id; if !wide { narrowTask = task } }
-                                    Button("Plan for today") { var copy = task; copy.planned = Day.today; store.save(copy) }
-                                    Button("Plan for tomorrow") { var copy = task; copy.planned = Day.adding(1); store.save(copy) }
-                                    Button("Remove from plan") { var copy = task; copy.planned = nil; store.save(copy) }
                                     Menu("Move to list") {
                                         Button("Inbox") { var copy = task; copy.courseID = nil; store.save(copy) }
                                         ForEach(store.state.courses) { list in Button(list.name) { var copy = task; copy.courseID = list.id; store.save(copy) } }
@@ -324,14 +327,13 @@ struct ContentView: View {
                                     Button("Delete", role: .destructive) { store.deleteTask(task.id) }
                                 }
                         }.onMove { offsets, destination in
-                            guard !dueOrder else { return }
                             var reordered = tasks; reordered.move(fromOffsets: offsets, toOffset: destination)
                             let ids = Set(reordered.map(\.id))
                             var iterator = reordered.makeIterator()
                             store.change { state in state.tasks = state.tasks.map { ids.contains($0.id) ? iterator.next()! : $0 } }
-                        }.moveDisabled(dueOrder)
-                        if tasks.isEmpty && !query.isEmpty {
-                            Text("No matching tasks.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 12).listRowSeparator(.hidden)
+                        }
+                        if tasks.isEmpty && progressItems.isEmpty && assessments.isEmpty && !query.isEmpty {
+                            Text("No matches.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 12).listRowSeparator(.hidden)
                         }
                     }.listStyle(.inset).scrollContentBackground(.hidden)
                 }.frame(maxWidth: .infinity)
@@ -355,11 +357,6 @@ struct ContentView: View {
             HStack(spacing: 10) {
                 TextField(quickKind == .progress ? "Add progress…" : "Add a task…", text: $quickTitle).textFieldStyle(.plain).font(.system(size: 14)).focused($quickFocused).onSubmit(capture)
                 if !quickTitle.isEmpty { Button(action: capture) { Image(systemName: "return") }.buttonStyle(.plain).help("Add task") }
-                Menu {
-                    Picker("Sort", selection: $dueOrder) { Text("My order").tag(false); Text("Due date").tag(true) }
-                    Toggle("Show completed", isOn: $showCompleted)
-                } label: { Image(systemName: "line.3.horizontal.decrease") }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 28, height: 24).help("List options")
             }
             if quickFocused || !quickTitle.isEmpty {
                 ViewThatFits(in: .horizontal) {

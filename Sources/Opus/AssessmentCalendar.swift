@@ -41,6 +41,7 @@ struct AssessmentCalendar: View {
     var store: Store
     var query: String
     var newEntryRequest: Int
+    var editorLeadingInset: CGFloat = 0
     @State private var anchor = Date()
     @State private var period = CalendarPeriod.month
     @State private var selectedDay = Day.today
@@ -83,7 +84,7 @@ struct AssessmentCalendar: View {
         }
         .overlay {
             if let draft = editing {
-                EditorCardBackdrop {
+                EditorCardBackdrop(leadingInset: editorLeadingInset) {
                     CalendarEntryEditor(
                         store: store,
                         source: draft,
