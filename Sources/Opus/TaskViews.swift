@@ -78,8 +78,11 @@ struct ProgressLine: View {
                     HStack(spacing: 5) {
                         if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
                         else { Text("Inbox") }
-                        if let due = task.due { Text("· Goal " + Day.label(due)).foregroundStyle(due < Day.today ? Color.red : .secondary) }
-                        if task.ruleID != nil { RepeatBadge() }
+                        if let caption = task.rhythmCaption(rule: store.rule(task.ruleID), markNext: true) {
+                            Text("· " + caption).foregroundStyle(task.due.map { $0 < Day.today ? Color.red : .secondary } ?? .secondary)
+                        } else if let due = task.due {
+                            Text("· Goal " + Day.label(due)).foregroundStyle(due < Day.today ? Color.red : .secondary)
+                        }
                     }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).padding(.top, 1)
                 }
                 CompactTaskProgress(store: store, task: task).frame(width: 180, alignment: .trailing)
@@ -96,29 +99,36 @@ struct TaskLine: View {
     var store: Store
     var task: StudyTask
     var selected: Bool
+    var markNext = false
     var openDetails: () -> Void
+    @State private var pendingComplete = false
+    @State private var pendingWork: Task<Void, Never>?
+    private var struck: Bool { task.completed || pendingComplete }
+    private var rhythm: QuizRule? { store.rule(task.ruleID) }
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Button {
-                var updated = task; updated.completed.toggle(); store.save(updated)
-            } label: {
-                Image(systemName: task.completed ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 18)).foregroundStyle(task.completed ? Color.accentColor : Color.secondary)
+            Button(action: toggleComplete) {
+                Image(systemName: struck ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18)).foregroundStyle(struck ? Color.accentColor : Color.secondary)
             }
             .buttonStyle(.borderless)
-            .help(task.completed ? "Reopen task" : "Complete task")
+            .help(task.completed ? "Reopen task" : (pendingComplete ? "Cancel completion" : "Complete task"))
             .accessibilityIdentifier("task-complete-\(task.id)")
 
             Button(action: openDetails) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(task.title).font(.system(size: 14, weight: .medium)).strikethrough(task.completed).lineLimit(2)
+                    Text(task.title).font(.system(size: 14, weight: .medium)).strikethrough(struck).lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     HStack(spacing: 5) {
                         if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
                         else { Text("Inbox") }
-                        if let due = task.due { Text("· Due " + Day.label(due)).foregroundStyle(due < Day.today && !task.completed ? Color.red : .secondary) }
-                        if task.planned == Day.adding(1), task.due != task.planned { Text("· Tomorrow") }
-                        if task.ruleID != nil { RepeatBadge() }
+                        if let caption = task.rhythmCaption(rule: rhythm, markNext: markNext) {
+                            Text("· " + caption)
+                                .foregroundStyle(task.due.map { $0 < Day.today && !struck ? Color.red : .secondary } ?? .secondary)
+                        } else {
+                            if let due = task.due { Text("· Due " + Day.label(due)).foregroundStyle(due < Day.today && !struck ? Color.red : .secondary) }
+                            if task.planned == Day.adding(1), task.due != task.planned { Text("· Tomorrow") }
+                        }
                     }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                     .padding(.top, 1)
                 }
@@ -128,7 +138,35 @@ struct TaskLine: View {
             .accessibilityIdentifier("task-row-\(task.id)")
         }
         .padding(.vertical, 5)
-        .opacity(task.completed ? 0.55 : 1)
+        .opacity(struck ? 0.55 : 1)
+        .onDisappear {
+            pendingWork?.cancel()
+            pendingWork = nil
+        }
+    }
+    private func toggleComplete() {
+        if task.completed {
+            var updated = task
+            updated.completed = false
+            withAnimation(.easeInOut(duration: 0.25)) { store.save(updated) }
+            return
+        }
+        if pendingComplete {
+            pendingWork?.cancel()
+            pendingWork = nil
+            pendingComplete = false
+            return
+        }
+        pendingComplete = true
+        pendingWork = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard !Task.isCancelled else { return }
+            var updated = task
+            updated.completed = true
+            withAnimation(.easeInOut(duration: 0.28)) { store.save(updated) }
+            pendingComplete = false
+            pendingWork = nil
+        }
     }
 }
 

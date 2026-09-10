@@ -176,6 +176,10 @@ struct WorkItemEditor: View {
                 }
             }
 
+            if let rhythmNote {
+                Text(rhythmNote).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+
             if !valid {
                 Text(kind == .progress ? "Check the title and page range." : "Enter a title.")
                     .font(.caption).foregroundStyle(.orange)
@@ -216,6 +220,13 @@ struct WorkItemEditor: View {
     private var pacingHint: String? {
         let draft = StudyTask(kind: .progress, due: day, start: start, target: target, current: current)
         return draft.pacing(on: Day.today)
+    }
+
+    private var rhythmNote: String? {
+        guard case .task(let task) = source, let rule = store.rule(task.ruleID) else { return nil }
+        var parts = [rule.repeatsLabel]
+        if let end = rule.endDate { parts.append("Rhythm ends " + Day.label(end)) }
+        return parts.joined(separator: " · ")
     }
 
     private func save() {

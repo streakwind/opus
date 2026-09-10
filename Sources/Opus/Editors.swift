@@ -192,7 +192,7 @@ struct RuleEditor: View {
                     PillPicker("Interval", label: (rule.intervalWeeks ?? 1) == 1 ? "Week" : "\(rule.intervalWeeks ?? 1) weeks", selection: Binding(get: { rule.intervalWeeks ?? 1 }, set: { rule.intervalWeeks = $0 })) { ForEach(1...8, id: \.self) { Text($0 == 1 ? "Week" : "\($0) weeks").tag($0) } }.labelsHidden()
                 }
                 PropertyRow("From") { DateMenu(title: "Today", value: $rule.startDate) }
-                PropertyRow("Until") { DateMenu(title: "No end date", value: $rule.endDate) }
+                PropertyRow("Rhythm ends") { DateMenu(title: "No end date", value: $rule.endDate) }
                 PropertyRow("Active") { Toggle("Active", isOn: $rule.enabled).labelsHidden().toggleStyle(.switch).controlSize(.small) }
             }
             Text("Changes apply to future untouched occurrences. Completed or individually edited items stay as they are.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

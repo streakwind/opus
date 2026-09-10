@@ -75,8 +75,22 @@ struct ContentView: View {
         }
     }
     private func nextRhythms(_ items: [StudyTask]) -> [StudyTask] {
+        if selection == "archive" {
+            return items.sorted {
+                let left = $0.calendarDay ?? ""
+                let right = $1.calendarDay ?? ""
+                if left == right { return $0.title < $1.title }
+                return left > right
+            }
+        }
+        let ordered = items.sorted {
+            let left = $0.calendarDay ?? "9999"
+            let right = $1.calendarDay ?? "9999"
+            if left == right { return $0.title < $1.title }
+            return left < right
+        }
         var seenRules = Set<String>()
-        return items.filter { task in
+        return ordered.filter { task in
             guard let ruleID = task.ruleID else { return true }
             return seenRules.insert(ruleID).inserted
         }
@@ -336,11 +350,12 @@ struct ContentView: View {
                 }
                 if !tasks.isEmpty && (!assessments.isEmpty || !progressItems.isEmpty) { listHeading("Tasks") }
                 ForEach(tasks) { task in
-                    TaskLine(store: store, task: task, selected: workDetail?.id == "task:" + task.id) {
+                    TaskLine(store: store, task: task, selected: workDetail?.id == "task:" + task.id, markNext: task.ruleID != nil && selection != "archive") {
                         workDetail = .task(task)
                     }
                     .listRowSeparator(.hidden)
                     .listRowBackground(workDetail?.id == "task:" + task.id ? Color.accentColor.opacity(0.065) : Color.clear)
+                    .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
                     .contextMenu {
                         Button("Details") { workDetail = .task(task) }
                         Menu("Move to list") {
@@ -349,12 +364,14 @@ struct ContentView: View {
                         }
                         Button("Delete", role: .destructive) { store.deleteTask(task.id) }
                     }
-                }.onMove { offsets, destination in
+                }
+                .onMove { offsets, destination in
                     var reordered = tasks; reordered.move(fromOffsets: offsets, toOffset: destination)
                     let ids = Set(reordered.map(\.id))
                     var iterator = reordered.makeIterator()
                     store.change { state in state.tasks = state.tasks.map { ids.contains($0.id) ? iterator.next()! : $0 } }
                 }
+                .animation(.easeInOut(duration: 0.28), value: tasks.map(\.id))
                 if tasks.isEmpty && progressItems.isEmpty && assessments.isEmpty && !query.isEmpty {
                     Text("No matches.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 12).listRowSeparator(.hidden)
                 }
