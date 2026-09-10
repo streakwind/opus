@@ -63,11 +63,12 @@ struct ContentView: View {
     private var tasks: [StudyTask] { nextRhythms(matchingItems.filter { $0.kind != .progress }) }
     private var progressItems: [StudyTask] { nextRhythms(matchingItems.filter { $0.kind == .progress }) }
     private var assessments: [Assessment] {
-        guard let course else { return [] }
+        let courseID = course?.id
+        guard courseID != nil || selection == "today" || selection == "all" else { return [] }
         var seenRules = Set<String>()
         return store.state.assessments
             .filter {
-                $0.courseID == course.id && $0.day >= Day.today &&
+                (courseID == nil || $0.courseID == courseID) && $0.day >= Day.today &&
                 (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) || $0.topics.localizedCaseInsensitiveContains(query))
             }
             .sorted { $0.day == $1.day ? $0.title < $1.title : $0.day < $1.day }
@@ -164,51 +165,49 @@ struct ContentView: View {
                     }.padding(.horizontal, 22).padding(.vertical, 8)
                     List {
                         if !assessments.isEmpty {
-                            Section("Assessments") {
-                                ForEach(assessments) { item in
-                                    Button { openAssessment(item) } label: {
-                                        HStack(spacing: 10) {
-                                            Image(systemName: item.confirmed ? "calendar" : "questionmark.circle")
-                                                .foregroundStyle(course?.tint ?? .teal).frame(width: 18)
-                                            VStack(alignment: .leading, spacing: 3) {
-                                                HStack(spacing: 5) {
-                                                    Text(item.title).font(.system(size: 14, weight: .medium)).lineLimit(2)
-                                                    if item.ruleID != nil { RepeatBadge() }
-                                                }
-                                                Text(Day.label(item.day) + (item.confirmed ? "" : " · Tentative"))
-                                                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                            listHeading("Assessments")
+                            ForEach(assessments) { item in
+                                Button { openAssessment(item) } label: {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: item.confirmed ? "calendar" : "questionmark.circle")
+                                            .foregroundStyle(course?.tint ?? .teal).frame(width: 18)
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            HStack(spacing: 5) {
+                                                Text(item.title).font(.system(size: 14, weight: .medium)).lineLimit(2)
+                                                if item.ruleID != nil { RepeatBadge() }
                                             }
-                                            Spacer()
-                                        }.padding(.vertical, 5).contentShape(Rectangle())
-                                    }.buttonStyle(.plain).listRowSeparator(.hidden)
-                                }
-                            }.listSectionSeparator(.hidden)
+                                            Text(Day.label(item.day) + (item.confirmed ? "" : " · Tentative"))
+                                                .font(.system(size: 11)).foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                    }.padding(.vertical, 5).contentShape(Rectangle())
+                                }.buttonStyle(.plain).listRowSeparator(.hidden)
+                            }
                         }
                         if !progressItems.isEmpty {
-                            Section("Progress") {
-                                ForEach(progressItems) { item in
-                                    ProgressLine(store: store, task: item) {
-                                        selectedTask = item.id
-                                        if !wide { narrowTask = item }
-                                    }
-                                    .listRowSeparator(.hidden)
-                                    .listRowBackground(selectedTask == item.id && wide ? Color.accentColor.opacity(0.065) : Color.clear)
-                                    .popover(isPresented: Binding(get: { !wide && narrowTask?.id == item.id }, set: { if !$0 { narrowTask = nil } })) {
-                                        TaskInspector(store: store, task: item) { narrowTask = nil }.frame(width: 350, height: 530)
-                                    }
-                                    .contextMenu {
-                                        Button("Details") { selectedTask = item.id; if !wide { narrowTask = item } }
-                                        Menu("Move to list") {
-                                            Button("Inbox") { var copy = item; copy.courseID = nil; store.save(copy) }
-                                            ForEach(store.state.courses) { list in Button(list.name) { var copy = item; copy.courseID = list.id; store.save(copy) } }
-                                        }
-                                        Button("Delete", role: .destructive) { store.deleteTask(item.id) }
-                                    }
+                            listHeading("Progress")
+                            ForEach(progressItems) { item in
+                                ProgressLine(store: store, task: item) {
+                                    selectedTask = item.id
+                                    if !wide { narrowTask = item }
                                 }
-                            }.listSectionSeparator(.hidden)
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(selectedTask == item.id && wide ? Color.accentColor.opacity(0.065) : Color.clear)
+                                .popover(isPresented: Binding(get: { !wide && narrowTask?.id == item.id }, set: { if !$0 { narrowTask = nil } })) {
+                                    TaskInspector(store: store, task: item) { narrowTask = nil }.frame(width: 350, height: 530)
+                                }
+                                .contextMenu {
+                                    Button("Details") { selectedTask = item.id; if !wide { narrowTask = item } }
+                                    Menu("Move to list") {
+                                        Button("Inbox") { var copy = item; copy.courseID = nil; store.save(copy) }
+                                        ForEach(store.state.courses) { list in Button(list.name) { var copy = item; copy.courseID = list.id; store.save(copy) } }
+                                    }
+                                    Button("Delete", role: .destructive) { store.deleteTask(item.id) }
+                                }
+                            }
                         }
-                        Section {
-                            ForEach(tasks) { task in
+                        if !tasks.isEmpty && (!assessments.isEmpty || !progressItems.isEmpty) { listHeading("Tasks") }
+                        ForEach(tasks) { task in
                                 TaskLine(store: store, task: task, selected: selectedTask == task.id) {
                                     selectedTask = task.id
                                     if !wide { narrowTask = task }
@@ -229,19 +228,16 @@ struct ContentView: View {
                                     }
                                     Button("Delete", role: .destructive) { store.deleteTask(task.id) }
                                 }
-                            }.onMove { offsets, destination in
-                                guard !dueOrder else { return }
-                                var reordered = tasks; reordered.move(fromOffsets: offsets, toOffset: destination)
-                                let ids = Set(reordered.map(\.id))
-                                var iterator = reordered.makeIterator()
-                                store.change { state in state.tasks = state.tasks.map { ids.contains($0.id) ? iterator.next()! : $0 } }
-                            }.moveDisabled(dueOrder)
-                            if tasks.isEmpty && !query.isEmpty {
-                                Text("No matching tasks.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 12).listRowSeparator(.hidden)
-                            }
-                        } header: {
-                            if !assessments.isEmpty || !progressItems.isEmpty { Text("Tasks") }
-                        }.listSectionSeparator(.hidden)
+                        }.onMove { offsets, destination in
+                            guard !dueOrder else { return }
+                            var reordered = tasks; reordered.move(fromOffsets: offsets, toOffset: destination)
+                            let ids = Set(reordered.map(\.id))
+                            var iterator = reordered.makeIterator()
+                            store.change { state in state.tasks = state.tasks.map { ids.contains($0.id) ? iterator.next()! : $0 } }
+                        }.moveDisabled(dueOrder)
+                        if tasks.isEmpty && !query.isEmpty {
+                            Text("No matching tasks.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 12).listRowSeparator(.hidden)
+                        }
                     }.listStyle(.inset).scrollContentBackground(.hidden)
                 }.frame(maxWidth: .infinity)
                 if wide, let id = selectedTask, let task = store.state.tasks.first(where: { $0.id == id }) {
@@ -249,6 +245,11 @@ struct ContentView: View {
                 }
             }
         }
+    }
+    private func listHeading(_ title: String) -> some View {
+        Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            .padding(.top, 12).padding(.bottom, 3)
+            .listRowSeparator(.hidden)
     }
     private var quickEntry: some View {
         VStack(alignment: .leading, spacing: 10) {

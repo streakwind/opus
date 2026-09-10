@@ -8,6 +8,8 @@ struct ClassScheduleCard: View {
     @State private var showingWork = false
     private var assessments: [Assessment] { CourseWork.assessments(courseID: course.id, from: block.day, in: store.state) }
     private var tasks: [StudyTask] { CourseWork.tasks(courseID: course.id, from: block.day, in: store.state, progress: false) }
+    private var progress: [StudyTask] { CourseWork.tasks(courseID: course.id, from: block.day, in: store.state, progress: true) }
+    private var taskCount: Int { tasks.count + progress.count }
     var body: some View {
         Button { showingWork = true } label: {
             ZStack(alignment: .topLeading) {
@@ -17,7 +19,7 @@ struct ClassScheduleCard: View {
                     HStack(spacing: 5) {
                         Text(ClockTime.label(block.startMinute)).lineLimit(1)
                         Spacer(minLength: 2)
-                        if !tasks.isEmpty { Label("\(tasks.count)", systemImage: "checkmark.circle").labelStyle(.titleAndIcon) }
+                        if taskCount > 0 { Label("\(taskCount)", systemImage: "checkmark.circle").labelStyle(.titleAndIcon) }
                         if !assessments.isEmpty { Label("\(assessments.count)", systemImage: "calendar").labelStyle(.titleAndIcon) }
                     }.font(.system(size: 8, weight: .medium)).foregroundStyle(.white.opacity(0.86))
                 }.padding(4)
@@ -62,13 +64,10 @@ private struct CourseWorkPopover: View {
                             sectionTitle("Assessments", count: assessments.count)
                             ForEach(assessments) { assessmentRow($0) }
                         }
-                        if !progress.isEmpty {
-                            sectionTitle("Progress", count: progress.count)
-                            ForEach(progress) { progressRow($0) }
-                        }
-                        if !tasks.isEmpty {
-                            sectionTitle("Tasks", count: tasks.count)
+                        if !tasks.isEmpty || !progress.isEmpty {
+                            sectionTitle("Tasks", count: tasks.count + progress.count)
                             ForEach(tasks) { taskRow($0) }
+                            ForEach(progress) { progressRow($0) }
                         }
                     }
                 }.frame(width: 360).frame(maxHeight: 420)
