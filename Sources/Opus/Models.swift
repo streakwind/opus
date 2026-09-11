@@ -89,12 +89,32 @@ struct QuizRule: Identifiable, Codable, Equatable {
     var startDate: String?
     var endDate: String?
     var taskKind: TaskKind?
+    var startCount: Int?
     var targetCount: Int?
     var startMinute: Int?
     var duration: Int?
     var notes: String?
     var days: Set<Int> { Set(weekdays ?? [weekday]) }
     var kind: RepeatItem { itemKind ?? .assessment }
+    var workKind: WorkKind {
+        get {
+            if kind == .assessment { return .assessment }
+            return taskKind == .progress ? .progress : .task
+        }
+        set {
+            switch newValue {
+            case .task:
+                itemKind = .task
+                taskKind = .checkbox
+            case .progress:
+                itemKind = .task
+                taskKind = .progress
+            case .assessment:
+                itemKind = .assessment
+                taskKind = nil
+            }
+        }
+    }
     var summary: String {
         let pattern = compactPattern
         var parts = [pattern]

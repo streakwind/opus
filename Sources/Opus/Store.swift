@@ -82,6 +82,9 @@ final class Store {
             else { state.assessments.append(assessment) }
         }
     }
+    func deleteAssessment(_ id: String) {
+        change { $0.assessments.removeAll { $0.id == id } }
+    }
     func save(_ course: Course) {
         var course = course
         course.syncLegacyClassTime()
@@ -142,14 +145,16 @@ final class Store {
                     state.assessments.append(Assessment(courseID: rule.courseID, title: rule.title, day: day, confirmed: rule.confirmsAssessments, topics: rule.notes ?? "", ruleID: rule.id, occurrence: day))
                 case .task:
                     let kind = (rule.taskKind == .progress) ? TaskKind.progress : .checkbox
+                    let start = kind == .progress ? max(1, rule.startCount ?? 1) : 1
                     state.tasks.append(StudyTask(
                         courseID: rule.courseID,
                         title: rule.title,
                         notes: rule.notes ?? "",
                         kind: kind,
                         due: day,
-                        target: rule.targetCount ?? 30,
-                        current: kind == .progress ? 0 : 0,
+                        start: start,
+                        target: max(start, rule.targetCount ?? 30),
+                        current: kind == .progress ? start - 1 : 0,
                         ruleID: rule.id,
                         occurrence: day
                     ))
@@ -169,7 +174,11 @@ final class Store {
         let worked = Set(state.activities.map(\.taskID))
         state.tasks.removeAll { item in
             guard item.ruleID == rule.id, !item.completed, !worked.contains(item.id), item.courseID == rule.courseID else { return false }
-            guard item.title == rule.title, item.notes == (rule.notes ?? ""), item.current == 0, item.start == 1, item.target == (rule.targetCount ?? 30), item.kind == ((rule.taskKind == .progress) ? .progress : .checkbox) else { return false }
+            let kind: TaskKind = rule.taskKind == .progress ? .progress : .checkbox
+            let start = kind == .progress ? max(1, rule.startCount ?? 1) : 1
+            let target = max(start, rule.targetCount ?? 30)
+            let current = kind == .progress ? start - 1 : 0
+            guard item.title == rule.title, item.notes == (rule.notes ?? ""), item.current == current, item.start == start, item.target == target, item.kind == kind else { return false }
             let remove: Bool
             if item.kind == .progress {
                 remove = (item.due ?? "") >= Day.today && item.due == item.occurrence && item.planned == nil

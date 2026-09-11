@@ -116,6 +116,42 @@ final class RedesignTests: XCTestCase {
         XCTAssertTrue(rule.occurs(on: "2026-09-09"))
         XCTAssertFalse(rule.occurs(on: "2026-09-10"))
     }
+    func testRhythmUsesSharedWorkKinds() {
+        var rule = QuizRule(title: "Review", itemKind: .task)
+        XCTAssertEqual(rule.workKind, .task)
+        rule.workKind = .assessment
+        XCTAssertEqual(rule.kind, .assessment)
+        XCTAssertEqual(rule.workKind, .assessment)
+        rule.workKind = .progress
+        XCTAssertEqual(rule.kind, .task)
+        XCTAssertEqual(rule.taskKind, .progress)
+        XCTAssertEqual(rule.workKind, .progress)
+        rule.workKind = .task
+        XCTAssertEqual(rule.kind, .task)
+        XCTAssertEqual(rule.taskKind, .checkbox)
+    }
+    @MainActor func testProgressRhythmGeneratesConfiguredRangeAndDetails() {
+        var state = Snapshot()
+        let rule = QuizRule(
+            title: "Read",
+            weekdays: Array(1...7),
+            itemKind: .task,
+            startDate: "2026-09-07",
+            endDate: "2026-09-07",
+            taskKind: .progress,
+            startCount: 17,
+            targetCount: 49,
+            notes: "Chapter 3"
+        )
+        state.rules = [rule]
+        Store.generate(in: &state, today: "2026-09-07")
+        XCTAssertEqual(state.tasks.count, 1)
+        XCTAssertEqual(state.tasks[0].kind, .progress)
+        XCTAssertEqual(state.tasks[0].start, 17)
+        XCTAssertEqual(state.tasks[0].target, 49)
+        XCTAssertEqual(state.tasks[0].current, 16)
+        XCTAssertEqual(state.tasks[0].notes, "Chapter 3")
+    }
     @MainActor func testCustomDaysGenerateTasksAndRespectEndDate() {
         var state = Snapshot()
         var rule = QuizRule(title: "Vocabulary", weekdays: [2,3,4], itemKind: .task, startDate: "2026-09-07", endDate: "2026-09-16", taskKind: .practice)

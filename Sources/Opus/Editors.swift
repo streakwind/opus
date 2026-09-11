@@ -146,33 +146,40 @@ struct RuleEditor: View {
     init(store: Store, rule: QuizRule) {
         self.store = store; _rule = State(initialValue: rule); _days = State(initialValue: rule.days)
     }
-    private var valid: Bool { !rule.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !days.isEmpty && (rule.endDate == nil || rule.endDate! >= (rule.startDate ?? Day.today)) && (rule.kind != .schedule || (rule.startMinute ?? 540) + (rule.duration ?? 60) <= 1440) }
+    private var valid: Bool {
+        let start = rule.startCount ?? 1
+        let target = rule.targetCount ?? 30
+        return !rule.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !days.isEmpty &&
+            (rule.endDate == nil || rule.endDate! >= (rule.startDate ?? Day.today)) &&
+            (rule.workKind != .progress || (start > 0 && target >= start && target <= 1_000_000)) &&
+            (rule.kind != .schedule || (rule.startMinute ?? 540) + (rule.duration ?? 60) <= 1440)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("Repeat something", text: $rule.title).textFieldStyle(.plain).font(.system(size: 19, weight: .semibold))
             VStack(spacing: 0) {
-                PropertyRow("Add to") {
-                    PillPicker("Kind", label: rule.kind.rawValue, selection: Binding(get: { rule.kind }, set: { rule.itemKind = $0 })) {
-                        ForEach([RepeatItem.task, .assessment]) { Text($0.rawValue).tag($0) }
+                PropertyRow("Type") {
+                    PillPicker("Type", label: rule.workKind.rawValue, selection: Binding(get: { rule.workKind }, set: { rule.workKind = $0 })) {
+                        ForEach(WorkKind.allCases) { Text($0.rawValue).tag($0) }
                     }.labelsHidden().pickerStyle(.menu)
                 }
                 PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $rule.courseID) }
                 if rule.kind == .assessment {
-                    PropertyRow("Dates") {
-                        PillPicker("Dates", label: rule.confirmsAssessments ? "Confirmed" : "Tentative", selection: Binding(get: { rule.confirmsAssessments }, set: { rule.assessmentsConfirmed = $0 })) {
+                    PropertyRow("Status") {
+                        PillPicker("Status", label: rule.confirmsAssessments ? "Confirmed" : "Tentative", selection: Binding(get: { rule.confirmsAssessments }, set: { rule.assessmentsConfirmed = $0 })) {
                             Text("Confirmed").tag(true)
                             Text("Tentative").tag(false)
                         }.labelsHidden()
                     }
                 }
-                if rule.kind == .task {
-                    PropertyRow("Track") {
-                        PillPicker("Track", label: (rule.taskKind == .progress ? TaskKind.progress : .checkbox).rawValue, selection: Binding(get: { rule.taskKind == .progress ? TaskKind.progress : .checkbox }, set: { rule.taskKind = $0 })) {
-                            ForEach([TaskKind.checkbox, .progress]) { Text($0.rawValue).tag($0) }
-                        }.labelsHidden().pickerStyle(.menu)
-                    }
-                    if rule.taskKind == .progress {
-                        PropertyRow("Goal") { TextField("Pages", value: Binding(get: { rule.targetCount ?? 30 }, set: { rule.targetCount = max(1, $0) }), format: .number).frame(width: 80) }
+                if rule.workKind == .progress {
+                    PropertyRow("Range") {
+                        HStack {
+                            TextField("Start", value: Binding(get: { rule.startCount ?? 1 }, set: { rule.startCount = max(1, $0) }), format: .number.grouping(.never)).frame(width: 55)
+                            Text("to").foregroundStyle(.secondary)
+                            TextField("End", value: Binding(get: { rule.targetCount ?? 30 }, set: { rule.targetCount = max(rule.startCount ?? 1, $0) }), format: .number.grouping(.never)).frame(width: 55)
+                        }.textFieldStyle(.roundedBorder)
                     }
                 }
                 if rule.kind == .schedule {
@@ -185,6 +192,12 @@ struct RuleEditor: View {
                     }
                 }
             }
+            TextField(rule.kind == .assessment ? "Topics" : "Details", text: Binding(
+                get: { rule.notes ?? "" },
+                set: { rule.notes = $0.isEmpty ? nil : $0 }
+            ), axis: .vertical)
+                .textFieldStyle(.plain)
+                .lineLimit(2...5)
             Text("Repeat on").font(.callout.weight(.medium))
             WeekdayPicker(days: $days)
             VStack(spacing: 0) {
@@ -201,6 +214,9 @@ struct RuleEditor: View {
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Done") {
+                    rule.title = rule.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                    rule.notes = rule.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if rule.notes?.isEmpty == true { rule.notes = nil }
                     rule.weekdays = days.sorted(); rule.startDate = rule.startDate ?? Day.today
                     store.saveRule(rule); if store.error == nil { dismiss() }
                 }.keyboardShortcut(.defaultAction).disabled(!valid)

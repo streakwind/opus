@@ -205,7 +205,7 @@ private struct CalendarDayCell: View {
                 Button("Edit") { editing = .assessment(item) }
                 Button(item.confirmed ? "Mark tentative" : "Confirm") { var copy = item; copy.confirmed.toggle(); store.save(copy) }
                 Button("Add preparation task") { store.save(StudyTask(courseID: item.courseID, title: "Prepare: " + item.title, notes: item.topics, due: item.day)) }
-                    Button("Delete", role: .destructive) { store.change { $0.assessments.removeAll { $0.id == item.id } } }
+                Button("Delete", role: .destructive) { store.deleteAssessment(item.id) }
             }
     }
     private func taskLine(_ task: StudyTask) -> some View {

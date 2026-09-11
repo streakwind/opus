@@ -54,6 +54,44 @@ final class StorageTests: XCTestCase {
         XCTAssertEqual(store.state.assessments.count, 7)
         XCTAssertTrue(store.state.assessments.contains { $0.id == moved.id })
     }
+    @MainActor func testAssessmentRhythmCreateUpdateAndDelete() throws {
+        let store = try Store(database: database())
+        let course = Course(name: "Example list")
+        store.save(course)
+        var rule = QuizRule(
+            courseID: course.id,
+            title: "Chapter quiz",
+            weekdays: Array(1...7),
+            itemKind: .assessment,
+            startDate: Day.today,
+            endDate: Day.adding(2),
+            notes: "Chapter 4"
+        )
+        rule.assessmentsConfirmed = false
+
+        store.saveRule(rule)
+        XCTAssertEqual(store.state.assessments.count, 3)
+        XCTAssertTrue(store.state.tasks.isEmpty)
+        XCTAssertTrue(store.state.assessments.allSatisfy {
+            $0.courseID == course.id && $0.title == "Chapter quiz" &&
+                !$0.confirmed && $0.topics == "Chapter 4" && $0.ruleID == rule.id
+        })
+
+        rule.title = "Chapter exam"
+        rule.notes = "Chapters 4–5"
+        rule.assessmentsConfirmed = true
+        store.saveRule(rule)
+        XCTAssertEqual(store.state.assessments.count, 3)
+        XCTAssertTrue(store.state.assessments.allSatisfy {
+            $0.title == "Chapter exam" && $0.confirmed && $0.topics == "Chapters 4–5"
+        })
+
+        store.deleteRule(rule.id)
+        XCTAssertFalse(store.state.rules.contains { $0.id == rule.id })
+        XCTAssertFalse(store.state.assessments.contains { $0.ruleID == rule.id })
+        store.undo()
+        XCTAssertEqual(store.state.assessments.filter { $0.ruleID == rule.id }.count, 3)
+    }
     @MainActor func testRemoveListPreservesWorkAndUndoRestoresIt() throws {
         let store = try Store(database: database())
         let course = Course(name: "Example F")

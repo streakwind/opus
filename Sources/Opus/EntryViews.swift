@@ -167,13 +167,12 @@ struct WorkItemEditor: View {
                 }
             }
 
-            if kind == .assessment {
-                if notesVisible {
-                    TextField("Topics", text: $notes, axis: .vertical).textFieldStyle(.plain).lineLimit(2...6)
-                } else {
-                    Button("Add topics") { notesVisible = true }
-                        .buttonStyle(.plain).foregroundStyle(.secondary).font(.caption)
-                }
+            if notesVisible {
+                TextField(kind == .assessment ? "Topics" : "Details", text: $notes, axis: .vertical)
+                    .textFieldStyle(.plain).lineLimit(2...6)
+            } else {
+                Button(kind == .assessment ? "Add topics" : "Add details") { notesVisible = true }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).font(.caption)
             }
 
             if let rhythmNote {
@@ -286,7 +285,7 @@ struct WorkItemEditor: View {
     private func delete() {
         switch source {
         case .task(let task): store.deleteTask(task.id)
-        case .assessment(let item): store.change { $0.assessments.removeAll { $0.id == item.id } }
+        case .assessment(let item): store.deleteAssessment(item.id)
         case .new: break
         }
         onDismiss()

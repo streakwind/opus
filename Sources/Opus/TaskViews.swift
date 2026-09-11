@@ -179,7 +179,10 @@ struct DateMenu: View {
         self.title = title; _value = value; self.prefix = prefix
     }
     var body: some View {
-        Button(label) { calendar = true }.buttonStyle(.plain).pillChrome().fixedSize()
+        Button(label) { calendar = true }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .fixedSize()
             .popover(isPresented: $calendar) {
                 CompactDatePicker(value: $value, clearLabel: title == "Due date" || title == "No deadline" ? "No due date" : "No date") { calendar = false }
             }

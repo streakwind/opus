@@ -7,18 +7,6 @@ private enum Editor: Identifiable {
     var id: String { switch self { case .course(let value): value.id; case .rule(let value): value.id } }
 }
 
-enum QuickKind: String, CaseIterable, Identifiable {
-    case task = "Task", progress = "Progress", assessment = "Assessment"
-    var id: String { rawValue }
-    var workKind: WorkKind {
-        switch self {
-        case .task: .task
-        case .progress: .progress
-        case .assessment: .assessment
-        }
-    }
-}
-
 struct ContentView: View {
     @Bindable var store: Store
     @State private var selection: String? = "today"
@@ -26,7 +14,7 @@ struct ContentView: View {
     @State private var editor: Editor?
     @State private var workDetail: WorkDraft?
     @State private var quickTitle = ""
-    @State private var quickKind: QuickKind = .task
+    @State private var quickKind: WorkKind = .task
     @State private var quickCourse: String?
     @State private var quickDue: String? = Day.adding(1)
     @State private var quickStart = 1
@@ -326,9 +314,7 @@ struct ContentView: View {
                             Button(item.confirmed ? "Mark tentative" : "Confirm") {
                                 var copy = item; copy.confirmed.toggle(); store.save(copy)
                             }
-                            Button("Delete", role: .destructive) {
-                                store.change { $0.assessments.removeAll { $0.id == item.id } }
-                            }
+                            Button("Delete", role: .destructive) { store.deleteAssessment(item.id) }
                         }
                     }
                 }
@@ -430,7 +416,7 @@ struct ContentView: View {
             ForEach(store.state.courses) { Text($0.shortName).tag(Optional($0.id)) }
         }.labelsHidden().fixedSize()
         PillPicker("Type", label: quickKind.rawValue, selection: $quickKind) {
-            ForEach(QuickKind.allCases) { Text($0.rawValue).tag($0) }
+            ForEach(WorkKind.allCases) { Text($0.rawValue).tag($0) }
         }.labelsHidden().fixedSize()
         DateMenu(title: quickKind == .assessment ? "Date" : "Due date", value: $quickDue, prefix: quickKind == .assessment ? nil : "Due")
     }
