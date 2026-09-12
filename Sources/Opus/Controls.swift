@@ -133,7 +133,6 @@ struct WindowChrome: NSViewRepresentable {
             if let table = view as? NSTableView {
                 table.backgroundColor = .clear
                 table.enclosingScrollView?.drawsBackground = false
-                table.selectionHighlightStyle = .none
             }
             view.subviews.forEach { unify($0) }
         }
