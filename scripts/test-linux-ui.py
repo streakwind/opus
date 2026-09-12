@@ -228,7 +228,29 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         click(('nav-rhythm', 'Rhythm'))
         find_accessible(('add-rhythm', 'Add a rhythm…'))
 
-        # Save a list with class times (regression for the save crash).
+        click(('Settings',), role='push button')
+        find_accessible(('set-appearance', 'Appearance', 'APPEARANCE'))
+        click(('settings-done', 'Done'))
+
+        click(('nav-inbox', 'Inbox'))
+        _, _, row_buttons = work_row('Interface test task')
+        activate(row_buttons[-1], 'delete task')
+        wait_for(lambda: tasks() == [])
+        command('xdotool', 'key', '--clearmodifiers', 'ctrl+shift+z')
+        wait_for(lambda: len(tasks()) == 1)
+
+        command('import', '-window', 'root', str(artifacts / 'shell-light.png'))
+        click(('Settings',), role='push button')
+        find_accessible(('set-appearance', 'Appearance', 'APPEARANCE'))
+        try:
+            click('Dark')
+        except AssertionError:
+            pass
+        click(('settings-done', 'Done'))
+        time.sleep(0.3)
+        command('import', '-window', 'root', str(artifacts / 'shell-dark.png'))
+
+        # Class-time save last: overlay teardown has historically upset AT-SPI.
         click('New list button', role='push button')
         find_accessible(('New list', 'Edit list', 'editor-cancel', 'Cancel', 'NAME'))
         name_label = find_accessible(('NAME', 'Name'), role='label')
@@ -249,32 +271,13 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         wait_for(lambda: any(course.get('name') == 'Physics Lab' for course in courses(db)))
         saved_course = next(course for course in courses(db) if course.get('name') == 'Physics Lab')
         assert saved_course.get('name') == 'Physics Lab'
-        assert process.poll() is None, f'Opus exited after saving class times; log:\n{log_path.read_text(errors="replace")}'
-        find_accessible('Physics Lab')
+        assert process.poll() is None, (
+            'Opus exited after saving class times; log:\n'
+            + log_path.read_text(errors='replace')
+        )
+        time.sleep(0.5)
 
-        click(('Settings',), role='push button')
-        find_accessible(('set-appearance', 'Appearance', 'APPEARANCE'))
-        click(('settings-done', 'Done'))
-
-        click(('nav-inbox', 'Inbox'))
-        _, _, row_buttons = work_row('Interface test task')
-        activate(row_buttons[-1], 'delete task')
-        wait_for(lambda: tasks() == [])
-        command('xdotool', 'key', '--clearmodifiers', 'ctrl+shift+z')
-        wait_for(lambda: len(tasks()) == 1)
-
-        command('import', '-window', 'root', str(artifacts / 'shell-light.png'))
-        # Toggle dark appearance for a second screenshot when settings allow it.
-        click(('Settings',), role='push button')
-        find_accessible(('set-appearance', 'Appearance', 'APPEARANCE'))
-        try:
-            click('Dark')
-        except AssertionError:
-            pass
-        click(('settings-done', 'Done'))
-        time.sleep(0.3)
-        command('import', '-window', 'root', str(artifacts / 'shell-dark.png'))
-
+        command('xdotool', 'windowfocus', '--sync', main)
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+q')
         assert process.wait(timeout=10) == 0
         subprocess.run(['dist/linux/bin/opus', '--smoke-test'], env=env, check=True, timeout=15)

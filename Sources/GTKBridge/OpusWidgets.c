@@ -501,26 +501,19 @@ void opus_editor_add_actions(GtkWidget *box, const char *save_action,
     gtk_box_append(GTK_BOX(box), actions);
 }
 
+static gboolean unref_widget_idle(gpointer data) {
+    g_object_unref(data);
+    return G_SOURCE_REMOVE;
+}
+
 void opus_editors_close(gboolean notify) {
     if (opus_ui.editor_dim) {
+        /* Hide first, then destroy on idle. Destroying the overlay tree
+         * synchronously after a class-time editor drops AT-SPI in CI. */
         GtkWidget *dim = opus_ui.editor_dim;
-        /* Drop row metadata before destroying widgets so free funcs never
-         * touch partially-torn-down spin buttons / day toggles. */
-        if (opus_ui.editor_time_rows) {
-            for (guint i = 0; i < opus_ui.editor_time_rows->len; i++) {
-                OpusCourseTimeRow *row =
-                    g_ptr_array_index(opus_ui.editor_time_rows, i);
-                if (!row) {
-                    continue;
-                }
-                row->row = NULL;
-                row->start = NULL;
-                row->end = NULL;
-                row->days_box = NULL;
-            }
-        }
         g_signal_handlers_disconnect_by_func(dim,
                                              G_CALLBACK(editor_destroyed), NULL);
+        gtk_widget_set_visible(dim, FALSE);
         GtkWidget *parent = gtk_widget_get_parent(dim);
         g_object_ref(dim);
         if (parent && GTK_IS_OVERLAY(parent)) {
@@ -529,7 +522,7 @@ void opus_editors_close(gboolean notify) {
             gtk_box_remove(GTK_BOX(parent), dim);
         }
         clear_editor_state();
-        g_object_unref(dim);
+        g_idle_add(unref_widget_idle, dim);
     } else if (opus_ui.editor && GTK_IS_WINDOW(opus_ui.editor)) {
         GtkWidget *editor = opus_ui.editor;
         g_signal_handlers_disconnect_by_func(editor,
