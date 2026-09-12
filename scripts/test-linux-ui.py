@@ -94,6 +94,13 @@ def activate(node, description: str):
                 assert node.doActionNamed(action), f'Failed to invoke {action} on {description}'
                 return node
         node = node.parent
+    if original.focusable:
+        assert original.grabFocus(), f'Failed to focus {description}'
+        command(
+            'xdotool', 'key', '--clearmodifiers',
+            'space' if original.roleName in ('check box', 'toggle button') else 'Return',
+        )
+        return original
     original.click()
     return original
 
