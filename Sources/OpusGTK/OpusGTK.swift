@@ -365,7 +365,7 @@ struct OpusGTK {
 private func handleGTKEvent(_ payload: UnsafePointer<OpusEventPayload>?) {
     guard let payload else { return }
     let event = GTKEvent(payload)
-    Task { @MainActor in
+    MainActor.assumeIsolated {
         OpusGTK.controller?.event(event)
     }
 }
