@@ -488,8 +488,12 @@ static void draw_schedule(GtkDrawingArea *area, cairo_t *cr, int width,
     (void)height;
 }
 
-static gboolean target_is_button(GtkEventController *controller) {
-    GtkWidget *target = gtk_event_controller_get_current_event_target(controller);
+static gboolean target_is_button(GtkEventController *controller,
+                                 double x, double y) {
+    GtkWidget *widget = gtk_event_controller_get_widget(controller);
+    GtkWidget *target = widget
+        ? gtk_widget_pick(widget, x, y, GTK_PICK_DEFAULT)
+        : NULL;
     while (target) {
         if (GTK_IS_BUTTON(target)) {
             return TRUE;
@@ -504,7 +508,7 @@ static void schedule_pressed(GtkGestureClick *gesture, int presses, double x,
     (void)presses;
     (void)x;
     ScheduleDay *day = data;
-    if (target_is_button(GTK_EVENT_CONTROLLER(gesture))) {
+    if (target_is_button(GTK_EVENT_CONTROLLER(gesture), x, y)) {
         day->pressed = FALSE;
         return;
     }
@@ -517,7 +521,8 @@ static void schedule_released(GtkGestureClick *gesture, int presses, double x,
     (void)presses;
     (void)x;
     ScheduleDay *day = data;
-    if (!day->pressed || target_is_button(GTK_EVENT_CONTROLLER(gesture))) {
+    if (!day->pressed ||
+        target_is_button(GTK_EVENT_CONTROLLER(gesture), x, y)) {
         day->pressed = FALSE;
         return;
     }
