@@ -49,9 +49,11 @@ def window_id(name: str) -> str:
 
 
 def find_accessible(name: str, role=None, root=None):
+    names = {name} if isinstance(name, str) else set(name)
+
     def match(node):
         try:
-            if node.name != name:
+            if node.name not in names:
                 return False
             if role is not None and node.roleName != role:
                 return False
@@ -74,7 +76,11 @@ def find_accessible(name: str, role=None, root=None):
                 return found
         return None
 
-    return wait_for(lambda: walk(root or accessibility_root))
+    try:
+        return wait_for(lambda: walk(root or accessibility_root))
+    except AssertionError:
+        accessibility_root.dump()
+        raise
 
 
 def click(name: str, role=None):
@@ -124,7 +130,7 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         command('xdotool', 'windowfocus', '--sync', main)
         dismiss_help_if_present()
 
-        click('nav-inbox')
+        click(('nav-inbox', 'Inbox'))
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+n')
         wait_for(lambda: window_id('New work'))
         focus_and_type('New work', 'Interface test task')
@@ -147,16 +153,16 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+shift+z')
         wait_for(lambda: not tasks()[0]['completed'])
 
-        click('nav-calendar')
-        find_accessible('calendar-period-week')
-        click('nav-schedule')
-        find_accessible('schedule-period-week')
-        click('nav-rhythm')
-        find_accessible('add-rhythm')
+        click(('nav-calendar', 'Calendar'))
+        find_accessible(('calendar-period-week', 'Week'))
+        click(('nav-schedule', 'Schedule'))
+        find_accessible(('schedule-period-week', 'Week'))
+        click(('nav-rhythm', 'Rhythm'))
+        find_accessible(('add-rhythm', 'Add a rhythm…'))
 
         click('Settings')
         find_accessible('set-appearance')
-        click('settings-done')
+        click(('settings-done', 'Done'))
 
         click(f'delete-work-{task_id}')
         wait_for(lambda: tasks() == [])
