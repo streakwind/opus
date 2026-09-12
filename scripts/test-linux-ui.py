@@ -79,7 +79,12 @@ def find_accessible(name: str, role=None, root=None):
 
 def click(name: str, role=None):
     node = find_accessible(name, role=role)
-    node.click()
+    for action in ('click', 'toggle', 'press'):
+        if action in node.actions:
+            assert node.doActionNamed(action), f'Failed to invoke {action} on {name}'
+            break
+    else:
+        node.click()
     return node
 
 
