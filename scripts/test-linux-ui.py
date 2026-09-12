@@ -87,15 +87,15 @@ def find_accessible(name: str, role=None, root=None):
 
 
 def activate(node, description: str):
-    while node is not None and not node.actions:
+    original = node
+    while node is not None:
+        for action in ('click', 'toggle', 'press'):
+            if action in node.actions:
+                assert node.doActionNamed(action), f'Failed to invoke {action} on {description}'
+                return node
         node = node.parent
-    assert node is not None, f'No actionable ancestor for {description}'
-    for action in ('click', 'toggle', 'press'):
-        if action in node.actions:
-            assert node.doActionNamed(action), f'Failed to invoke {action} on {description}'
-            return node
-    node.click()
-    return node
+    original.click()
+    return original
 
 
 def click(name: str, role=None):
