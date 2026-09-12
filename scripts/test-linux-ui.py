@@ -194,7 +194,7 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         find_accessible(('add-rhythm', 'Add a rhythm…'))
 
         click('Settings')
-        find_accessible('set-appearance')
+        find_accessible(('set-appearance', 'Appearance'))
         click(('settings-done', 'Done'))
 
         click(('nav-inbox', 'Inbox'))
