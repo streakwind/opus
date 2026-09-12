@@ -4,6 +4,45 @@ import OpusGTKSupport
 import GTKBridge
 import Glibc
 
+private struct GTKEvent: Sendable {
+    let action: String
+    let id: String
+    let text: String
+    let day: String
+    let course: String
+    let payload: String
+    let kind: Int
+    let start: Int
+    let end: Int
+    let page: Int
+    let flags: Int
+    let value: Int
+    let y0: Double
+    let y1: Double
+
+    init(_ raw: UnsafePointer<OpusEventPayload>) {
+        let event = raw.pointee
+        func copy(_ value: UnsafePointer<CChar>?) -> String {
+            guard let value else { return "" }
+            return String(cString: value)
+        }
+        action = copy(event.action)
+        id = copy(event.id)
+        text = copy(event.text)
+        day = copy(event.day)
+        course = copy(event.course)
+        payload = copy(event.payload)
+        kind = Int(event.kind)
+        start = Int(event.start)
+        end = Int(event.end)
+        page = Int(event.page)
+        flags = Int(event.flags)
+        value = Int(event.value)
+        y0 = event.y0
+        y1 = event.y1
+    }
+}
+
 @MainActor
 final class LinuxApp {
     let session: LinuxSession
@@ -185,20 +224,19 @@ final class LinuxApp {
         }
     }
 
-    func event(_ raw: UnsafePointer<OpusEventPayload>) {
-        let payload = raw.pointee
-        let action = String(cString: payload.action)
-        let id = cString(payload.id)
-        let text = cString(payload.text)
-        let day = cString(payload.day)
-        let course = cString(payload.course)
-        let drag = cString(payload.payload)
-        let kind = Int(payload.kind)
-        let start = Int(payload.start)
-        let end = Int(payload.end)
-        let page = Int(payload.page)
-        let flags = Int(payload.flags)
-        let value = Int(payload.value)
+    fileprivate func event(_ payload: GTKEvent) {
+        let action = payload.action
+        let id = payload.id
+        let text = payload.text
+        let day = payload.day
+        let course = payload.course
+        let drag = payload.payload
+        let kind = payload.kind
+        let start = payload.start
+        let end = payload.end
+        let page = payload.page
+        let flags = payload.flags
+        let value = payload.value
 
         let mapped: LinuxEvent?
         switch action {
@@ -291,10 +329,6 @@ final class LinuxApp {
         if let mapped { apply(session.handle(mapped)) }
     }
 
-    private func cString(_ pointer: UnsafePointer<CChar>?) -> String {
-        guard let pointer else { return "" }
-        return String(cString: pointer)
-    }
     private func appearanceIndex(_ mode: AppearanceMode) -> Int {
         switch mode { case .system: 0; case .light: 1; case .dark: 2 }
     }
@@ -330,5 +364,8 @@ struct OpusGTK {
 
 private func handleGTKEvent(_ payload: UnsafePointer<OpusEventPayload>?) {
     guard let payload else { return }
-    MainActor.assumeIsolated { OpusGTK.controller?.event(payload) }
+    let event = GTKEvent(payload)
+    Task { @MainActor in
+        OpusGTK.controller?.event(event)
+    }
 }
