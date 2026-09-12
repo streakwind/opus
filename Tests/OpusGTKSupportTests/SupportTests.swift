@@ -56,8 +56,6 @@ final class PresentationTests: XCTestCase {
         let calendar = LinuxPresentation.calendarDays(in: state, period: .week, anchor: today, selected: today, query: "")
         XCTAssertTrue(calendar.contains { day in day.day == today && day.items.contains { $0.title == "Due work" } })
         XCTAssertFalse(calendar.contains { day in day.items.contains { $0.title == "Someday" } })
-        let undatedRows = LinuxPresentation.undatedTasks(in: state, query: "")
-        XCTAssertEqual(undatedRows.map(\.title), ["Someday"])
     }
 }
 

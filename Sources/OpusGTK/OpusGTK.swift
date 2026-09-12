@@ -146,9 +146,6 @@ final class LinuxApp {
                 opus_calendar_item(day.day, item.id, item.kind.rawValue, item.title, item.completed ? 1 : 0, 1, item.color)
             }
         }
-        for row in session.undatedTasks() {
-            opus_calendar_undated(row.id, row.kind.rawValue, row.title, row.detail, row.color)
-        }
     }
 
     private func renderSchedule() {

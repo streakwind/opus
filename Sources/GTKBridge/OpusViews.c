@@ -355,19 +355,7 @@ void opus_calendar_begin(const char *heading, int period, int columns) {
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll),
                                   opus_ui.calendar_grid);
     gtk_box_append(GTK_BOX(split), scroll);
-
-    gtk_box_append(GTK_BOX(split),
-                   gtk_separator_new(GTK_ORIENTATION_VERTICAL));
-
-    GtkWidget *side = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    gtk_widget_set_size_request(side, 220, -1);
-    GtkWidget *side_title = opus_label("No due date");
-    gtk_widget_add_css_class(side_title, "opus-section-label");
-    opus_margins(side_title, 10);
-    gtk_box_append(GTK_BOX(side), side_title);
-    GtkWidget *side_scroll = opus_scrolled_box(&opus_ui.calendar_undated);
-    gtk_box_append(GTK_BOX(side), side_scroll);
-    gtk_box_append(GTK_BOX(split), side);
+    opus_ui.calendar_undated = NULL;
 
     gtk_box_append(GTK_BOX(view), split);
     opus_ui.calendar_columns = MAX(1, columns);
@@ -495,6 +483,11 @@ void opus_calendar_item(const char *day, const char *id, const char *kind,
 
 void opus_calendar_undated(const char *id, const char *kind, const char *title,
                            const char *detail, const char *color) {
+    (void)id;
+    (void)kind;
+    (void)title;
+    (void)detail;
+    (void)color;
     if (!opus_ui.calendar_undated) {
         return;
     }

@@ -110,9 +110,6 @@ package final class LinuxSession {
     package func calendarDays() -> [CalendarDayModel] {
         LinuxPresentation.calendarDays(in: store.state, period: calendarPeriod, anchor: calendarAnchor, selected: selectedDay, query: query)
     }
-    package func undatedTasks() -> [WorkRow] {
-        LinuxPresentation.undatedTasks(in: store.state, query: query)
-    }
     package func scheduleDays() -> [String] {
         switch schedulePeriod {
         case .day: return [scheduleAnchor]

@@ -2,10 +2,14 @@ import OpusCore
 import SwiftUI
 import AppKit
 
-/// Use standard platform controls without decorative glass or custom shadows.
+/// Use the system's rounded controls, including Liquid Glass where available.
 struct RoundedControls: ViewModifier {
     func body(content: Content) -> some View {
-        content.buttonStyle(.bordered)
+        if #available(macOS 26.0, *) {
+            content.buttonStyle(.glass).buttonBorderShape(.capsule)
+        } else {
+            content.buttonStyle(.bordered).buttonBorderShape(.capsule)
+        }
     }
 }
 extension View {
@@ -30,10 +34,27 @@ struct EditorCard: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.75)
+            }
+            .shadow(color: .black.opacity(0.22), radius: 24, y: 10)
     }
 }
 extension View {
     func editorCard() -> some View { modifier(EditorCard()) }
+}
+
+struct PillChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(.regularMaterial, in: Capsule())
+            .overlay { Capsule().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.75) }
+    }
+}
+extension View {
+    func pillChrome() -> some View { modifier(PillChrome()) }
 }
 
 enum RepeatBadgeStyle { case background, fill }
@@ -57,8 +78,8 @@ struct PillPicker<Value: Hashable, Options: View>: View {
     }
     var body: some View {
         Menu { Picker(title, selection: $selection) { options }.pickerStyle(.inline) } label: { Text(label) }
-            .menuStyle(.button)
-            .controlSize(.small)
+            .menuStyle(.borderlessButton).menuIndicator(.hidden)
+            .pillChrome()
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityLabel(title + ": " + label)
     }
@@ -70,8 +91,8 @@ struct TimeControl: View {
     @State private var editing = false
     var body: some View {
         Button(ClockTime.label(minutes)) { editing = true }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+            .buttonStyle(.plain)
+            .pillChrome()
             .fixedSize()
             .popover(isPresented: $editing) {
                 VStack(spacing: 12) {

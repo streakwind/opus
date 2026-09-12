@@ -158,17 +158,6 @@ package enum LinuxPresentation {
         )
     }
 
-    package static func undatedTasks(in state: Snapshot, query: String) -> [WorkRow] {
-        state.tasks
-            .filter {
-                $0.due == nil && $0.planned == nil &&
-                ($0.kind == .progress || !$0.completed) &&
-                matchesQuery(query, title: $0.title, details: $0.notes)
-            }
-            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-            .map { row(for: $0, in: state, markNext: false) }
-    }
-
     package static func calendarDays(in state: Snapshot, period: CalendarPeriod, anchor: String, selected: String, query: String) -> [CalendarDayModel] {
         let date = Day.date(anchor)
         let days: [String]

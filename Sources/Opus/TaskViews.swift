@@ -181,8 +181,8 @@ struct DateMenu: View {
     }
     var body: some View {
         Button(label) { calendar = true }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+            .buttonStyle(.plain)
+            .pillChrome()
             .fixedSize()
             .popover(isPresented: $calendar) {
                 CompactDatePicker(value: $value, clearLabel: title == "Due date" || title == "No deadline" ? "No due date" : "No date") { calendar = false }

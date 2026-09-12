@@ -222,7 +222,6 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
 
         click(('nav-calendar', 'Calendar'))
         find_accessible(('calendar-period-week', 'Week'))
-        find_accessible('No due date')
         click(('nav-schedule', 'Schedule'))
         find_accessible(('schedule-period-week', 'Week'))
         click(('nav-rhythm', 'Rhythm'))

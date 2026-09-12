@@ -407,20 +407,18 @@ struct ContentView: View {
                         .accessibilityIdentifier("quick-entry-submit")
                 }
             }
-            if quickFocused || !quickTitle.isEmpty {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) { entryOptions }
-                    VStack(alignment: .leading, spacing: 8) { entryOptions }
-                }
-                if quickKind == .progress {
-                    HStack(spacing: 8) {
-                        Text("Pages").foregroundStyle(.secondary)
-                        TextField("First page", value: $quickStart, format: .number.grouping(.never)).frame(width: 48)
-                        Text("to").foregroundStyle(.secondary)
-                        TextField("Last page", value: $quickEnd, format: .number.grouping(.never)).frame(width: 48)
-                        Spacer()
-                    }.textFieldStyle(.roundedBorder).font(.callout)
-                }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { entryOptions }
+                VStack(alignment: .leading, spacing: 8) { entryOptions }
+            }
+            if quickKind == .progress {
+                HStack(spacing: 8) {
+                    Text("Pages").foregroundStyle(.secondary)
+                    TextField("First page", value: $quickStart, format: .number.grouping(.never)).frame(width: 48)
+                    Text("to").foregroundStyle(.secondary)
+                    TextField("Last page", value: $quickEnd, format: .number.grouping(.never)).frame(width: 48)
+                    Spacer()
+                }.textFieldStyle(.roundedBorder).font(.callout)
             }
         }.padding(.horizontal, 22).padding(.vertical, 10)
     }
