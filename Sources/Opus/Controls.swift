@@ -5,11 +5,15 @@ import AppKit
 /// Use the system's rounded controls, including Liquid Glass where available.
 struct RoundedControls: ViewModifier {
     func body(content: Content) -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             content.buttonStyle(.glass).buttonBorderShape(.capsule)
         } else {
             content.buttonStyle(.bordered).buttonBorderShape(.capsule)
         }
+        #else
+        content.buttonStyle(.bordered).buttonBorderShape(.capsule)
+        #endif
     }
 }
 extension View {
