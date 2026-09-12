@@ -120,18 +120,23 @@ struct OpusGTK {
         do {
             controller = try LinuxApp()
             controller?.smoke = CommandLine.arguments.contains("--smoke-test")
-            let status = opus_run { action, id, title, day, course, kind, start, end, page in
-                // GTK's blocking loop and all callbacks execute on the main thread.
-                MainActor.assumeIsolated {
-                    controller?.event(String(cString: action!), id: String(cString: id!), text: String(cString: title!),
-                                      day: String(cString: day!), course: String(cString: course!),
-                                      kind: Int(kind), start: Int(start), end: Int(end), page: Int(page))
-                }
-            }
+            let status = opus_run(handleGTKEvent)
             exit(status)
         } catch {
             FileHandle.standardError.write(Data("Opus could not open its database: \(error.localizedDescription)\n".utf8))
             exit(1)
         }
+    }
+}
+
+private func handleGTKEvent(_ action: UnsafePointer<CChar>?, _ id: UnsafePointer<CChar>?,
+                            _ title: UnsafePointer<CChar>?, _ day: UnsafePointer<CChar>?,
+                            _ course: UnsafePointer<CChar>?, _ kind: Int32, _ start: Int32,
+                            _ end: Int32, _ page: Int32) {
+    // GTK's blocking loop and all callbacks execute on the main thread.
+    MainActor.assumeIsolated {
+        OpusGTK.controller?.event(String(cString: action!), id: String(cString: id!), text: String(cString: title!),
+                                  day: String(cString: day!), course: String(cString: course!),
+                                  kind: Int(kind), start: Int(start), end: Int(end), page: Int(page))
     }
 }

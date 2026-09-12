@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Install GTK and test tools
-        run: apt-get update && apt-get install -y libgtk-4-dev libsqlite3-dev pkg-config xvfb dbus-x11
+        run: apt-get update && apt-get install -y libgtk-4-dev libsqlite3-dev pkg-config xvfb dbus-x11 xdotool imagemagick python3
       - name: Shared core tests
         run: swift test
       - name: Build GTK app
@@ -21,7 +21,14 @@ jobs:
       - name: Open GTK window with isolated empty storage
         run: |
           OPUS_DATA_DIR="$RUNNER_TEMP/opus-smoke" timeout 30s xvfb-run -a dbus-run-session -- .build/release/opus --smoke-test
+      - name: Keyboard task creation and persistence
+        run: xvfb-run -a dbus-run-session -- python3 scripts/test-linux-ui.py
       - uses: actions/upload-artifact@v7
         with:
           name: Opus-linux-preview
           path: dist/linux
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: Linux-UI-check
+          path: /tmp/opus-linux-ui/*.png

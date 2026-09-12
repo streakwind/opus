@@ -6,6 +6,7 @@ static GtkApplication *app;
 static GtkWidget *window, *sidebar, *rows, *heading, *entry, *error_label, *undo_button, *delete_list;
 static GtkWidget *editor, *edit_title, *edit_day, *edit_course, *edit_kind, *edit_start, *edit_end, *edit_page, *page_fields;
 static char *edit_id;
+static GPtrArray *edit_course_ids;
 static GtkWidget *editor_error;
 
 typedef struct { char *action, *id, *title, *day, *course; int kind, start, end, page; } Event;
@@ -56,9 +57,20 @@ static void quick_add(GtkWidget *widget, gpointer unused) {
 static void new_list(GtkWidget *widget, gpointer input) {
     send("new-list", "", gtk_editable_get_text(GTK_EDITABLE(input)), "", "", 0, 0, 0, 0);
 }
+static gboolean main_key(GtkEventControllerKey *controller, guint key, guint code, GdkModifierType state, gpointer unused) {
+    if ((state & GDK_CONTROL_MASK) && key == GDK_KEY_n) { send("new", "", "", "", "", 0, 0, 0, 0); return TRUE; }
+    if ((state & GDK_CONTROL_MASK) && key == GDK_KEY_q) { opus_quit(); return TRUE; }
+    if ((state & GDK_CONTROL_MASK) && (state & GDK_SHIFT_MASK) && (key == GDK_KEY_z || key == GDK_KEY_Z)) {
+        send("undo", "", "", "", "", 0, 0, 0, 0); return TRUE;
+    }
+    if (key == GDK_KEY_F1) { send("help", "", "", "", "", 0, 0, 0, 0); return TRUE; }
+    return FALSE;
+}
 static void activate(GtkApplication *application, gpointer unused) {
     if (window) { gtk_window_present(GTK_WINDOW(window)); return; }
     window = gtk_application_window_new(application);
+    GtkEventController *keys = gtk_event_controller_key_new();
+    g_signal_connect(keys, "key-pressed", G_CALLBACK(main_key), NULL); gtk_widget_add_controller(window, keys);
     gtk_window_set_title(GTK_WINDOW(window), "Opus");
     gtk_window_set_default_size(GTK_WINDOW(window), 1000, 700);
     GtkWidget *header = gtk_header_bar_new();
@@ -99,7 +111,7 @@ static void activate(GtkApplication *application, gpointer unused) {
 }
 int opus_run(OpusEvent event) {
     callback = event;
-    app = gtk_application_new("io.github.streakwind.opus", G_APPLICATION_NON_UNIQUE);
+    app = gtk_application_new("io.github.streakwind.opus", G_APPLICATION_DEFAULT_FLAGS);
     g_signal_connect(app, "activate", G_CALLBACK(activate), NULL);
     int status = g_application_run(G_APPLICATION(app), 0, NULL);
     g_object_unref(app); return status;
@@ -169,23 +181,32 @@ static GtkWidget *field(GtkWidget *box, const char *name, GtkWidget *input) {
 }
 static void editor_save(GtkWidget *widget, gpointer unused) {
     send("save", edit_id, gtk_editable_get_text(GTK_EDITABLE(edit_title)), gtk_editable_get_text(GTK_EDITABLE(edit_day)),
-         gtk_combo_box_get_active_id(GTK_COMBO_BOX(edit_course)), gtk_check_button_get_active(GTK_CHECK_BUTTON(edit_kind)),
+         (const char *)g_ptr_array_index(edit_course_ids, gtk_drop_down_get_selected(GTK_DROP_DOWN(edit_course))), gtk_check_button_get_active(GTK_CHECK_BUTTON(edit_kind)),
          gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(edit_start)), gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(edit_end)),
          gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(edit_page)));
 }
 static void editor_cancel(GtkWidget *widget, gpointer unused) { opus_editor_close(); }
+static gboolean editor_key(GtkEventControllerKey *controller, guint key, guint code, GdkModifierType state, gpointer unused) {
+    if (key == GDK_KEY_Escape) { opus_editor_close(); return TRUE; }
+    if ((state & GDK_CONTROL_MASK) && key == GDK_KEY_Return) { editor_save(NULL, NULL); return TRUE; }
+    return FALSE;
+}
 static void kind_changed(GtkCheckButton *check, gpointer unused) { gtk_widget_set_visible(page_fields, gtk_check_button_get_active(check)); }
-static void editor_destroy(GtkWidget *widget, gpointer unused) { editor = NULL; g_clear_pointer(&edit_id, g_free); }
+static void editor_destroy(GtkWidget *widget, gpointer unused) { editor = NULL; g_clear_pointer(&edit_id, g_free); g_clear_pointer(&edit_course_ids, g_ptr_array_unref); }
 void opus_editor(const char *id, const char *title, const char *day, const char *course, int kind, int start, int end, int page) {
     opus_editor_close(); edit_id = g_strdup(id);
     editor = gtk_window_new(); gtk_window_set_title(GTK_WINDOW(editor), *id ? "Edit task" : "New task");
     gtk_window_set_transient_for(GTK_WINDOW(editor), GTK_WINDOW(window)); gtk_window_set_modal(GTK_WINDOW(editor), TRUE);
     gtk_window_set_default_size(GTK_WINDOW(editor), 440, -1);
     g_signal_connect(editor, "destroy", G_CALLBACK(editor_destroy), NULL);
+    GtkEventController *keys = gtk_event_controller_key_new();
+    g_signal_connect(keys, "key-pressed", G_CALLBACK(editor_key), NULL); gtk_widget_add_controller(editor, keys);
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12); margins(box, 24);
     edit_title = gtk_entry_new(); gtk_editable_set_text(GTK_EDITABLE(edit_title), title); gtk_entry_set_placeholder_text(GTK_ENTRY(edit_title), "Task title");
     gtk_box_append(GTK_BOX(box), edit_title);
-    edit_course = field(box, "List", gtk_combo_box_text_new());
+    edit_course_ids = g_ptr_array_new_with_free_func(g_free);
+    GtkStringList *names = gtk_string_list_new(NULL);
+    edit_course = field(box, "List", gtk_drop_down_new(G_LIST_MODEL(names), NULL));
     edit_day = field(box, "Due", gtk_entry_new()); gtk_entry_set_placeholder_text(GTK_ENTRY(edit_day), "YYYY-MM-DD (optional)"); gtk_editable_set_text(GTK_EDITABLE(edit_day), day);
     edit_kind = gtk_check_button_new_with_label("Textbook notes"); gtk_check_button_set_active(GTK_CHECK_BUTTON(edit_kind), kind); gtk_box_append(GTK_BOX(box), edit_kind);
     page_fields = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
@@ -201,8 +222,9 @@ void opus_editor(const char *id, const char *title, const char *day, const char 
     gtk_window_set_child(GTK_WINDOW(editor), box); gtk_window_present(GTK_WINDOW(editor)); gtk_widget_grab_focus(edit_title);
 }
 void opus_editor_list(const char *id, const char *name, int selected) {
-    gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(edit_course), id, name);
-    if (selected) gtk_combo_box_set_active_id(GTK_COMBO_BOX(edit_course), id);
+    g_ptr_array_add(edit_course_ids, g_strdup(id));
+    gtk_string_list_append(GTK_STRING_LIST(gtk_drop_down_get_model(GTK_DROP_DOWN(edit_course))), name);
+    if (selected) gtk_drop_down_set_selected(GTK_DROP_DOWN(edit_course), edit_course_ids->len - 1);
 }
 void opus_editor_close(void) { if (editor) gtk_window_destroy(GTK_WINDOW(editor)); }
 void opus_quit(void) { g_application_quit(G_APPLICATION(app)); }

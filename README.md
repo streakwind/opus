@@ -2,6 +2,8 @@
 
 A local-first native macOS study planner built with SwiftUI and SQLite. Requires macOS 14 or later and Xcode's Swift 6 toolchain to build. No third-party dependencies, network service, or account.
 
+Linux now has a GTK preview sharing the same Swift/SQLite core. See [Linux build instructions and supported features](docs/linux-port.md).
+
 ## Run
 
 ```sh
