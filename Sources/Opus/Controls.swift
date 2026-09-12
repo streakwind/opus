@@ -57,8 +57,20 @@ struct PillChrome: ViewModifier {
             .overlay { Capsule().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.75) }
     }
 }
+struct FieldChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.75)
+            }
+    }
+}
 extension View {
     func pillChrome() -> some View { modifier(PillChrome()) }
+    func fieldChrome() -> some View { modifier(FieldChrome()) }
 }
 
 enum RepeatBadgeStyle { case background, fill }
@@ -89,6 +101,33 @@ struct PillPicker<Value: Hashable, Options: View>: View {
     }
 }
 
+
+struct PageRangeControl: View {
+    @Binding var start: Int
+    @Binding var end: Int
+    @State private var editing = false
+    var body: some View {
+        Button("Pages · \(start)–\(end)") { editing = true }
+            .buttonStyle(.plain)
+            .pillChrome()
+            .fixedSize()
+            .popover(isPresented: $editing) {
+                HStack(spacing: 8) {
+                    Text("From").foregroundStyle(.secondary)
+                    TextField("Start", value: $start, format: .number.grouping(.never))
+                        .frame(width: 56).multilineTextAlignment(.trailing)
+                    Text("to").foregroundStyle(.secondary)
+                    TextField("End", value: $end, format: .number.grouping(.never))
+                        .frame(width: 56).multilineTextAlignment(.trailing)
+                }
+                .textFieldStyle(.roundedBorder)
+                .font(.callout.monospacedDigit())
+                .padding(14)
+            }
+            .accessibilityLabel("Pages: \(start) to \(end)")
+            .accessibilityIdentifier("page-range")
+    }
+}
 
 struct TimeControl: View {
     @Binding var minutes: Int

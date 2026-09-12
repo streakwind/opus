@@ -104,7 +104,6 @@ struct ContentView: View {
     }
     var body: some View {
         root
-            .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)
             .onAppear(perform: applyAppearance)
             .onChange(of: appearance) { _, _ in applyAppearance() }
     }
@@ -133,9 +132,11 @@ struct ContentView: View {
             }
     }
     private func applyAppearance() {
-        // Keep the system appearance object so the window chrome stays native.
-        // Light/dark is applied through preferredColorScheme instead of forcing aqua.
-        NSApp.appearance = nil
+        switch appearance {
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: NSApp.appearance = nil
+        }
     }
     private var saveErrorPresented: Binding<Bool> {
         Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })
@@ -152,7 +153,6 @@ struct ContentView: View {
         } detail: {
             detail
         }
-        .navigationSplitViewStyle(.balanced)
     }
     private var sidebar: some View {
         VStack(spacing: 0) {
@@ -388,18 +388,10 @@ struct ContentView: View {
                         .accessibilityIdentifier("quick-entry-submit")
                 }
             }
+            .fieldChrome()
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) { entryOptions }
                 VStack(alignment: .leading, spacing: 8) { entryOptions }
-            }
-            if quickKind == .progress {
-                HStack(spacing: 8) {
-                    Text("Pages").foregroundStyle(.secondary)
-                    TextField("First page", value: $quickStart, format: .number.grouping(.never)).frame(width: 48)
-                    Text("to").foregroundStyle(.secondary)
-                    TextField("Last page", value: $quickEnd, format: .number.grouping(.never)).frame(width: 48)
-                    Spacer()
-                }.textFieldStyle(.roundedBorder).font(.callout)
             }
         }.padding(.horizontal, 22).padding(.vertical, 10)
     }
@@ -418,6 +410,9 @@ struct ContentView: View {
         PillPicker("Type", label: quickKind.rawValue, selection: $quickKind) {
             ForEach(WorkKind.allCases) { Text($0.rawValue).tag($0) }
         }.labelsHidden().fixedSize()
+        if quickKind == .progress {
+            PageRangeControl(start: $quickStart, end: $quickEnd)
+        }
         DateMenu(title: quickKind == .assessment ? "Date" : "Due date", value: $quickDue, prefix: quickKind == .assessment ? nil : "Due")
     }
     private var routines: some View {
