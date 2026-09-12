@@ -31,7 +31,7 @@ def window(name):
 
 with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
     env = dict(os.environ, OPUS_DATA_DIR=data, GDK_BACKEND='x11')
-    process = subprocess.Popen(['.build/release/opus'], env=env)
+    process = subprocess.Popen(['dist/linux/bin/opus'], env=env)
     try:
         main = wait_for(lambda: window('Opus'))
         command('xdotool', 'windowfocus', '--sync', main)
@@ -52,7 +52,7 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         command('xdotool', 'windowfocus', '--sync', main)
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+q')
         assert process.wait(timeout=10) == 0
-        subprocess.run(['.build/release/opus', '--smoke-test'], env=env, check=True, timeout=15)
+        subprocess.run(['dist/linux/bin/opus', '--smoke-test'], env=env, check=True, timeout=15)
         assert saved()[0]['id'] == tasks[0]['id']
         print('GTK keyboard creation and database reopening passed.')
     finally:

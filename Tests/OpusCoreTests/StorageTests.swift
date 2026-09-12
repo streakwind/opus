@@ -33,7 +33,7 @@ final class StorageTests: XCTestCase {
         XCTAssertThrowsError(try db.save(invalid))
         XCTAssertEqual(try db.load().tasks, snapshot.tasks)
     }
-    @MainActor func testRecurrenceSkipsAndMovesSurviveRegeneration() throws {
+    @MainActor func testRecurrenceSkipsAndMovesSurviveRegeneration() async throws {
         let store = try Store(database: database())
         let rule = QuizRule(title: "Example review", weekday: 4)
         store.saveRule(rule)
@@ -53,7 +53,7 @@ final class StorageTests: XCTestCase {
         XCTAssertEqual(store.state.assessments.count, 7)
         XCTAssertTrue(store.state.assessments.contains { $0.id == moved.id })
     }
-    @MainActor func testAssessmentRhythmCreateUpdateAndDelete() throws {
+    @MainActor func testAssessmentRhythmCreateUpdateAndDelete() async throws {
         let store = try Store(database: database())
         let course = Course(name: "Example list")
         store.save(course)
@@ -91,7 +91,7 @@ final class StorageTests: XCTestCase {
         store.undo()
         XCTAssertEqual(store.state.assessments.filter { $0.ruleID == rule.id }.count, 3)
     }
-    @MainActor func testRemoveListPreservesWorkAndUndoRestoresIt() throws {
+    @MainActor func testRemoveListPreservesWorkAndUndoRestoresIt() async throws {
         let store = try Store(database: database())
         let course = Course(name: "Example list")
         store.save(course)
@@ -104,7 +104,7 @@ final class StorageTests: XCTestCase {
         XCTAssertEqual(store.state.courses, [course])
         XCTAssertEqual(store.state.tasks.first?.courseID, course.id)
     }
-    @MainActor func testProgressCompletionCorrectionAndUndo() throws {
+    @MainActor func testProgressCompletionCorrectionAndUndo() async throws {
         let store = try Store(database: database())
         let task = StudyTask(title: "Notes", kind: .progress, start: 10, target: 20, current: 9)
         store.save(task)
@@ -117,7 +117,7 @@ final class StorageTests: XCTestCase {
         XCTAssertEqual(store.state.tasks[0].current, 20)
         XCTAssertEqual(store.state.activities.count, 1)
     }
-    @MainActor func testCompletedProgressNormalizesWithoutLosingPosition() throws {
+    @MainActor func testCompletedProgressNormalizesWithoutLosingPosition() async throws {
         let database = try database()
         var state = Snapshot()
         state.tasks = [StudyTask(title: "Book", kind: .progress, completed: true, start: 10, target: 20, current: 20)]
@@ -153,7 +153,7 @@ final class CalendarInteractionTests: XCTestCase {
         let days = CalendarLayout.days(containing: Day.date("2027-01-01"), week: true, calendar: calendar)
         XCTAssertEqual(days, ["2026-12-28", "2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01", "2027-01-02", "2027-01-03"])
     }
-    @MainActor func testCalendarDropPersistsMoveAndUndo() throws {
+    @MainActor func testCalendarDropPersistsMoveAndUndo() async throws {
         let database = try Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusDrop-" + UUID().uuidString).appendingPathComponent("test.sqlite"))
         let store = try Store(database: database)
         let assessment = Assessment(title: "Test", day: "2026-09-10")
@@ -170,7 +170,7 @@ final class CalendarInteractionTests: XCTestCase {
         XCTAssertEqual(store.state.tasks.first?.calendarDay, "2026-09-14")
         XCTAssertFalse(store.reschedule("arbitrary text", to: "2026-09-14"))
     }
-    @MainActor func testCalendarDayPrefersDueAndRescheduleClearsPlanned() throws {
+    @MainActor func testCalendarDayPrefersDueAndRescheduleClearsPlanned() async throws {
         let store = try Store(database: Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusDay-" + UUID().uuidString).appendingPathComponent("test.sqlite")))
         var task = StudyTask(title: "Essay", planned: "2026-09-09", due: "2026-09-10")
         store.save(task)
@@ -189,7 +189,7 @@ final class CalendarInteractionTests: XCTestCase {
         XCTAssertEqual(store.state.tasks.first { $0.title == "Inbox" }?.planned, "2026-09-12")
         XCTAssertNil(store.state.tasks.first { $0.title == "Inbox" }?.due)
     }
-    @MainActor func testDeleteArchivedTasksClearsCompletedOnly() throws {
+    @MainActor func testDeleteArchivedTasksClearsCompletedOnly() async throws {
         let store = try Store(database: Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusArchive-" + UUID().uuidString).appendingPathComponent("test.sqlite")))
         store.save(StudyTask(title: "Done", completed: true))
         store.save(StudyTask(title: "Open"))
@@ -198,7 +198,7 @@ final class CalendarInteractionTests: XCTestCase {
         store.undo()
         XCTAssertEqual(Set(store.state.tasks.map(\.title)), Set(["Done", "Open"]))
     }
-    @MainActor func testManualReorderingSurvivesReopening() throws {
+    @MainActor func testManualReorderingSurvivesReopening() async throws {
         let database = try Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusOrder-" + UUID().uuidString).appendingPathComponent("test.sqlite"))
         let store = try Store(database: database)
         let tasks = [StudyTask(title: "A"), StudyTask(title: "B"), StudyTask(title: "C")]
@@ -208,7 +208,7 @@ final class CalendarInteractionTests: XCTestCase {
         store.undo()
         XCTAssertEqual(store.state.tasks.map(\.title), ["A", "B", "C"])
     }
-    @MainActor func testAssessmentCreationAndUpdate() throws {
+    @MainActor func testAssessmentCreationAndUpdate() async throws {
         let store = try Store(database: Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusAssess-" + UUID().uuidString).appendingPathComponent("test.sqlite")))
         let course = Course(name: "Example list")
         store.save(course)

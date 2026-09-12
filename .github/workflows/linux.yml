@@ -20,7 +20,7 @@ jobs:
         run: ./scripts/build-linux.sh
       - name: Open GTK window with isolated empty storage
         run: |
-          OPUS_DATA_DIR="$RUNNER_TEMP/opus-smoke" timeout 30s xvfb-run -a dbus-run-session -- .build/release/opus --smoke-test
+          OPUS_DATA_DIR="$RUNNER_TEMP/opus-smoke" timeout 30s xvfb-run -a dbus-run-session -- dist/linux/bin/opus --smoke-test
       - name: Keyboard task creation and persistence
         run: xvfb-run -a dbus-run-session -- python3 scripts/test-linux-ui.py
       - uses: actions/upload-artifact@v7

@@ -42,7 +42,7 @@ final class RedesignTests: XCTestCase {
         XCTAssertFalse(StudyTask(title: "Legacy past repeat", planned: "2026-09-08", ruleID: "r").isInToday(on: today))
         XCTAssertTrue(StudyTask(title: "Legacy next repeat", planned: "2026-09-10", ruleID: "r").isInToday(on: today))
     }
-    @MainActor func testGenerationRetainsYesterdayTaskButNotPastCalendarEvents() {
+    @MainActor func testGenerationRetainsYesterdayTaskButNotPastCalendarEvents() async {
         let today = "2026-09-09"
         let yesterday = "2026-09-08"
         var tasks = Snapshot()
@@ -89,7 +89,7 @@ final class RedesignTests: XCTestCase {
         let copy = try JSONDecoder().decode(Course.self, from: JSONEncoder().encode(course))
         XCTAssertEqual(copy.resolvedClassTimes, course.classTimes)
     }
-    @MainActor func testFreshInstallAndSetupNeverSeedUserData() throws {
+    @MainActor func testFreshInstallAndSetupNeverSeedUserData() async throws {
         let database = try db()
         let store = try Store(database: database)
         store.setup()
@@ -104,7 +104,7 @@ final class RedesignTests: XCTestCase {
     private func db() throws -> Database {
         try Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusV3-" + UUID().uuidString).appendingPathComponent("test.sqlite"))
     }
-    @MainActor func testExplicitRecurringConfirmationPersists() throws {
+    @MainActor func testExplicitRecurringConfirmationPersists() async throws {
         let database = try db()
         let rule = QuizRule(title: "Example review", assessmentsConfirmed: true)
         var state = Snapshot()
@@ -142,7 +142,7 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(rule.kind, .task)
         XCTAssertEqual(rule.taskKind, .checkbox)
     }
-    @MainActor func testProgressRhythmGeneratesConfiguredRangeAndDetails() {
+    @MainActor func testProgressRhythmGeneratesConfiguredRangeAndDetails() async {
         var state = Snapshot()
         let rule = QuizRule(
             title: "Read",
@@ -164,7 +164,7 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(state.tasks[0].current, 16)
         XCTAssertEqual(state.tasks[0].notes, "Chapter 3")
     }
-    @MainActor func testCustomDaysGenerateTasksAndRespectEndDate() {
+    @MainActor func testCustomDaysGenerateTasksAndRespectEndDate() async {
         var state = Snapshot()
         var rule = QuizRule(title: "Vocabulary", weekdays: [2,3,4], itemKind: .task, startDate: "2026-09-07", endDate: "2026-09-16", taskKind: .practice)
         state.rules = [rule]
@@ -186,7 +186,7 @@ final class RedesignTests: XCTestCase {
         XCTAssertTrue(rule.occurs(on: "2026-09-21"))
         XCTAssertFalse(rule.occurs(on: "2026-09-02"))
     }
-    @MainActor func testPausePreservesEditedScheduleAndCompletedTasks() throws {
+    @MainActor func testPausePreservesEditedScheduleAndCompletedTasks() async throws {
         let store = try Store(database: db())
         var rule = QuizRule(title: "Study", weekdays: Array(1...7), itemKind: .schedule, startDate: Day.today, startMinute: 540, duration: 60)
         store.saveRule(rule)
@@ -203,7 +203,7 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(store.state.tasks.count, 1)
         XCTAssertTrue(store.state.tasks[0].completed)
     }
-    @MainActor func testRecurringScheduleDeletionScopes() throws {
+    @MainActor func testRecurringScheduleDeletionScopes() async throws {
         let store = try Store(database: db())
         let rule = QuizRule(title: "Practice", weekdays: Array(1...7), itemKind: .schedule, startDate: Day.today)
         store.saveRule(rule)
@@ -290,7 +290,7 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(merged.notes, "Keep this edit")
         XCTAssertEqual(merged.current, 10)
     }
-    @MainActor func testDirectProgressClampsAndDoesNotDuplicateEntries() throws {
+    @MainActor func testDirectProgressClampsAndDoesNotDuplicateEntries() async throws {
         let store = try Store(database: db())
         let task = StudyTask(title: "Notes", kind: .progress, start: 17, target: 49, current: 25)
         store.save(task)
@@ -304,7 +304,7 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(store.state.tasks[0].current, 16)
         XCTAssertFalse(store.state.tasks[0].completed)
     }
-    @MainActor func testPracticeTasksAndRulesNormalizeToCheckbox() throws {
+    @MainActor func testPracticeTasksAndRulesNormalizeToCheckbox() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("OpusPractice-" + UUID().uuidString).appendingPathComponent("test.sqlite")
         let database = try Database(url: url)
         var snapshot = Snapshot()
@@ -319,7 +319,7 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(store.state.rules.first?.taskKind, .checkbox)
         XCTAssertEqual(try Database(url: url).load().tasks.first?.kind, .checkbox)
     }
-    @MainActor func testLegacyRhythmTasksMigratePlannedToDue() throws {
+    @MainActor func testLegacyRhythmTasksMigratePlannedToDue() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("OpusRhythmMigrate-" + UUID().uuidString).appendingPathComponent("test.sqlite")
         let database = try Database(url: url)
         var snapshot = Snapshot()
@@ -365,7 +365,7 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(Set(items.map(\.id)).count, 3)
         XCTAssertEqual(items.map(\.due), ["2026-09-10", "2026-09-17", "2026-09-12"])
     }
-    @MainActor func testEditingRhythmPreservesModifiedOccurrenceDates() throws {
+    @MainActor func testEditingRhythmPreservesModifiedOccurrenceDates() async throws {
         let store = try Store(database: db())
         var rule = QuizRule(title: "Drill", weekdays: Array(1...7), itemKind: .task, startDate: Day.today, endDate: Day.adding(10))
         store.saveRule(rule)
@@ -378,7 +378,7 @@ final class RedesignTests: XCTestCase {
         store.saveRule(rule)
         XCTAssertTrue(store.state.tasks.contains { $0.id == originalID && $0.due == Day.adding(3) && $0.notes == "Changed" })
     }
-    @MainActor func testProgressUpdatePreservesHistoryAndExplicitSaveSemantics() throws {
+    @MainActor func testProgressUpdatePreservesHistoryAndExplicitSaveSemantics() async throws {
         let store = try Store(database: db())
         let task = StudyTask(title: "Chapter", kind: .progress, due: "2026-09-20", start: 1, target: 40, current: 10)
         store.save(task)
@@ -395,7 +395,7 @@ final class RedesignTests: XCTestCase {
         store.undo()
         XCTAssertEqual(store.state.tasks[0].current, 15)
     }
-    @MainActor func testEndToEndWorkflowSeed() throws {
+    @MainActor func testEndToEndWorkflowSeed() async throws {
         let store = try Store(database: db())
         store.setup()
         XCTAssertTrue(store.state.courses.isEmpty)
