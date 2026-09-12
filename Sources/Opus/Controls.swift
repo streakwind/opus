@@ -107,36 +107,9 @@ struct WindowChrome: NSViewRepresentable {
     final class ChromeView: NSView {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            apply()
-        }
-        override func layout() {
-            super.layout()
-            apply()
-        }
-        func apply() {
-            guard let window else { return }
-            window.titlebarSeparatorStyle = .none
-            window.titlebarAppearsTransparent = true
-            window.titleVisibility = .hidden
-            window.backgroundColor = .textBackgroundColor
-            unify(window.contentView)
-        }
-        private func unify(_ view: NSView?) {
-            guard let view else { return }
-            if let effect = view as? NSVisualEffectView,
-               effect.material == .sidebar || effect.material == .titlebar {
-                effect.material = .contentBackground
-                effect.blendingMode = .behindWindow
-                effect.state = .followsWindowActiveState
-                effect.isEmphasized = false
-            }
-            if let table = view as? NSTableView {
-                table.backgroundColor = .clear
-                table.enclosingScrollView?.drawsBackground = false
-            }
-            view.subviews.forEach { unify($0) }
+            window?.titlebarSeparatorStyle = .none
         }
     }
     func makeNSView(context: Context) -> ChromeView { ChromeView() }
-    func updateNSView(_ nsView: ChromeView, context: Context) { nsView.apply() }
+    func updateNSView(_ nsView: ChromeView, context: Context) { nsView.window?.titlebarSeparatorStyle = .none }
 }
