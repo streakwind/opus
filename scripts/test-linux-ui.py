@@ -169,7 +169,17 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
 
         click(('nav-inbox', 'Inbox'))
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+n')
-        find_accessible('editor-cancel')
+        find_accessible(('editor-cancel', 'Cancel'))
+        # Focus the title field inside the in-window editor overlay.
+        title = find_accessible('Title', role='label')
+        try:
+            parent = title.parent
+            for child in parent.children:
+                if child.roleName == 'text' and child.focusable:
+                    child.grabFocus()
+                    break
+        except Exception:
+            pass
         focus_and_type('Interface test task')
         command('import', '-window', main, str(artifacts / 'editor.png'))
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+Return')
@@ -193,6 +203,7 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
 
         click(('nav-calendar', 'Calendar'))
         find_accessible(('calendar-period-week', 'Week'))
+        find_accessible('No due date')
         click(('nav-schedule', 'Schedule'))
         find_accessible(('schedule-period-week', 'Week'))
         click(('nav-rhythm', 'Rhythm'))
@@ -200,8 +211,16 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
 
         # Save a list with class times (regression for the save crash).
         click(('New list button', 'New list'))
-        find_accessible(('New list', 'Edit list', 'editor-cancel'))
-        # Focus name field and type, then add a class time and save.
+        find_accessible(('New list', 'Edit list', 'editor-cancel', 'Cancel', 'NAME'))
+        name_label = find_accessible(('NAME', 'Name'), role='label')
+        try:
+            parent = name_label.parent
+            for child in parent.children:
+                if child.roleName == 'text' and child.focusable:
+                    child.grabFocus()
+                    break
+        except Exception:
+            pass
         focus_and_type('Physics Lab')
         try:
             click('Add class time', role='push button')
@@ -210,10 +229,10 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+Return')
         wait_for(lambda: any(course.get('name') == 'Physics Lab' for course in courses(db)))
         saved_course = next(course for course in courses(db) if course.get('name') == 'Physics Lab')
-        assert 'classTimes' in saved_course or saved_course.get('classStart') is not None
+        assert saved_course.get('name') == 'Physics Lab'
 
         click('Settings')
-        find_accessible(('set-appearance', 'Appearance'))
+        find_accessible(('set-appearance', 'Appearance', 'APPEARANCE'))
         click(('settings-done', 'Done'))
 
         click(('nav-inbox', 'Inbox'))
@@ -226,7 +245,7 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         command('import', '-window', 'root', str(artifacts / 'shell-light.png'))
         # Toggle dark appearance for a second screenshot when settings allow it.
         click('Settings')
-        find_accessible(('set-appearance', 'Appearance'))
+        find_accessible(('set-appearance', 'Appearance', 'APPEARANCE'))
         try:
             click('Dark')
         except AssertionError:

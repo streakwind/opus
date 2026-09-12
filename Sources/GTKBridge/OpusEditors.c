@@ -325,7 +325,7 @@ static void attach_editor_actions(const char *save_action,
     }
     GtkWidget *cancel = gtk_button_new_with_label("Cancel");
     g_signal_connect(cancel, "clicked", G_CALLBACK(editor_cancel_clicked), NULL);
-    opus_set_accessible_name(cancel, "editor-cancel");
+    opus_set_identity(cancel, "editor-cancel", NULL);
     gtk_box_append(GTK_BOX(actions), cancel);
     GtkWidget *save = gtk_button_new_with_label("Save");
     gtk_widget_add_css_class(save, "suggested-action");
@@ -472,7 +472,11 @@ void opus_work_editor_open(const char *id, const char *title, const char *day,
 
     (void)course;
     attach_editor_actions("save-work", save_work, "delete-work", delete_work);
-    gtk_widget_grab_focus(opus_ui.editor);
+    if (opus_ui.editor_title) {
+        gtk_widget_grab_focus(opus_ui.editor_title);
+    } else {
+        gtk_widget_grab_focus(opus_ui.editor);
+    }
 }
 
 void opus_work_editor_list(const char *id, const char *name, int selected) {
@@ -506,7 +510,11 @@ void opus_course_editor_open(const char *id, const char *name,
 
     attach_editor_actions("save-course", save_course,
                           id && *id ? "delete-list" : NULL, delete_course);
-    gtk_widget_grab_focus(opus_ui.editor);
+    if (opus_ui.editor_name) {
+        gtk_widget_grab_focus(opus_ui.editor_name);
+    } else {
+        gtk_widget_grab_focus(opus_ui.editor);
+    }
 }
 
 void opus_course_editor_time(const char *id, int start, int end,

@@ -482,7 +482,7 @@ void opus_editor_add_actions(GtkWidget *box, const char *save_action,
     }
     GtkWidget *cancel = gtk_button_new_with_label("Cancel");
     g_signal_connect(cancel, "clicked", G_CALLBACK(editor_cancel), NULL);
-    opus_set_accessible_name(cancel, "editor-cancel");
+    opus_set_identity(cancel, "editor-cancel", NULL);
     gtk_box_append(GTK_BOX(actions), cancel);
     GtkWidget *save = gtk_button_new_with_label("Save");
     gtk_widget_add_css_class(save, "suggested-action");
