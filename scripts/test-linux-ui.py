@@ -37,9 +37,11 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         command('xdotool', 'windowfocus', '--sync', main)
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+n')
         dialog = wait_for(lambda: window('New task'))
+        command('xdotool', 'windowraise', dialog)
         command('xdotool', 'windowfocus', '--sync', dialog)
         command('xdotool', 'type', '--clearmodifiers', 'Interface test task')
-        command('import', '-window', 'root', str(artifacts / 'editor.png'))
+        time.sleep(.3)
+        command('import', '-window', dialog, str(artifacts / 'editor.png'))
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+Return')
         def saved():
             with sqlite3.connect(Path(data) / 'Opus.sqlite') as db:
@@ -50,11 +52,21 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         time.sleep(.3)
         command('import', '-window', 'root', str(artifacts / 'tasks.png'))
         command('xdotool', 'windowfocus', '--sync', main)
+        # Fixed 1000×700 test window: exercise the actual row controls.
+        command('xdotool', 'mousemove', '--window', main, '240', '188', 'click', '1')
+        wait_for(lambda: saved()[0]['completed'])
+        command('xdotool', 'key', '--clearmodifiers', 'ctrl+shift+z')
+        wait_for(lambda: not saved()[0]['completed'])
+        time.sleep(.2)
+        command('xdotool', 'mousemove', '--window', main, '953', '188', 'click', '1')
+        wait_for(lambda: saved() == [])
+        command('xdotool', 'key', '--clearmodifiers', 'ctrl+shift+z')
+        wait_for(lambda: len(saved()) == 1)
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+q')
         assert process.wait(timeout=10) == 0
         subprocess.run(['dist/linux/bin/opus', '--smoke-test'], env=env, check=True, timeout=15)
         assert saved()[0]['id'] == tasks[0]['id']
-        print('GTK keyboard creation and database reopening passed.')
+        print('GTK creation, completion, deletion, undo, and database reopening passed.')
     finally:
         if process.poll() is None:
             process.terminate()
