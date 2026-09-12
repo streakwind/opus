@@ -1,3 +1,5 @@
+got tired of using apple notes, google calendar, and obsidian to manage my tasks (there were components of each that I liked). vibecoded an app for this in 3 days with GPT 6 and GPT 5.6. linux and mac only at the moment 
+
 # Opus
 
 A local-first native macOS study planner built with SwiftUI and SQLite. Requires macOS 14 or later and Xcode's Swift 6 toolchain to build. No third-party dependencies, network service, or account.
