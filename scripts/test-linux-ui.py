@@ -13,6 +13,14 @@ import time
 artifacts = Path('/tmp/opus-linux-ui')
 artifacts.mkdir(exist_ok=True)
 
+# Dogtail checks this desktop setting during import, even in headless CI.
+subprocess.run(
+    ['gsettings', 'set', 'org.gnome.desktop.interface', 'toolkit-accessibility', 'true'],
+    check=False,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+)
+
 try:
     from dogtail.tree import root as accessibility_root
 except Exception as error:  # pragma: no cover
