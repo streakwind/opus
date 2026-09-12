@@ -1,6 +1,6 @@
 import XCTest
 import CSQLite
-@testable import Opus
+@testable import OpusCore
 
 final class RedesignTests: XCTestCase {
     func testPacingUsesInclusiveDaysAndActualPageRange() {

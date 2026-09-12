@@ -1,16 +1,16 @@
 import Foundation
 import CSQLite
 
-enum StorageError: LocalizedError {
+package enum StorageError: LocalizedError {
     case message(String)
-    var errorDescription: String? { if case let .message(message) = self { return message }; return nil }
+    package var errorDescription: String? { if case let .message(message) = self { return message }; return nil }
 }
 
 // All access is serialized by Store on the main actor. Writes are small and transactional.
-final class Database {
+package final class Database {
     private var handle: OpaquePointer?
-    let url: URL
-    init(url: URL) throws {
+    package let url: URL
+    package init(url: URL) throws {
         self.url = url
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         guard sqlite3_open(url.path, &handle) == SQLITE_OK else { throw StorageError.message("Could not open database.") }
@@ -72,7 +72,7 @@ final class Database {
     private func decode<T: Decodable>(_ table: String) throws -> [T] {
         try rows("SELECT payload FROM \(table) ORDER BY position").map { try JSONDecoder().decode(T.self, from: Data($0.utf8)) }
     }
-    func load() throws -> Snapshot {
+    package func load() throws -> Snapshot {
         var state = Snapshot()
         state.courses = try decode("courses")
         state.tasks = try decode("tasks")
@@ -86,7 +86,7 @@ final class Database {
         }
         return state
     }
-    func save(_ state: Snapshot) throws {
+    package func save(_ state: Snapshot) throws {
         let encoder = JSONEncoder()
         func json<T: Encodable>(_ value: T) throws -> String { String(decoding: try encoder.encode(value), as: UTF8.self) }
         try execute("BEGIN IMMEDIATE")

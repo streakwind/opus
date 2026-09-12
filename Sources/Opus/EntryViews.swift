@@ -1,3 +1,4 @@
+import OpusCore
 import SwiftUI
 
 struct PropertyRow<Content: View>: View {
@@ -23,10 +24,7 @@ struct CourseMenu: View {
     }
 }
 
-enum WorkKind: String, CaseIterable, Identifiable {
-    case task = "Task", progress = "Progress", assessment = "Assessment"
-    var id: String { rawValue }
-}
+
 
 enum WorkDraft: Identifiable {
     case new(day: String, courseID: String?, title: String, kind: WorkKind)

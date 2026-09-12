@@ -1,3 +1,4 @@
+import OpusCore
 import SwiftUI
 import UniformTypeIdentifiers
 

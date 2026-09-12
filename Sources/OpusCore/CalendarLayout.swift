@@ -1,7 +1,7 @@
 import Foundation
 
-enum CalendarLayout {
-    static func days(containing date: Date, week: Bool, calendar: Calendar = .current) -> [String] {
+package enum CalendarLayout {
+    package static func days(containing date: Date, week: Bool, calendar: Calendar = .current) -> [String] {
         let interval = calendar.dateInterval(of: week ? .weekOfYear : .month, for: date)!
         let start = calendar.dateInterval(of: .weekOfYear, for: interval.start)!.start
         let count: Int
