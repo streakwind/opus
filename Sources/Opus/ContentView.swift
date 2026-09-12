@@ -104,6 +104,7 @@ struct ContentView: View {
     }
     var body: some View {
         root
+            .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)
             .onAppear(perform: applyAppearance)
             .onChange(of: appearance) { _, _ in applyAppearance() }
     }
@@ -132,11 +133,9 @@ struct ContentView: View {
             }
     }
     private func applyAppearance() {
-        switch appearance {
-        case "light": NSApp.appearance = NSAppearance(named: .aqua)
-        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
-        default: NSApp.appearance = nil
-        }
+        // Keep the system appearance object so the window chrome stays native.
+        // Light/dark is applied through preferredColorScheme instead of forcing aqua.
+        NSApp.appearance = nil
     }
     private var saveErrorPresented: Binding<Bool> {
         Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })
@@ -153,6 +152,7 @@ struct ContentView: View {
         } detail: {
             detail
         }
+        .navigationSplitViewStyle(.balanced)
     }
     private var sidebar: some View {
         VStack(spacing: 0) {
@@ -161,23 +161,27 @@ struct ContentView: View {
                 Text("Opus").font(.title2.weight(.semibold)); Spacer()
             }.padding(20)
             List(selection: $selection) {
-                Label("Today", systemImage: "sun.max").tag("today")
-                Label("Tasks", systemImage: "checklist").tag("all")
-                Label("Inbox", systemImage: "tray").tag("inbox")
-                Label("Archive", systemImage: "archivebox").tag("archive")
+                sidebarLabel("Today", systemImage: "sun.max", tag: "today")
+                sidebarLabel("Tasks", systemImage: "checklist", tag: "all")
+                sidebarLabel("Inbox", systemImage: "tray", tag: "inbox")
+                sidebarLabel("Archive", systemImage: "archivebox", tag: "archive")
                 Section {
-                    Label("Calendar", systemImage: "calendar").tag("upcoming")
-                    Label("Schedule", systemImage: "clock").tag("schedule")
-                    Label("Rhythm", systemImage: "repeat").tag("routines")
+                    sidebarLabel("Calendar", systemImage: "calendar", tag: "upcoming")
+                    sidebarLabel("Schedule", systemImage: "clock", tag: "schedule")
+                    sidebarLabel("Rhythm", systemImage: "repeat", tag: "routines")
                 }
                 Section("Your lists") {
                     ForEach(store.state.courses) { course in
-                        Label { Text(course.name) } icon: { Circle().fill(course.tint).frame(width: 8, height: 8) }.tag(course.id)
-                            .contextMenu { Button("Edit list…") { editor = .course(course) } }
-                            .accessibilityIdentifier("sidebar-list-\(course.id)")
+                        sidebarRow(tag: course.id) {
+                            Label { Text(course.name) } icon: { Circle().fill(course.tint).frame(width: 8, height: 8) }
+                        }
+                        .contextMenu { Button("Edit list…") { editor = .course(course) } }
+                        .accessibilityIdentifier("sidebar-list-\(course.id)")
                     }
                 }
-            }.listStyle(.sidebar)
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
             HStack {
                 Button { editor = .course(Course(name: "")) } label: { Label("New list", systemImage: "plus") }
                     .buttonStyle(.plain)
@@ -188,7 +192,22 @@ struct ContentView: View {
                     .accessibilityIdentifier("settings-button")
             }.padding(16)
         }
+        .background(Color(nsColor: .textBackgroundColor))
         .navigationSplitViewColumnWidth(min: 180, ideal: 215, max: 260)
+    }
+    private func sidebarLabel(_ title: String, systemImage: String, tag: String) -> some View {
+        sidebarRow(tag: tag) { Label(title, systemImage: systemImage) }
+    }
+    private func sidebarRow<Content: View>(tag: String, @ViewBuilder content: () -> Content) -> some View {
+        content()
+            .tag(tag)
+            .listRowInsets(EdgeInsets(top: 5, leading: 12, bottom: 5, trailing: 12))
+            .listRowSeparator(.hidden)
+            .listRowBackground(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(selection == tag ? Color.primary.opacity(0.07) : .clear)
+                    .padding(.horizontal, 8)
+            )
     }
     private var detail: some View {
         VStack(alignment: .leading, spacing: 0) {

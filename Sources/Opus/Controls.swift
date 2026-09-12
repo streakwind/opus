@@ -1,5 +1,6 @@
 import OpusCore
 import SwiftUI
+import AppKit
 
 /// Use standard platform controls without decorative glass or custom shadows.
 struct RoundedControls: ViewModifier {
@@ -85,9 +86,37 @@ struct WindowChrome: NSViewRepresentable {
     final class ChromeView: NSView {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            window?.titlebarSeparatorStyle = .none
+            apply()
+        }
+        override func layout() {
+            super.layout()
+            apply()
+        }
+        func apply() {
+            guard let window else { return }
+            window.titlebarSeparatorStyle = .none
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.backgroundColor = .textBackgroundColor
+            unify(window.contentView)
+        }
+        private func unify(_ view: NSView?) {
+            guard let view else { return }
+            if let effect = view as? NSVisualEffectView,
+               effect.material == .sidebar || effect.material == .titlebar {
+                effect.material = .contentBackground
+                effect.blendingMode = .behindWindow
+                effect.state = .followsWindowActiveState
+                effect.isEmphasized = false
+            }
+            if let table = view as? NSTableView {
+                table.backgroundColor = .clear
+                table.enclosingScrollView?.drawsBackground = false
+                table.selectionHighlightStyle = .none
+            }
+            view.subviews.forEach { unify($0) }
         }
     }
     func makeNSView(context: Context) -> ChromeView { ChromeView() }
-    func updateNSView(_ nsView: ChromeView, context: Context) { nsView.window?.titlebarSeparatorStyle = .none }
+    func updateNSView(_ nsView: ChromeView, context: Context) { nsView.apply() }
 }
