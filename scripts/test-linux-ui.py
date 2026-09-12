@@ -89,20 +89,32 @@ def find_accessible(name: str, role=None, root=None):
 def activate(node, description: str):
     original = node
     while node is not None:
+        try:
+            actions = node.actions
+        except Exception:
+            actions = {}
         for action in ('click', 'toggle', 'press'):
-            if action in node.actions:
+            if action in actions:
                 assert node.doActionNamed(action), f'Failed to invoke {action} on {description}'
                 return node
-        node = node.parent
-    if original.focusable:
-        assert original.grabFocus(), f'Failed to focus {description}'
-        command(
-            'xdotool', 'key', '--clearmodifiers',
-            'space' if original.roleName in ('check box', 'toggle button') else 'Return',
-        )
+        try:
+            node = node.parent
+        except Exception:
+            node = None
+    try:
+        if original.focusable and original.grabFocus():
+            command(
+                'xdotool', 'key', '--clearmodifiers',
+                'space' if original.roleName in ('check box', 'toggle button') else 'Return',
+            )
+            return original
+    except Exception:
+        pass
+    try:
+        original.click()
         return original
-    original.click()
-    return original
+    except Exception as error:
+        raise AssertionError(f'Failed to activate {description}: {error}') from error
 
 
 def click(name: str, role=None):
@@ -210,7 +222,7 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         find_accessible(('add-rhythm', 'Add a rhythm…'))
 
         # Save a list with class times (regression for the save crash).
-        click(('New list button', 'New list'))
+        click('New list button', role='push button')
         find_accessible(('New list', 'Edit list', 'editor-cancel', 'Cancel', 'NAME'))
         name_label = find_accessible(('NAME', 'Name'), role='label')
         try:

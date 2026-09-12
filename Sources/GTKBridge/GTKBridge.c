@@ -221,13 +221,13 @@ static void activate(GtkApplication *application, gpointer unused) {
     gtk_widget_add_css_class(footer, "opus-sidebar-footer");
     GtkWidget *list_entry = gtk_entry_new();
     gtk_entry_set_placeholder_text(GTK_ENTRY(list_entry), "New list");
-    opus_set_accessible_name(list_entry, "New list");
+    opus_set_identity(list_entry, "new-list-entry", NULL);
     gtk_widget_set_hexpand(list_entry, TRUE);
     g_signal_connect(list_entry, "activate", G_CALLBACK(new_list), NULL);
     GtkWidget *new_list_button = gtk_button_new_from_icon_name("list-add-symbolic");
     gtk_widget_add_css_class(new_list_button, "flat");
     gtk_widget_set_tooltip_text(new_list_button, "New list");
-    opus_set_accessible_name(new_list_button, "New list button");
+    opus_set_identity(new_list_button, "New list button", NULL);
     g_signal_connect(new_list_button, "clicked", G_CALLBACK(new_list_blank), NULL);
     GtkWidget *settings = opus_button("Settings", "emblem-system-symbolic",
                                       "settings", NULL);
