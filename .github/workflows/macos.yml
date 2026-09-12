@@ -8,21 +8,27 @@ permissions:
 jobs:
   test:
     name: Test
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
       - name: Run tests
         run: swift test --scratch-path /tmp/opus-build
   build:
     name: Build app
-    runs-on: macos-15
+    runs-on: macos-26
     needs: test
     steps:
       - uses: actions/checkout@v5
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
       - name: Version from tag
         if: startsWith(github.ref, 'refs/tags/')
         run: echo "OPUS_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"

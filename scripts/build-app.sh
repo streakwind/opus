@@ -13,6 +13,12 @@ if [[ ! "$build_number" =~ '^[1-9][0-9]*$' ]]; then
   exit 1
 fi
 
+sdk="$(xcrun --sdk macosx --show-sdk-version)"
+if (( ${sdk%%.*} < 26 )); then
+  print -u2 "Need the macOS 26 SDK for the current sidebar. This build is using $sdk."
+  exit 1
+fi
+
 swift build -c release --scratch-path /tmp/opus-release
 if [[ "${OPUS_REGENERATE_ICON:-0}" == "1" ]]; then
   swift scripts/make-icon.swift "$PWD/Assets"
