@@ -3,7 +3,7 @@
 
 static OpusEvent callback;
 static GtkApplication *app;
-static GtkWidget *window, *sidebar, *rows, *heading, *entry, *error_label, *undo_button, *delete_list;
+static GtkWidget *window, *sidebar, *rows, *heading, *title_row, *entry, *error_label, *undo_button, *delete_list;
 static GtkWidget *editor, *edit_title, *edit_day, *edit_course, *edit_kind, *edit_start, *edit_end, *edit_page, *page_fields;
 static char *edit_id;
 static GPtrArray *edit_course_ids;
@@ -74,6 +74,7 @@ static void activate(GtkApplication *application, gpointer unused) {
     gtk_window_set_title(GTK_WINDOW(window), "Opus");
     gtk_window_set_default_size(GTK_WINDOW(window), 1000, 700);
     GtkWidget *header = gtk_header_bar_new();
+    gtk_header_bar_set_title_widget(GTK_HEADER_BAR(header), gtk_label_new(""));
     undo_button = button("Undo", "edit-undo-symbolic", "undo", "");
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), undo_button);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(header), button("Quick Start", "help-browser-symbolic", "help", ""));
@@ -91,7 +92,7 @@ static void activate(GtkApplication *application, gpointer unused) {
     gtk_box_append(GTK_BOX(rail), list_entry);
     GtkWidget *content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12); margins(content, 20);
     gtk_widget_set_hexpand(content, TRUE);
-    GtkWidget *title_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    title_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     heading = label(""); gtk_widget_add_css_class(heading, "title-1"); gtk_widget_set_hexpand(heading, TRUE);
     gtk_box_append(GTK_BOX(title_row), heading);
     delete_list = button("Remove list (tasks move to Inbox)", "user-trash-symbolic", "delete-list", "");
@@ -116,9 +117,10 @@ int opus_run(OpusEvent event) {
     int status = g_application_run(G_APPLICATION(app), 0, NULL);
     g_object_unref(app); return status;
 }
-void opus_begin(const char *title, const char *destination, int can_undo, int can_delete_list) {
+void opus_begin(const char *title, const char *destination, int can_undo, int can_delete_list, int show_title) {
     clear(sidebar); clear(rows);
     gtk_label_set_text(GTK_LABEL(heading), title);
+    gtk_widget_set_visible(title_row, show_title || can_delete_list);
     gtk_entry_set_placeholder_text(GTK_ENTRY(entry), destination);
     gtk_editable_set_text(GTK_EDITABLE(entry), "");
     gtk_widget_set_sensitive(undo_button, can_undo);
@@ -127,6 +129,7 @@ void opus_begin(const char *title, const char *destination, int can_undo, int ca
 }
 void opus_list(const char *id, const char *name, int selected) {
     GtkWidget *b = button(name, NULL, "select", id);
+    gtk_label_set_xalign(GTK_LABEL(gtk_button_get_child(GTK_BUTTON(b))), 0);
     if (selected) gtk_widget_add_css_class(b, "suggested-action");
     gtk_box_append(GTK_BOX(sidebar), b);
 }

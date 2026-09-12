@@ -19,7 +19,7 @@ final class LinuxApp {
         }
     }
     func render() {
-        opus_begin(title, "Add to \(courseID == nil ? "Inbox" : title)…", store.canUndo ? 1 : 0, courseID == nil ? 0 : 1)
+        opus_begin(title, "Add to \(courseID == nil ? "Inbox" : title)…", store.canUndo ? 1 : 0, courseID == nil ? 0 : 1, ["inbox", "all"].contains(selection) ? 0 : 1)
         for (id, name) in [("today", "Today"), ("inbox", "Inbox"), ("all", "All Tasks"), ("archive", "Completed")] {
             opus_list(id, name, selection == id ? 1 : 0)
         }
