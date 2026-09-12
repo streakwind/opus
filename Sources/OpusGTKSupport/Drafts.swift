@@ -14,6 +14,30 @@ package struct WorkDraftModel: Equatable, Sendable {
     package var current = 0
     package var isNew: Bool { id.isEmpty }
 
+    package init(
+        id: String = "",
+        title: String = "",
+        courseID: String? = nil,
+        day: String? = nil,
+        kind: WorkKind = .task,
+        confirmed: Bool = true,
+        notes: String = "",
+        start: Int = 1,
+        target: Int = 30,
+        current: Int = 0
+    ) {
+        self.id = id
+        self.title = title
+        self.courseID = courseID
+        self.day = day
+        self.kind = kind
+        self.confirmed = confirmed
+        self.notes = notes
+        self.start = start
+        self.target = target
+        self.current = current
+    }
+
     package static func from(task: StudyTask) -> WorkDraftModel {
         WorkDraftModel(
             id: task.id,
@@ -62,6 +86,19 @@ package struct CourseDraftModel: Equatable, Sendable {
     package var color = "blue"
     package var classTimes: [ClassTime] = []
     package var isNew: Bool { id.isEmpty }
+
+    package init(
+        id: String = "",
+        name: String = "",
+        color: String = "blue",
+        classTimes: [ClassTime] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.color = color
+        self.classTimes = classTimes
+    }
+
     package static func from(_ course: Course) -> CourseDraftModel {
         CourseDraftModel(id: course.id, name: course.name, color: course.color, classTimes: course.resolvedClassTimes)
     }
@@ -92,6 +129,42 @@ package struct RuleDraftModel: Equatable, Sendable {
     package var duration = 60
     package var schedule = false
     package var isNew: Bool { id.isEmpty }
+
+    package init(
+        id: String = "",
+        title: String = "",
+        courseID: String? = nil,
+        workKind: WorkKind = .task,
+        weekdays: Set<Int> = [2, 3, 4, 5, 6],
+        intervalWeeks: Int = 1,
+        startDate: String? = Day.today,
+        endDate: String? = nil,
+        enabled: Bool = true,
+        confirmed: Bool = true,
+        notes: String = "",
+        startCount: Int = 1,
+        targetCount: Int = 30,
+        startMinute: Int = 540,
+        duration: Int = 60,
+        schedule: Bool = false
+    ) {
+        self.id = id
+        self.title = title
+        self.courseID = courseID
+        self.workKind = workKind
+        self.weekdays = weekdays
+        self.intervalWeeks = intervalWeeks
+        self.startDate = startDate
+        self.endDate = endDate
+        self.enabled = enabled
+        self.confirmed = confirmed
+        self.notes = notes
+        self.startCount = startCount
+        self.targetCount = targetCount
+        self.startMinute = startMinute
+        self.duration = duration
+        self.schedule = schedule
+    }
 
     package static func from(_ rule: QuizRule) -> RuleDraftModel {
         RuleDraftModel(
@@ -163,6 +236,36 @@ package struct ScheduleDraftModel: Equatable, Sendable {
     package var repeatEnd: String?
     package var isNew: Bool { id.isEmpty || !exists }
     package var exists = false
+
+    package init(
+        id: String = "",
+        title: String = "",
+        courseID: String? = nil,
+        day: String = Day.today,
+        startMinute: Int = 540,
+        duration: Int = 60,
+        notes: String = "",
+        ruleID: String? = nil,
+        occurrence: String? = nil,
+        repeatEnabled: Bool = false,
+        repeatDays: Set<Int> = [],
+        repeatEnd: String? = nil,
+        exists: Bool = false
+    ) {
+        self.id = id
+        self.title = title
+        self.courseID = courseID
+        self.day = day
+        self.startMinute = startMinute
+        self.duration = duration
+        self.notes = notes
+        self.ruleID = ruleID
+        self.occurrence = occurrence
+        self.repeatEnabled = repeatEnabled
+        self.repeatDays = repeatDays
+        self.repeatEnd = repeatEnd
+        self.exists = exists
+    }
 
     package static func from(_ block: ScheduleBlock, repeatEnd: String? = nil) -> ScheduleDraftModel {
         ScheduleDraftModel(

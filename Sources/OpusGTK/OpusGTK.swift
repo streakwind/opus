@@ -247,9 +247,10 @@ final class LinuxApp {
                 startMinute: start, duration: end,
                 notes: parts.indices.contains(2) ? parts[2] : "",
                 ruleID: flags & 4 != 0 ? parts.first : nil,
-                exists: flags & 1 != 0, repeatEnabled: flags & 2 != 0,
+                repeatEnabled: flags & 2 != 0,
                 repeatDays: Set((parts.first ?? "").split(separator: ",").compactMap { Int($0) }),
-                repeatEnd: parts.indices.contains(1) && !parts[1].isEmpty ? parts[1] : nil
+                repeatEnd: parts.indices.contains(1) && !parts[1].isEmpty ? parts[1] : nil,
+                exists: flags & 1 != 0
             ))
         case "delete-rule": mapped = .deleteRule(id)
         case "toggle-rule": mapped = .toggleRule(id)
