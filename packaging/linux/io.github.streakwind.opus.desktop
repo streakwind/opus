@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Opus
+Comment=Tasks and textbook progress
+Exec=opus
+Icon=io.github.streakwind.opus
+Terminal=false
+Categories=Office;Education;

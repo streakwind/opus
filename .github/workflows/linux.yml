@@ -1,0 +1,27 @@
+name: Linux
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  gtk:
+    runs-on: ubuntu-24.04
+    container: swift:6.1-noble
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install GTK and test tools
+        run: apt-get update && apt-get install -y libgtk-4-dev libsqlite3-dev pkg-config xvfb dbus-x11
+      - name: Shared core tests
+        run: swift test
+      - name: Build GTK app
+        run: ./scripts/build-linux.sh
+      - name: Open GTK window with isolated empty storage
+        run: |
+          OPUS_DATA_DIR="$RUNNER_TEMP/opus-smoke" timeout 30s xvfb-run -a dbus-run-session -- .build/release/opus --smoke-test
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Opus-linux-preview
+          path: dist/linux
