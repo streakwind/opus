@@ -84,9 +84,9 @@ void opus_section(const char *title) {
     gtk_box_append(GTK_BOX(opus_ui.rows), label);
 }
 
-static void task_toggle(GtkCheckButton *check, gpointer unused) {
+static void task_toggle(GtkButton *button, gpointer unused) {
     (void)unused;
-    opus_send_id("toggle", g_object_get_data(G_OBJECT(check), "opus-id"));
+    opus_send_id("toggle", g_object_get_data(G_OBJECT(button), "opus-id"));
 }
 
 static void assessment_toggle(GtkButton *button, gpointer unused) {
@@ -145,12 +145,12 @@ void opus_work_row(const char *id, const char *kind, const char *title,
     gtk_box_append(GTK_BOX(row), opus_color_dot(color, 10));
 
     if (!progress && !assessment) {
-        GtkWidget *check = gtk_check_button_new();
-        gtk_check_button_set_active(GTK_CHECK_BUTTON(check), done);
+        GtkWidget *check = gtk_button_new_with_label(done ? "✓" : "○");
+        gtk_widget_add_css_class(check, "flat");
         g_object_set_data_full(G_OBJECT(check), "opus-id", g_strdup(id), g_free);
-        opus_set_identity(check, "task-complete-%s", id);
-        gtk_widget_set_tooltip_text(check, "Mark complete");
-        g_signal_connect(check, "toggled", G_CALLBACK(task_toggle), NULL);
+        opus_set_identity(check, "toggle-%s", id);
+        gtk_widget_set_tooltip_text(check, done ? "Mark incomplete" : "Mark complete");
+        g_signal_connect(check, "clicked", G_CALLBACK(task_toggle), NULL);
         gtk_box_append(GTK_BOX(row), check);
     } else if (assessment) {
         GtkWidget *confirm = gtk_button_new_from_icon_name(

@@ -119,10 +119,9 @@ def work_row(title: str):
     node = find_accessible(title)
     while node is not None:
         controls = list(descendants(node))
-        toggles = [item for item in controls if item.roleName in ('check box', 'toggle button')]
         buttons = [item for item in controls if item.roleName == 'push button']
-        if toggles and len(buttons) >= 2:
-            return node, toggles[0], buttons
+        if len(buttons) >= 3:
+            return node, buttons[0], buttons
         node = node.parent
     raise AssertionError(f'Could not locate controls for {title}')
 
