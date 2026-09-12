@@ -9,6 +9,7 @@ elif [[ -d "$prefix/lib" ]]; then
 fi
 
 export XDG_DATA_DIRS="$prefix/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export OPUS_RESOURCE_DIR="$prefix/share/opus"
 if [[ -d "$prefix/share/glib-2.0/schemas" ]]; then
   export GSETTINGS_SCHEMA_DIR="$prefix/share/glib-2.0/schemas"
 fi

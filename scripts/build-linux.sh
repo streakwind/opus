@@ -25,6 +25,11 @@ cp packaging/linux/opus dist/linux/bin/opus
 chmod +x dist/linux/bin/opus dist/linux/libexec/opus
 cp packaging/linux/io.github.streakwind.opus.desktop dist/linux/share/applications/
 cp Assets/Opus.iconset/icon_256x256.png dist/linux/share/icons/hicolor/256x256/apps/io.github.streakwind.opus.png
+mkdir -p dist/linux/share/opus
+cp Sources/GTKBridge/resources/opus.css dist/linux/share/opus/
+if [[ -d Sources/GTKBridge/resources/icons ]]; then
+  cp -R Sources/GTKBridge/resources/icons dist/linux/share/opus/ 2>/dev/null || true
+fi
 cp packaging/linux/INSTALL.md dist/linux/share/doc/opus/
 cp packaging/linux/THIRD_PARTY_NOTICES.txt dist/linux/share/doc/opus/ 2>/dev/null || true
 

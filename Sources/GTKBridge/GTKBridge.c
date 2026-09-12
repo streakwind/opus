@@ -1,4 +1,5 @@
 #include "OpusWidgets.h"
+#include "OpusTheme.h"
 
 OpusBridgeState opus_ui = {0};
 static OpusEventFn event_callback;
@@ -75,6 +76,22 @@ static void new_list(GtkEntry *entry, gpointer unused) {
     }
 }
 
+static void new_list_blank(GtkButton *button, gpointer unused) {
+    (void)button;
+    (void)unused;
+    OpusEventPayload event = {.action = "new-list", .text = ""};
+    opus_send(&event);
+}
+
+static void nav_clicked(GtkButton *button, gpointer unused) {
+    (void)unused;
+    OpusEventPayload event = {
+        .action = g_object_get_data(G_OBJECT(button), "opus-action"),
+        .id = g_object_get_data(G_OBJECT(button), "opus-id")
+    };
+    opus_send(&event);
+}
+
 static gboolean main_key(GtkEventControllerKey *controller, guint keyval,
                          guint keycode, GdkModifierType state, gpointer unused) {
     (void)controller;
@@ -98,14 +115,47 @@ static gboolean main_key(GtkEventControllerKey *controller, guint keyval,
         opus_send_action("help");
         return TRUE;
     }
+    if (keyval == GDK_KEY_Escape && opus_ui.editor) {
+        opus_send_action("editor-cancel");
+        return TRUE;
+    }
     return FALSE;
 }
 
 static void add_view(GtkStack *stack, int index, const char *name) {
-    opus_ui.views[index] = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    opus_ui.views[index] = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_add_css_class(opus_ui.views[index], "opus-view");
     gtk_widget_set_hexpand(opus_ui.views[index], TRUE);
     gtk_widget_set_vexpand(opus_ui.views[index], TRUE);
     gtk_stack_add_named(stack, opus_ui.views[index], name);
+}
+
+static const char *nav_icon(const char *id) {
+    if (!id) {
+        return "folder-symbolic";
+    }
+    if (g_strcmp0(id, "today") == 0) {
+        return "weather-clear-symbolic";
+    }
+    if (g_strcmp0(id, "all") == 0) {
+        return "view-list-symbolic";
+    }
+    if (g_strcmp0(id, "inbox") == 0) {
+        return "mail-mailbox-symbolic";
+    }
+    if (g_strcmp0(id, "archive") == 0) {
+        return "folder-symbolic";
+    }
+    if (g_strcmp0(id, "calendar") == 0) {
+        return "x-office-calendar-symbolic";
+    }
+    if (g_strcmp0(id, "schedule") == 0) {
+        return "preferences-system-time-symbolic";
+    }
+    if (g_strcmp0(id, "rhythm") == 0) {
+        return "media-playlist-repeat-symbolic";
+    }
+    return NULL;
 }
 
 static void activate(GtkApplication *application, gpointer unused) {
@@ -115,8 +165,10 @@ static void activate(GtkApplication *application, gpointer unused) {
         return;
     }
 
+    opus_theme_load();
     opus_ui.application = application;
     opus_ui.window = gtk_application_window_new(application);
+    gtk_widget_add_css_class(opus_ui.window, "opus-window");
     gtk_window_set_title(GTK_WINDOW(opus_ui.window), "Opus");
     gtk_window_set_default_size(GTK_WINDOW(opus_ui.window), 1100, 760);
 
@@ -125,45 +177,73 @@ static void activate(GtkApplication *application, gpointer unused) {
     gtk_widget_add_controller(opus_ui.window, keys);
 
     GtkWidget *header = gtk_header_bar_new();
-    gtk_header_bar_set_title_widget(GTK_HEADER_BAR(header), gtk_label_new("Opus"));
+    gtk_header_bar_set_show_title_buttons(GTK_HEADER_BAR(header), TRUE);
+    gtk_header_bar_set_title_widget(GTK_HEADER_BAR(header), gtk_label_new(""));
     opus_ui.undo_button = opus_button("Undo", "edit-undo-symbolic", "undo", NULL);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), opus_ui.undo_button);
-    GtkWidget *new_button = opus_button("New", "list-add-symbolic",
+    GtkWidget *new_button = opus_button("Add", "list-add-symbolic",
                                         "new-work", NULL);
     g_object_set_data(G_OBJECT(new_button), "opus-kind", GINT_TO_POINTER(-1));
     gtk_header_bar_pack_end(GTK_HEADER_BAR(header), new_button);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(header),
                             opus_button("Help", "help-browser-symbolic", "help", NULL));
-    gtk_header_bar_pack_end(GTK_HEADER_BAR(header),
-                            opus_button("Settings", "emblem-system-symbolic", "settings", NULL));
     gtk_window_set_titlebar(GTK_WINDOW(opus_ui.window), header);
 
+    opus_ui.overlay = gtk_overlay_new();
     GtkWidget *layout = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    GtkWidget *rail = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-    opus_margins(rail, 12);
-    gtk_widget_set_size_request(rail, 220, -1);
+    gtk_widget_add_css_class(layout, "opus-shell");
+
+    GtkWidget *rail = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_size_request(rail, 215, -1);
+    gtk_widget_add_css_class(rail, "opus-sidebar");
     gtk_widget_add_css_class(rail, "sidebar");
+
+    GtkWidget *brand = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_add_css_class(brand, "opus-brand");
+    GtkWidget *mark = opus_label("▣");
+    gtk_widget_add_css_class(mark, "opus-brand-mark");
+    GtkWidget *brand_title = opus_label("Opus");
+    gtk_widget_add_css_class(brand_title, "opus-brand-title");
+    gtk_box_append(GTK_BOX(brand), mark);
+    gtk_box_append(GTK_BOX(brand), brand_title);
+    gtk_box_append(GTK_BOX(rail), brand);
 
     GtkWidget *nav_scroll = gtk_scrolled_window_new();
     gtk_widget_set_vexpand(nav_scroll, TRUE);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(nav_scroll),
                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    opus_ui.sidebar = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    opus_ui.sidebar = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    gtk_widget_add_css_class(opus_ui.sidebar, "opus-nav");
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(nav_scroll), opus_ui.sidebar);
     gtk_box_append(GTK_BOX(rail), nav_scroll);
 
+    GtkWidget *footer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_add_css_class(footer, "opus-sidebar-footer");
     GtkWidget *list_entry = gtk_entry_new();
-    gtk_entry_set_placeholder_text(GTK_ENTRY(list_entry), "New list…");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(list_entry), "New list");
     opus_set_accessible_name(list_entry, "New list");
+    gtk_widget_set_hexpand(list_entry, TRUE);
     g_signal_connect(list_entry, "activate", G_CALLBACK(new_list), NULL);
-    gtk_box_append(GTK_BOX(rail), list_entry);
+    GtkWidget *new_list_button = gtk_button_new_from_icon_name("list-add-symbolic");
+    gtk_widget_add_css_class(new_list_button, "flat");
+    gtk_widget_set_tooltip_text(new_list_button, "New list");
+    opus_set_accessible_name(new_list_button, "New list button");
+    g_signal_connect(new_list_button, "clicked", G_CALLBACK(new_list_blank), NULL);
+    GtkWidget *settings = opus_button("Settings", "emblem-system-symbolic",
+                                      "settings", NULL);
+    gtk_box_append(GTK_BOX(footer), list_entry);
+    gtk_box_append(GTK_BOX(footer), new_list_button);
+    gtk_box_append(GTK_BOX(footer), settings);
+    gtk_box_append(GTK_BOX(rail), footer);
 
-    GtkWidget *content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
-    opus_margins(content, 18);
+    GtkWidget *content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_add_css_class(content, "opus-content");
     gtk_widget_set_hexpand(content, TRUE);
 
     opus_ui.title_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_add_css_class(opus_ui.title_row, "opus-detail-header");
     opus_ui.heading = opus_label("");
+    gtk_widget_add_css_class(opus_ui.heading, "opus-heading");
     gtk_widget_add_css_class(opus_ui.heading, "title-1");
     gtk_widget_set_hexpand(opus_ui.heading, TRUE);
     gtk_box_append(GTK_BOX(opus_ui.title_row), opus_ui.heading);
@@ -171,22 +251,32 @@ static void activate(GtkApplication *application, gpointer unused) {
                                     "edit-list", NULL);
     opus_ui.delete_list = opus_button("Delete list", "user-trash-symbolic",
                                       "delete-list", NULL);
-    opus_ui.delete_archive = opus_button("Delete archive", "user-trash-symbolic",
+    opus_ui.delete_archive = opus_button("Delete All", "user-trash-symbolic",
                                          "archive-delete-all", NULL);
     gtk_box_append(GTK_BOX(opus_ui.title_row), opus_ui.edit_list);
     gtk_box_append(GTK_BOX(opus_ui.title_row), opus_ui.delete_list);
     gtk_box_append(GTK_BOX(opus_ui.title_row), opus_ui.delete_archive);
     gtk_box_append(GTK_BOX(content), opus_ui.title_row);
 
+    GtkWidget *toolbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_add_css_class(toolbar, "opus-toolbar");
     opus_ui.search_entry = gtk_search_entry_new();
-    gtk_search_entry_set_placeholder_text(GTK_SEARCH_ENTRY(opus_ui.search_entry), "Search");
+    gtk_search_entry_set_placeholder_text(GTK_SEARCH_ENTRY(opus_ui.search_entry),
+                                          "Search");
+    gtk_widget_add_css_class(opus_ui.search_entry, "opus-search");
     opus_set_identity(opus_ui.search_entry, "search-entry", NULL);
-    g_signal_connect(opus_ui.search_entry, "search-changed", G_CALLBACK(search_changed), NULL);
-    gtk_box_append(GTK_BOX(content), opus_ui.search_entry);
+    gtk_widget_set_hexpand(opus_ui.search_entry, TRUE);
+    g_signal_connect(opus_ui.search_entry, "search-changed",
+                     G_CALLBACK(search_changed), NULL);
+    gtk_box_append(GTK_BOX(toolbar), opus_ui.search_entry);
+    gtk_box_append(GTK_BOX(content), toolbar);
 
     opus_ui.error_label = opus_label("");
+    gtk_widget_add_css_class(opus_ui.error_label, "opus-error");
     gtk_widget_add_css_class(opus_ui.error_label, "error");
     gtk_widget_set_visible(opus_ui.error_label, FALSE);
+    gtk_widget_set_margin_start(opus_ui.error_label, 18);
+    gtk_widget_set_margin_end(opus_ui.error_label, 18);
     gtk_box_append(GTK_BOX(content), opus_ui.error_label);
 
     opus_ui.stack = gtk_stack_new();
@@ -202,7 +292,8 @@ static void activate(GtkApplication *application, gpointer unused) {
 
     gtk_box_append(GTK_BOX(layout), rail);
     gtk_box_append(GTK_BOX(layout), content);
-    gtk_window_set_child(GTK_WINDOW(opus_ui.window), layout);
+    gtk_overlay_set_child(GTK_OVERLAY(opus_ui.overlay), layout);
+    gtk_window_set_child(GTK_WINDOW(opus_ui.window), opus_ui.overlay);
     gtk_window_present(GTK_WINDOW(opus_ui.window));
     opus_send_action("ready");
 }
@@ -236,7 +327,8 @@ void opus_shell_begin(const char *title, const char *placeholder, int can_undo,
     gtk_widget_set_visible(opus_ui.delete_list, can_delete_list);
     gtk_widget_set_visible(opus_ui.delete_archive, can_delete_archive);
     if (opus_ui.quick_entry && placeholder && *placeholder) {
-        gtk_entry_set_placeholder_text(GTK_ENTRY(opus_ui.quick_entry), placeholder);
+        gtk_entry_set_placeholder_text(GTK_ENTRY(opus_ui.quick_entry),
+                                       placeholder);
     }
     static const char *names[] = {"tasks", "calendar", "schedule", "rhythm"};
     gtk_stack_set_visible_child_name(GTK_STACK(opus_ui.stack), names[view]);
@@ -246,23 +338,44 @@ void opus_shell_begin(const char *title, const char *placeholder, int can_undo,
 void opus_nav(const char *id, const char *name, int selected, const char *color,
               int separator_before) {
     if (separator_before) {
-        GtkWidget *separator = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
-        gtk_widget_set_margin_top(separator, 8);
-        gtk_widget_set_margin_bottom(separator, 8);
-        gtk_box_append(GTK_BOX(opus_ui.sidebar), separator);
+        if (id && g_str_has_prefix(id, "list:")) {
+            GtkWidget *section = opus_label("YOUR LISTS");
+            gtk_widget_add_css_class(section, "opus-nav-section");
+            gtk_box_append(GTK_BOX(opus_ui.sidebar), section);
+        } else {
+            GtkWidget *separator = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+            gtk_widget_set_margin_top(separator, 8);
+            gtk_widget_set_margin_bottom(separator, 8);
+            gtk_widget_set_margin_start(separator, 8);
+            gtk_widget_set_margin_end(separator, 8);
+            gtk_box_append(GTK_BOX(opus_ui.sidebar), separator);
+        }
     }
-    GtkWidget *button = opus_button(name, NULL, "select", id);
+
+    GtkWidget *button = gtk_button_new();
+    gtk_widget_add_css_class(button, "opus-nav-button");
+    gtk_widget_add_css_class(button, "flat");
     GtkWidget *line = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    const char *icon = nav_icon(id);
     if (color && *color) {
-        gtk_box_append(GTK_BOX(line), opus_color_dot(color, 10));
+        gtk_box_append(GTK_BOX(line), opus_color_dot(color, 8));
+    } else if (icon) {
+        GtkWidget *image = gtk_image_new_from_icon_name(icon);
+        gtk_widget_set_opacity(image, 0.75);
+        gtk_box_append(GTK_BOX(line), image);
     }
     GtkWidget *caption = opus_label(name);
     gtk_widget_set_hexpand(caption, TRUE);
     gtk_box_append(GTK_BOX(line), caption);
     gtk_button_set_child(GTK_BUTTON(button), line);
+    g_object_set_data_full(G_OBJECT(button), "opus-action",
+                           g_strdup("select"), g_free);
+    g_object_set_data_full(G_OBJECT(button), "opus-id",
+                           g_strdup(id ? id : ""), g_free);
+    g_signal_connect(button, "clicked", G_CALLBACK(nav_clicked), NULL);
     opus_set_identity(button, "nav-%s", id);
     if (selected) {
-        gtk_widget_add_css_class(button, "suggested-action");
+        gtk_widget_add_css_class(button, "opus-selected");
     }
     gtk_box_append(GTK_BOX(opus_ui.sidebar), button);
 }

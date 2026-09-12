@@ -58,7 +58,7 @@ package struct WorkDraftModel: Equatable, Sendable {
             courseID: assessment.courseID,
             day: assessment.day,
             kind: .assessment,
-            confirmed: assessment.confirmed,
+            confirmed: true,
             notes: assessment.topics
         )
     }
@@ -203,7 +203,7 @@ package struct RuleDraftModel: Equatable, Sendable {
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             weekday: weekdays.sorted().first ?? 4,
             enabled: enabled,
-            assessmentsConfirmed: workKind == .assessment ? confirmed : nil,
+            assessmentsConfirmed: workKind == .assessment ? true : nil,
             weekdays: weekdays.sorted(),
             itemKind: schedule ? .schedule : (workKind == .assessment ? .assessment : .task),
             intervalWeeks: intervalWeeks,

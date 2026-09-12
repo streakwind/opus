@@ -33,6 +33,7 @@ void opus_error(const char *message);
 void opus_calendar_begin(const char *heading, int period, int columns);
 void opus_calendar_day(const char *day, const char *label, int in_month, int is_today, int selected);
 void opus_calendar_item(const char *day, const char *id, const char *kind, const char *title, int done, int confirmed, const char *color);
+void opus_calendar_undated(const char *id, const char *kind, const char *title, const char *detail, const char *color);
 
 void opus_schedule_begin(const char *heading, int period, int day_count);
 void opus_schedule_day(const char *day, const char *label);

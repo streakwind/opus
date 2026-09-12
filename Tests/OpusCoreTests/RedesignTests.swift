@@ -104,21 +104,20 @@ final class RedesignTests: XCTestCase {
     private func db() throws -> Database {
         try Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusV3-" + UUID().uuidString).appendingPathComponent("test.sqlite"))
     }
-    @MainActor func testExplicitRecurringConfirmationPersists() async throws {
+    @MainActor func testAssessmentsAreAlwaysConfirmed() async throws {
         let database = try db()
-        let rule = QuizRule(title: "Example review", assessmentsConfirmed: true)
+        let rule = QuizRule(title: "Example review", assessmentsConfirmed: false)
         var state = Snapshot()
         state.rules = [rule]
-        state.assessments = [Assessment(title: "Example review", day: Day.today, confirmed: true, ruleID: rule.id, occurrence: Day.today)]
+        state.assessments = [Assessment(title: "Example review", day: Day.today, confirmed: false, ruleID: rule.id, occurrence: Day.today)]
         try database.save(state)
         let store = try Store(database: database)
-        XCTAssertTrue(store.state.assessments.allSatisfy(\.confirmed))
-        XCTAssertEqual(store.state.rules.first?.assessmentsConfirmed, true)
+        XCTAssertTrue(store.state.rules.first?.confirmsAssessments == true)
         var item = store.state.assessments[0]
         item.confirmed = false
         store.save(item)
         let reopened = try Store(database: database)
-        XCTAssertFalse(try XCTUnwrap(reopened.state.assessments.first { $0.id == item.id }).confirmed)
+        XCTAssertTrue(try XCTUnwrap(reopened.state.assessments.first { $0.id == item.id }).confirmed)
     }
     func testLegacyRuleDecodesAsWeeklyAssessment() throws {
         let data = Data(#"{"id":"legacy","title":"Quiz","weekday":4,"enabled":true}"#.utf8)

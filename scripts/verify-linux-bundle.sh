@@ -29,4 +29,9 @@ if ! ls dist/linux/lib/libsqlite3.so* >/dev/null 2>&1; then
   exit 1
 fi
 
+if [[ ! -f dist/linux/share/opus/opus.css ]]; then
+  echo 'opus.css missing from bundle share/opus' >&2
+  exit 1
+fi
+
 echo 'Linux bundle verification passed.'

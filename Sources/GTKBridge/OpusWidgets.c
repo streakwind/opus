@@ -1,5 +1,6 @@
 #include "OpusWidgets.h"
 #include <math.h>
+#include <string.h>
 
 static void button_clicked(GtkButton *button, gpointer unused) {
     (void)unused;
@@ -40,10 +41,9 @@ GtkWidget *opus_button(const char *label, const char *icon, const char *action,
 }
 
 GtkWidget *opus_field(GtkWidget *box, const char *name, GtkWidget *input) {
-    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     GtkWidget *caption = opus_label(name);
-    gtk_widget_set_size_request(caption, 120, -1);
-    gtk_widget_set_valign(caption, GTK_ALIGN_CENTER);
+    gtk_widget_add_css_class(caption, "opus-field-label");
     gtk_widget_set_hexpand(input, TRUE);
     gtk_box_append(GTK_BOX(row), caption);
     gtk_box_append(GTK_BOX(row), input);
@@ -107,10 +107,14 @@ GdkRGBA opus_color(const char *name) {
         {"cyan", "#2ea3c2"}, {"mint", "#33b294"}, {"yellow", "#dbae24"}
     };
     const char *hex = "#3478c9";
-    for (guint i = 0; i < G_N_ELEMENTS(colors); i++) {
-        if (name && g_str_equal(name, colors[i].name)) {
-            hex = colors[i].hex;
-            break;
+    if (name && name[0] == '#' && strlen(name) == 7) {
+        hex = name;
+    } else {
+        for (guint i = 0; i < G_N_ELEMENTS(colors); i++) {
+            if (name && g_str_equal(name, colors[i].name)) {
+                hex = colors[i].hex;
+                break;
+            }
         }
     }
     GdkRGBA color = {0};
@@ -309,6 +313,9 @@ int opus_weekday_mask(GtkWidget *box) {
 
 static void clear_editor_state(void) {
     opus_ui.editor = NULL;
+    opus_ui.editor_dim = NULL;
+    opus_ui.editor_card = NULL;
+    opus_ui.editor_heading = NULL;
     opus_ui.editor_error = NULL;
     opus_ui.editor_body = NULL;
     opus_ui.editor_type = 0;
@@ -357,7 +364,7 @@ static void clear_editor_state(void) {
 
 static void editor_destroyed(GtkWidget *widget, gpointer unused) {
     (void)unused;
-    if (widget == opus_ui.editor) {
+    if (widget == opus_ui.editor || widget == opus_ui.editor_dim) {
         clear_editor_state();
     }
 }
@@ -391,35 +398,73 @@ void opus_editor_window_begin(const char *title, int type) {
     opus_editors_close(FALSE);
     opus_ui.editor_type = type;
     opus_ui.editor_save = NULL;
-    opus_ui.editor = gtk_window_new();
-    gtk_window_set_title(GTK_WINDOW(opus_ui.editor), title ? title : "Editor");
-    if (opus_ui.window) {
-        gtk_window_set_transient_for(GTK_WINDOW(opus_ui.editor),
-                                     GTK_WINDOW(opus_ui.window));
-    }
-    gtk_window_set_modal(GTK_WINDOW(opus_ui.editor), TRUE);
-    gtk_window_set_default_size(GTK_WINDOW(opus_ui.editor), 520, 560);
-    g_signal_connect(opus_ui.editor, "destroy", G_CALLBACK(editor_destroyed), NULL);
+
+    opus_ui.editor_dim = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_add_css_class(opus_ui.editor_dim, "opus-overlay-dim");
+    gtk_widget_set_hexpand(opus_ui.editor_dim, TRUE);
+    gtk_widget_set_vexpand(opus_ui.editor_dim, TRUE);
+    g_signal_connect(opus_ui.editor_dim, "destroy",
+                     G_CALLBACK(editor_destroyed), NULL);
+
+    GtkWidget *center = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_halign(center, GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(center, GTK_ALIGN_CENTER);
+    gtk_widget_set_hexpand(center, TRUE);
+    gtk_widget_set_vexpand(center, TRUE);
+
+    opus_ui.editor = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    opus_ui.editor_card = opus_ui.editor;
+    gtk_widget_add_css_class(opus_ui.editor, "opus-editor-card");
+    gtk_widget_set_size_request(opus_ui.editor, 460, 520);
+    opus_set_accessible_name(opus_ui.editor, title ? title : "Editor");
+    gtk_widget_set_name(opus_ui.editor, title ? title : "Editor");
+
     GtkEventController *keys = gtk_event_controller_key_new();
     g_signal_connect(keys, "key-pressed",
                      G_CALLBACK(editor_key_pressed), NULL);
     gtk_widget_add_controller(opus_ui.editor, keys);
 
-    GtkWidget *root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
-    opus_margins(root, 16);
+    GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    opus_margins(header, 16);
+    opus_ui.editor_heading = opus_label(title ? title : "Editor");
+    gtk_widget_add_css_class(opus_ui.editor_heading, "opus-editor-title");
+    gtk_widget_set_hexpand(opus_ui.editor_heading, TRUE);
+    gtk_box_append(GTK_BOX(header), opus_ui.editor_heading);
+    GtkWidget *close = gtk_button_new_from_icon_name("window-close-symbolic");
+    gtk_widget_add_css_class(close, "flat");
+    gtk_widget_set_tooltip_text(close, "Close");
+    g_signal_connect(close, "clicked", G_CALLBACK(editor_cancel), NULL);
+    gtk_box_append(GTK_BOX(header), close);
+    gtk_box_append(GTK_BOX(opus_ui.editor), header);
+    gtk_box_append(GTK_BOX(opus_ui.editor),
+                   gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+
+    GtkWidget *body_wrap = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    opus_margins(body_wrap, 16);
     opus_ui.editor_error = opus_label("");
+    gtk_widget_add_css_class(opus_ui.editor_error, "opus-error");
     gtk_widget_add_css_class(opus_ui.editor_error, "error");
     gtk_widget_set_visible(opus_ui.editor_error, FALSE);
-    gtk_box_append(GTK_BOX(root), opus_ui.editor_error);
-    opus_ui.editor_body = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_box_append(GTK_BOX(body_wrap), opus_ui.editor_error);
+    opus_ui.editor_body = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
     GtkWidget *scroll = gtk_scrolled_window_new();
     gtk_widget_set_vexpand(scroll, TRUE);
+    gtk_widget_set_size_request(scroll, -1, 360);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll),
                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll),
                                   opus_ui.editor_body);
-    gtk_box_append(GTK_BOX(root), scroll);
-    gtk_window_set_child(GTK_WINDOW(opus_ui.editor), root);
+    gtk_box_append(GTK_BOX(body_wrap), scroll);
+    gtk_box_append(GTK_BOX(opus_ui.editor), body_wrap);
+
+    gtk_box_append(GTK_BOX(center), opus_ui.editor);
+    gtk_box_append(GTK_BOX(opus_ui.editor_dim), center);
+
+    if (opus_ui.overlay) {
+        gtk_overlay_add_overlay(GTK_OVERLAY(opus_ui.overlay),
+                                opus_ui.editor_dim);
+        gtk_widget_set_visible(opus_ui.editor_dim, TRUE);
+    }
 }
 
 void opus_editor_add_actions(GtkWidget *box, const char *save_action,
@@ -429,6 +474,7 @@ void opus_editor_add_actions(GtkWidget *box, const char *save_action,
     gtk_widget_set_margin_top(actions, 8);
     if (delete_action) {
         GtkWidget *remove = gtk_button_new_with_label("Delete");
+        gtk_widget_add_css_class(remove, "opus-destructive");
         g_object_set_data_full(G_OBJECT(remove), "opus-action",
                                g_strdup(delete_action), g_free);
         g_signal_connect(remove, "clicked", G_CALLBACK(button_clicked), NULL);
@@ -448,7 +494,18 @@ void opus_editor_add_actions(GtkWidget *box, const char *save_action,
 }
 
 void opus_editors_close(gboolean notify) {
-    if (opus_ui.editor) {
+    if (opus_ui.editor_dim) {
+        GtkWidget *dim = opus_ui.editor_dim;
+        g_signal_handlers_disconnect_by_func(dim,
+                                             G_CALLBACK(editor_destroyed), NULL);
+        GtkWidget *parent = gtk_widget_get_parent(dim);
+        if (parent && GTK_IS_OVERLAY(parent)) {
+            gtk_overlay_remove_overlay(GTK_OVERLAY(parent), dim);
+        } else if (parent && GTK_IS_BOX(parent)) {
+            gtk_box_remove(GTK_BOX(parent), dim);
+        }
+        clear_editor_state();
+    } else if (opus_ui.editor && GTK_IS_WINDOW(opus_ui.editor)) {
         GtkWidget *editor = opus_ui.editor;
         g_signal_handlers_disconnect_by_func(editor,
                                              G_CALLBACK(editor_destroyed), NULL);

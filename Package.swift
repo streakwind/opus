@@ -20,8 +20,9 @@ targets += [
         name: "GTKBridge",
         dependencies: ["CGTK"],
         exclude: [],
+        resources: [.copy("resources")],
         publicHeadersPath: "include",
-        cSettings: [.headerSearchPath("include")]
+        cSettings: [.headerSearchPath("."), .headerSearchPath("include")]
     ),
     .executableTarget(name: "OpusGTK", dependencies: ["OpusCore", "OpusGTKSupport", "GTKBridge"])
 ]

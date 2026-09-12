@@ -22,8 +22,14 @@ package enum LinuxPresentation {
         var items: [NavItem] = AppSection.allCases.map {
             NavItem(id: $0.rawValue, title: $0.title, selected: selection.id == $0.rawValue, color: nil, separatorBefore: $0 == .calendar)
         }
-        for course in courses {
-            items.append(NavItem(id: "list:" + course.id, title: course.name, selected: selection.id == "list:" + course.id, color: course.color, separatorBefore: false))
+        for (index, course) in courses.enumerated() {
+            items.append(NavItem(
+                id: "list:" + course.id,
+                title: course.name,
+                selected: selection.id == "list:" + course.id,
+                color: course.color,
+                separatorBefore: index == 0
+            ))
         }
         return items
     }
@@ -132,7 +138,6 @@ package enum LinuxPresentation {
     package static func row(for item: Assessment, in state: Snapshot) -> WorkRow {
         let course = state.courses.first { $0.id == item.courseID }
         var detail = [Day.label(item.day)]
-        if !item.confirmed { detail.append("Tentative") }
         if let name = course?.name { detail.insert(name, at: 0) }
         if !item.topics.isEmpty { detail.append(item.topics) }
         return WorkRow(
@@ -145,12 +150,23 @@ package enum LinuxPresentation {
             start: 0,
             target: 0,
             current: 0,
-            confirmed: item.confirmed,
+            confirmed: true,
             courseID: item.courseID,
             day: item.day,
             color: course?.color ?? "blue",
             markNext: false
         )
+    }
+
+    package static func undatedTasks(in state: Snapshot, query: String) -> [WorkRow] {
+        state.tasks
+            .filter {
+                $0.due == nil && $0.planned == nil &&
+                ($0.kind == .progress || !$0.completed) &&
+                matchesQuery(query, title: $0.title, details: $0.notes)
+            }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            .map { row(for: $0, in: state, markNext: false) }
     }
 
     package static func calendarDays(in state: Snapshot, period: CalendarPeriod, anchor: String, selected: String, query: String) -> [CalendarDayModel] {
@@ -168,7 +184,7 @@ package enum LinuxPresentation {
                 .map { row(for: $0, in: state) }
             let tasks = state.tasks
                 .filter {
-                    $0.calendarDay == day &&
+                    $0.due == day &&
                     ($0.kind == .progress || !$0.completed) &&
                     matchesQuery(query, title: $0.title, details: $0.notes)
                 }

@@ -298,7 +298,7 @@ struct ContentView: View {
                     ForEach(assessments) { item in
                         Button { workDetail = .assessment(item) } label: {
                             HStack(spacing: 10) {
-                                Image(systemName: item.confirmed ? "calendar" : "questionmark.circle")
+                                Image(systemName: "calendar")
                                     .foregroundStyle(store.course(item.courseID)?.tint ?? .teal).frame(width: 18)
                                 VStack(alignment: .leading, spacing: 3) {
                                     HStack(spacing: 5) {
@@ -316,9 +316,6 @@ struct ContentView: View {
                         .accessibilityIdentifier("assessment-row-\(item.id)")
                         .contextMenu {
                             Button("Details") { workDetail = .assessment(item) }
-                            Button(item.confirmed ? "Mark tentative" : "Confirm") {
-                                var copy = item; copy.confirmed.toggle(); store.save(copy)
-                            }
                             Button("Delete", role: .destructive) { store.deleteAssessment(item.id) }
                         }
                     }
@@ -375,7 +372,7 @@ struct ContentView: View {
             .listRowSeparator(.hidden)
     }
     private func assessmentSubtitle(_ item: Assessment) -> String {
-        let date = Day.label(item.day) + (item.confirmed ? "" : " · Tentative")
+        let date = Day.label(item.day)
         return store.course(item.courseID).map { $0.shortName + " · " + date } ?? date
     }
     private var quickEntry: some View {

@@ -143,8 +143,11 @@ final class LinuxApp {
         for day in session.calendarDays() {
             opus_calendar_day(day.day, day.label, day.inMonth ? 1 : 0, day.isToday ? 1 : 0, day.isSelected ? 1 : 0)
             for item in day.items.prefix(5) {
-                opus_calendar_item(day.day, item.id, item.kind.rawValue, item.title, item.completed ? 1 : 0, item.confirmed ? 1 : 0, item.color)
+                opus_calendar_item(day.day, item.id, item.kind.rawValue, item.title, item.completed ? 1 : 0, 1, item.color)
             }
+        }
+        for row in session.undatedTasks() {
+            opus_calendar_undated(row.id, row.kind.rawValue, row.title, row.detail, row.color)
         }
     }
 
@@ -263,7 +266,7 @@ final class LinuxApp {
                 confirmed: flags != 0, notes: drag, start: start, target: end, current: page
             ))
         case "save-course":
-            mapped = .saveCourse(CourseDraftModel(id: id, name: text, color: day.isEmpty ? "blue" : day, classTimes: parseClassTimes(drag)))
+            mapped = .saveCourse(CourseDraftModel(id: id, name: text, color: day.isEmpty ? "blue" : day, classTimes: ClassTimeCodec.parse(drag)))
         case "save-rule":
             let meta = drag.split(separator: "|", maxSplits: 3, omittingEmptySubsequences: false).map(String.init)
             mapped = .saveRule(RuleDraftModel(
@@ -337,14 +340,6 @@ final class LinuxApp {
     }
     private func periodFrom(_ value: Int) -> CalendarPeriod {
         value == 0 ? .day : value == 2 ? .month : .week
-    }
-    private func parseClassTimes(_ csv: String) -> [ClassTime] {
-        csv.split(separator: ";").compactMap { chunk in
-            let parts = chunk.split(separator: ":")
-            guard parts.count >= 3, let start = Int(parts[1]), let end = Int(parts[2]) else { return nil }
-            let days = parts.count > 3 ? parts[3].split(separator: ",").compactMap { Int($0) } : Array(2...6)
-            return ClassTime(id: String(parts[0]), startMinute: start, endMinute: end, days: days)
-        }
     }
 }
 

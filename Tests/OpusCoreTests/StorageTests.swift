@@ -73,7 +73,7 @@ final class StorageTests: XCTestCase {
         XCTAssertTrue(store.state.tasks.isEmpty)
         XCTAssertTrue(store.state.assessments.allSatisfy {
             $0.courseID == course.id && $0.title == "Chapter quiz" &&
-                !$0.confirmed && $0.topics == "Chapter 4" && $0.ruleID == rule.id
+                $0.confirmed && $0.topics == "Chapter 4" && $0.ruleID == rule.id
         })
 
         rule.title = "Chapter exam"
@@ -220,7 +220,7 @@ final class CalendarInteractionTests: XCTestCase {
         edited.confirmed = false
         store.save(edited)
         XCTAssertEqual(store.state.assessments[0].title, "Unit exam")
-        XCTAssertFalse(store.state.assessments[0].confirmed)
+        XCTAssertTrue(store.state.assessments[0].confirmed)
         store.undo()
         XCTAssertEqual(store.state.assessments[0].title, "Unit test")
     }

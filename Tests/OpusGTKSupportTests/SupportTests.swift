@@ -15,7 +15,7 @@ final class PresentationTests: XCTestCase {
             StudyTask(courseID: course.id, title: "Review", due: Day.adding(7), ruleID: "r1", occurrence: Day.adding(7))
         ]
         state.assessments = [
-            Assessment(courseID: course.id, title: "Quiz", day: Day.adding(1), confirmed: false, topics: "Ch 2")
+            Assessment(courseID: course.id, title: "Quiz", day: Day.adding(1), topics: "Ch 2")
         ]
         let nav = LinuxPresentation.navItems(selection: .section(.today), courses: state.courses)
         XCTAssertTrue(nav.contains { $0.id == "calendar" })
@@ -50,6 +50,14 @@ final class PresentationTests: XCTestCase {
         XCTAssertEqual(rhythms.count, 1)
         XCTAssertEqual(CourseColor.rgba(for: "#112233").hex, "#112233")
         XCTAssertEqual(CourseColor.names.count, 12)
+        let undated = StudyTask(courseID: course.id, title: "Someday")
+        state.tasks.append(undated)
+        state.tasks.append(StudyTask(courseID: course.id, title: "Due work", due: today))
+        let calendar = LinuxPresentation.calendarDays(in: state, period: .week, anchor: today, selected: today, query: "")
+        XCTAssertTrue(calendar.contains { day in day.day == today && day.items.contains { $0.title == "Due work" } })
+        XCTAssertFalse(calendar.contains { day in day.items.contains { $0.title == "Someday" } })
+        let undatedRows = LinuxPresentation.undatedTasks(in: state, query: "")
+        XCTAssertEqual(undatedRows.map(\.title), ["Someday"])
     }
 }
 
@@ -76,7 +84,7 @@ final class SessionTests: XCTestCase {
         _ = app.handle(.confirmArchiveDeleteAll)
         XCTAssertTrue(app.store.state.tasks.isEmpty)
         var assessment = WorkDraftModel.blank(courseID: nil, day: Day.adding(2), kind: .assessment)
-        assessment.title = "Quiz"; assessment.notes = "Ch 1"; assessment.confirmed = false
+        assessment.title = "Quiz"; assessment.notes = "Ch 1"
         _ = app.handle(.saveWork(assessment))
         XCTAssertEqual(app.store.state.assessments.count, 1)
         let assessmentID = app.store.state.assessments[0].id
@@ -108,6 +116,54 @@ final class SessionTests: XCTestCase {
         XCTAssertNotNil(work.validationError)
         var rule = RuleDraftModel(); rule.title = "X"; rule.weekdays = []
         XCTAssertNotNil(rule.validationError)
+        var course = CourseDraftModel(name: "Calc", classTimes: [
+            ClassTime(id: "a:b", startMinute: 540, endMinute: 600, days: [2, 3, 4])
+        ])
+        XCTAssertNil(course.validationError)
+        course.classTimes = [ClassTime(startMinute: 600, endMinute: 500, days: [2])]
+        XCTAssertEqual(course.validationError, "Check class times.")
+        course.classTimes = [ClassTime(startMinute: 540, endMinute: 600, days: [])]
+        XCTAssertEqual(course.validationError, "Check class times.")
+    }
+
+    func testClassTimeCodecRoundTrip() {
+        let times = [
+            ClassTime(id: "legacy", startMinute: 480, endMinute: 530, days: [2, 3, 4, 5, 6]),
+            ClassTime(id: "lab:section", startMinute: 780, endMinute: 900, days: [4])
+        ]
+        let encoded = ClassTimeCodec.encode(times)
+        XCTAssertEqual(encoded, "legacy|480|530|2,3,4,5,6;lab:section|780|900|4")
+        let parsed = ClassTimeCodec.parse(encoded)
+        XCTAssertEqual(parsed, times)
+        XCTAssertTrue(ClassTimeCodec.parse("").isEmpty)
+        XCTAssertTrue(ClassTimeCodec.parse("broken").isEmpty)
+        let emptyDays = ClassTimeCodec.parse("x|540|600|")
+        XCTAssertEqual(emptyDays.count, 1)
+        XCTAssertTrue(emptyDays[0].days.isEmpty)
+    }
+
+    @MainActor func testSaveCourseWithClassTimes() async throws {
+        let app = try session()
+        _ = app.handle(.setupComplete)
+        var draft = CourseDraftModel(
+            name: "Physics",
+            color: "teal",
+            classTimes: [
+                ClassTime(id: "morning", startMinute: 540, endMinute: 600, days: [2, 4, 6]),
+                ClassTime(id: "id:with:colons", startMinute: 780, endMinute: 850, days: [3])
+            ]
+        )
+        let commands = app.handle(.saveCourse(draft))
+        XCTAssertTrue(commands.contains(.closeEditor))
+        XCTAssertEqual(app.store.state.courses.count, 1)
+        let course = app.store.state.courses[0]
+        XCTAssertEqual(course.name, "Physics")
+        XCTAssertEqual(course.resolvedClassTimes.count, 2)
+        XCTAssertEqual(course.resolvedClassTimes[0].days, [2, 4, 6])
+        XCTAssertEqual(course.resolvedClassTimes[1].id, "id:with:colons")
+        draft = .from(course)
+        draft.classTimes[0].endMinute = 530
+        XCTAssertTrue(app.handle(.saveCourse(draft)).contains { if case .showError = $0 { return true }; return false })
     }
 
     @MainActor func testCalendarNavigationSettingsAndSearch() async throws {

@@ -110,6 +110,9 @@ package final class LinuxSession {
     package func calendarDays() -> [CalendarDayModel] {
         LinuxPresentation.calendarDays(in: store.state, period: calendarPeriod, anchor: calendarAnchor, selected: selectedDay, query: query)
     }
+    package func undatedTasks() -> [WorkRow] {
+        LinuxPresentation.undatedTasks(in: store.state, query: query)
+    }
     package func scheduleDays() -> [String] {
         switch schedulePeriod {
         case .day: return [scheduleAnchor]
@@ -186,7 +189,10 @@ package final class LinuxSession {
             commands.append(.render)
         case .newList(let text):
             let name = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !name.isEmpty else { break }
+            if name.isEmpty {
+                commands.append(.openCourseEditor(CourseDraftModel()))
+                break
+            }
             let list = Course(name: name)
             store.save(list)
             if store.error == nil { selection = .list(list.id) }
@@ -232,7 +238,7 @@ package final class LinuxSession {
                 if draft.isNew { item = Assessment() }
                 else { item.id = draft.id }
                 item.title = name; item.courseID = draft.courseID; item.day = on ?? Day.today
-                item.confirmed = draft.confirmed; item.topics = draft.notes
+                item.confirmed = true; item.topics = draft.notes
                 store.save(item)
             case .progress:
                 var task = store.state.tasks.first { $0.id == draft.id } ?? StudyTask()
@@ -349,8 +355,7 @@ package final class LinuxSession {
             commands.append(.openScheduleEditor(.from(block)))
         case .scheduleEdit(let id):
             if id.hasPrefix("class:") {
-                let parts = id.split(separator: ":")
-                if parts.count >= 2, let course = store.course(String(parts[1])) {
+                if let course = store.state.courses.first(where: { id.hasPrefix("class:\($0.id):") }) {
                     commands.append(.openCourseEditor(.from(course)))
                 }
             } else if let block = store.state.schedule.first(where: { $0.id == id }) {
@@ -402,13 +407,8 @@ package final class LinuxSession {
             }
             if let error = store.error { commands.append(.showError(error)) }
             commands.append(.render)
-        case .confirmAssessment(let id, let confirmed):
-            if var item = store.state.assessments.first(where: { $0.id == id }) {
-                item.confirmed = confirmed
-                store.save(item)
-            }
-            if let error = store.error { commands.append(.showError(error)) }
-            commands.append(.render)
+        case .confirmAssessment:
+            break
         }
         return commands
     }

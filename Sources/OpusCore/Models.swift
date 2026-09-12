@@ -100,16 +100,17 @@ package struct Assessment: Identifiable, Codable, Equatable {
     package var courseID: String?
     package var title = ""
     package var day = Day.today
-    package var confirmed = false
+    /// Kept for stored data compatibility; assessments are always treated as confirmed.
+    package var confirmed = true
     package var topics = ""
     package var ruleID: String?
     package var occurrence: String?
-    package init(id: String = UUID().uuidString, courseID: String? = nil, title: String = "", day: String = Day.today, confirmed: Bool = false, topics: String = "", ruleID: String? = nil, occurrence: String? = nil) {
+    package init(id: String = UUID().uuidString, courseID: String? = nil, title: String = "", day: String = Day.today, confirmed: Bool = true, topics: String = "", ruleID: String? = nil, occurrence: String? = nil) {
         self.id = id
         self.courseID = courseID
         self.title = title
         self.day = day
-        self.confirmed = confirmed
+        self.confirmed = true
         self.topics = topics
         self.ruleID = ruleID
         self.occurrence = occurrence
@@ -123,7 +124,7 @@ package struct QuizRule: Identifiable, Codable, Equatable {
     package var enabled = true
     // Optional additions keep version-one rules readable without altering their meaning.
     package var assessmentsConfirmed: Bool?
-    package var confirmsAssessments: Bool { assessmentsConfirmed ?? false }
+    package var confirmsAssessments: Bool { true }
     package var weekdays: [Int]?
     package var itemKind: RepeatItem?
     package var intervalWeeks: Int?

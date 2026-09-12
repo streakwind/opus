@@ -47,40 +47,57 @@ struct AssessmentCalendar: View {
     @State private var selectedDay = Day.today
     @State private var editing: CalendarDraft?
     private var days: [String] { period == .day ? [Day.string(anchor)] : CalendarLayout.days(containing: anchor, week: period == .week) }
+    private var undatedTasks: [StudyTask] {
+        store.state.tasks.filter { task in
+            task.due == nil && task.planned == nil && (task.kind == .progress || !task.completed) &&
+            (query.isEmpty ||
+             task.title.localizedCaseInsensitiveContains(query) ||
+             (store.course(task.courseID)?.name.localizedCaseInsensitiveContains(query) ?? false))
+        }
+        .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
     var body: some View {
-        VStack(spacing: 0) {
-            CalendarHeading(anchor: $anchor, period: $period)
-            HStack(spacing: 0) {
-                ForEach(Array(days.prefix(period == .day ? 1 : 7)), id: \.self) { day in
-                    Text(Day.date(day).formatted(.dateTime.weekday(.abbreviated))).font(.system(size: 13)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 12)
-                }
-            }.padding(.bottom, 7)
-            GeometryReader { geometry in
-                let columns = period == .day ? 1 : 7
-                let rows = days.count / columns
-                let height = max(period == .month ? 96 : 180, geometry.size.height / CGFloat(rows))
-                ScrollViewReader { reader in
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(0..<rows, id: \.self) { row in
-                            HStack(spacing: 0) {
-                                ForEach(Array(days[(row*columns)..<(row*columns+columns)]), id: \.self) { day in
-                                    CalendarDayCell(store: store, day: day, inMonth: period != .month || Calendar.current.isDate(Day.date(day), equalTo: anchor, toGranularity: .month), query: query, capacity: max(1, Int((height - 52) / 23)), wide: period == .day, select: { selectedDay = day }, editing: $editing)
-                                        .frame(width: geometry.size.width / CGFloat(columns), height: height).id(day)
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                CalendarHeading(anchor: $anchor, period: $period)
+                HStack(spacing: 0) {
+                    ForEach(Array(days.prefix(period == .day ? 1 : 7)), id: \.self) { day in
+                        Text(Day.date(day).formatted(.dateTime.weekday(.abbreviated))).font(.system(size: 13)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 12)
+                    }
+                }.padding(.bottom, 7)
+                GeometryReader { geometry in
+                    let columns = period == .day ? 1 : 7
+                    let rows = days.count / columns
+                    let height = max(period == .month ? 96 : 180, geometry.size.height / CGFloat(rows))
+                    ScrollViewReader { reader in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(0..<rows, id: \.self) { row in
+                                HStack(spacing: 0) {
+                                    ForEach(Array(days[(row*columns)..<(row*columns+columns)]), id: \.self) { day in
+                                        CalendarDayCell(store: store, day: day, inMonth: period != .month || Calendar.current.isDate(Day.date(day), equalTo: anchor, toGranularity: .month), query: query, capacity: max(1, Int((height - 52) / 23)), wide: period == .day, select: { selectedDay = day }, editing: $editing)
+                                            .frame(width: geometry.size.width / CGFloat(columns), height: height).id(day)
+                                    }
                                 }
                             }
                         }
+                    }.scrollIndicators(.hidden).id(period.rawValue + (days.first ?? ""))
+                    .onChange(of: store.calendarFocus) { _, focus in
+                        guard let focus else { return }
+                        Task { @MainActor in
+                            await Task.yield()
+                            reader.scrollTo(focus.day, anchor: .center)
+                        }
                     }
-                }.scrollIndicators(.hidden).id(period.rawValue + (days.first ?? ""))
-                .onChange(of: store.calendarFocus) { _, focus in
-                    guard let focus else { return }
-                    Task { @MainActor in
-                        await Task.yield()
-                        reader.scrollTo(focus.day, anchor: .center)
                     }
-                }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+
+            UndatedCalendarList(store: store, tasks: undatedTasks, editing: $editing)
+                .frame(width: 240)
         }
         .overlay {
             if let draft = editing {
@@ -118,6 +135,65 @@ struct AssessmentCalendar: View {
     private func ensureOccurrences() { store.refreshOccurrences(through: days.last) }
 }
 
+private struct UndatedCalendarList: View {
+    var store: Store
+    var tasks: [StudyTask]
+    @Binding var editing: CalendarDraft?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("No due date").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Text("\(tasks.count)").font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            Divider()
+            if tasks.isEmpty {
+                Text("Tasks without a due date stay here instead of on the calendar.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .padding(14)
+                Spacer(minLength: 0)
+            } else {
+                List {
+                    ForEach(tasks) { task in
+                        Button { editing = .task(task) } label: {
+                            HStack(spacing: 8) {
+                                if task.kind == .progress {
+                                    Image(systemName: "chart.bar.fill").font(.system(size: 11)).foregroundStyle(.secondary)
+                                } else {
+                                    Image(systemName: "circle").font(.system(size: 11)).foregroundStyle(.secondary)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(task.title).font(.system(size: 13, weight: .medium)).lineLimit(2).foregroundStyle(.primary)
+                                    if let course = store.course(task.courseID) {
+                                        Text(course.shortName).font(.system(size: 11)).foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.vertical, 4)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .listRowSeparator(.hidden)
+                        .contextMenu {
+                            Button("Edit") { editing = .task(task) }
+                            Button("Delete", role: .destructive) { store.deleteTask(task.id) }
+                        }
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+            }
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("No due date")
+    }
+}
+
 private struct CalendarDayCell: View {
     var store: Store
     var day: String
@@ -139,7 +215,7 @@ private struct CalendarDayCell: View {
     }
     private var tasks: [StudyTask] {
         store.state.tasks.filter {
-            $0.calendarDay == day && matches($0.title, courseID: $0.courseID)
+            $0.due == day && matches($0.title, courseID: $0.courseID)
         }.sorted { !$0.completed && $1.completed }
     }
     private var count: Int { assessments.count + tasks.count }
@@ -196,15 +272,13 @@ private struct CalendarDayCell: View {
             HStack(spacing: 4) {
                 Capsule().fill(tint).frame(width: 3, height: 14)
                 Text((store.course(item.courseID)?.shortName).map { $0 + " · " } ?? "") + Text(item.title)
-                if !item.confirmed { Image(systemName: "questionmark.circle").font(.system(size: 9)).foregroundStyle(.secondary) }
                 Spacer(minLength: 0)
             }.font(.system(size: wide ? 13 : 11)).lineLimit(1).frame(height: 21).foregroundStyle(.primary)
         }.buttonStyle(.plain).padding(.horizontal, 5)
-            .help(item.title + (item.confirmed ? "" : " · Tentative"))
+            .help(item.title)
             .onDrag { NSItemProvider(object: ("assessment:" + item.id) as NSString) }
             .contextMenu {
                 Button("Edit") { editing = .assessment(item) }
-                Button(item.confirmed ? "Mark tentative" : "Confirm") { var copy = item; copy.confirmed.toggle(); store.save(copy) }
                 Button("Add preparation task") { store.save(StudyTask(courseID: item.courseID, title: "Prepare: " + item.title, notes: item.topics, due: item.day)) }
                 Button("Delete", role: .destructive) { store.deleteAssessment(item.id) }
             }
@@ -225,7 +299,7 @@ private struct CalendarDayCell: View {
                 }.frame(maxWidth: .infinity, minHeight: 21, alignment: .leading).contentShape(Rectangle())
             }.buttonStyle(.plain)
         }.font(.system(size: wide ? 13 : 11)).frame(height: 21).padding(.horizontal, 5).opacity(task.completed ? 0.45 : 1)
-            .help(task.title + (task.due == day ? " · Due" : " · Planned"))
+            .help(task.title + " · Due")
             .onDrag { NSItemProvider(object: ("task:" + task.id) as NSString) }
     }
 }

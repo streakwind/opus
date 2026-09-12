@@ -163,14 +163,6 @@ struct RuleEditor: View {
                     }.labelsHidden().pickerStyle(.menu)
                 }
                 PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $rule.courseID) }
-                if rule.kind == .assessment {
-                    PropertyRow("Status") {
-                        PillPicker("Status", label: rule.confirmsAssessments ? "Confirmed" : "Tentative", selection: Binding(get: { rule.confirmsAssessments }, set: { rule.assessmentsConfirmed = $0 })) {
-                            Text("Confirmed").tag(true)
-                            Text("Tentative").tag(false)
-                        }.labelsHidden()
-                    }
-                }
                 if rule.workKind == .progress {
                     PropertyRow("Range") {
                         HStack {

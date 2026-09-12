@@ -55,19 +55,23 @@ void opus_views_reset(int view) {
         opus_ui.schedule_days = NULL;
     }
     opus_ui.calendar_grid = NULL;
+    opus_ui.calendar_undated = NULL;
     opus_ui.schedule_columns = NULL;
     opus_ui.rows = NULL;
     opus_ui.quick_entry = NULL;
 
     opus_clear_box(opus_ui.views[view]);
     if (view == 0 || view == 3) {
+        GtkWidget *quick = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+        gtk_widget_add_css_class(quick, "opus-quick-entry");
         opus_ui.quick_entry = gtk_entry_new();
         gtk_entry_set_placeholder_text(GTK_ENTRY(opus_ui.quick_entry),
                                        view == 3 ? "Add a rhythm…" : "Add a task…");
         opus_set_identity(opus_ui.quick_entry,
                           view == 3 ? "add-rhythm" : "quick-entry", NULL);
         g_signal_connect(opus_ui.quick_entry, "activate", G_CALLBACK(quick_add), NULL);
-        gtk_box_append(GTK_BOX(opus_ui.views[view]), opus_ui.quick_entry);
+        gtk_box_append(GTK_BOX(quick), opus_ui.quick_entry);
+        gtk_box_append(GTK_BOX(opus_ui.views[view]), quick);
         gtk_box_append(GTK_BOX(opus_ui.views[view]),
                        opus_scrolled_box(&opus_ui.rows));
     }
@@ -78,26 +82,14 @@ void opus_section(const char *title) {
         return;
     }
     GtkWidget *label = opus_label(title);
+    gtk_widget_add_css_class(label, "opus-section-label");
     gtk_widget_add_css_class(label, "heading");
-    gtk_widget_set_margin_top(label, 12);
-    gtk_widget_set_margin_bottom(label, 4);
     gtk_box_append(GTK_BOX(opus_ui.rows), label);
 }
 
 static void task_toggle(GtkButton *button, gpointer unused) {
     (void)unused;
     opus_send_id("toggle", g_object_get_data(G_OBJECT(button), "opus-id"));
-}
-
-static void assessment_toggle(GtkButton *button, gpointer unused) {
-    (void)unused;
-    OpusEventPayload event = {
-        .action = "confirm-assessment",
-        .id = g_object_get_data(G_OBJECT(button), "opus-id"),
-        .flags = !GPOINTER_TO_INT(
-            g_object_get_data(G_OBJECT(button), "opus-confirmed"))
-    };
-    opus_send(&event);
 }
 
 static void page_changed(GtkEntry *entry, gpointer unused) {
@@ -135,46 +127,52 @@ void opus_work_row(const char *id, const char *kind, const char *title,
                    int end, int page, int confirmed, const char *color) {
     (void)start;
     (void)end;
+    (void)confirmed;
     if (!opus_ui.rows) {
         return;
     }
     const gboolean assessment = g_strcmp0(kind, "assessment") == 0;
-    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    opus_margins(row, 4);
+    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_add_css_class(row, "opus-work-row");
+    if (done) {
+        gtk_widget_add_css_class(row, "opus-done");
+    }
     opus_set_identity(row, "task-row-%s", id);
-    gtk_box_append(GTK_BOX(row), opus_color_dot(color, 10));
 
     if (!progress && !assessment) {
-        GtkWidget *check = gtk_button_new_with_label(done ? "✓" : "○");
+        GtkWidget *check = gtk_button_new_with_label(done ? "●" : "○");
         gtk_widget_add_css_class(check, "flat");
+        gtk_widget_add_css_class(check, "opus-complete");
         g_object_set_data_full(G_OBJECT(check), "opus-id", g_strdup(id), g_free);
         opus_set_identity(check, "toggle-%s", id);
         gtk_widget_set_tooltip_text(check, done ? "Mark incomplete" : "Mark complete");
         g_signal_connect(check, "clicked", G_CALLBACK(task_toggle), NULL);
         gtk_box_append(GTK_BOX(row), check);
     } else if (assessment) {
-        GtkWidget *confirm = gtk_button_new_from_icon_name(
-            confirmed ? "emblem-ok-symbolic" : "dialog-question-symbolic");
-        g_object_set_data_full(G_OBJECT(confirm), "opus-id", g_strdup(id), g_free);
-        g_object_set_data(G_OBJECT(confirm), "opus-confirmed",
-                          GINT_TO_POINTER(confirmed));
-        opus_set_identity(confirm, "toggle-%s", id);
-        gtk_widget_set_tooltip_text(confirm,
-                                    confirmed ? "Mark tentative" : "Confirm assessment");
-        g_signal_connect(confirm, "clicked", G_CALLBACK(assessment_toggle), NULL);
-        gtk_box_append(GTK_BOX(row), confirm);
+        GtkWidget *mark = gtk_image_new_from_icon_name("x-office-calendar-symbolic");
+        gtk_widget_set_opacity(mark, 0.8);
+        gtk_box_append(GTK_BOX(row), mark);
+    } else {
+        gtk_box_append(GTK_BOX(row), opus_color_dot(color, 10));
     }
 
     GtkWidget *text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
     GtkWidget *name = opus_label(title);
+    gtk_widget_add_css_class(name, "opus-work-title");
     if (done) {
         gtk_widget_add_css_class(name, "dim-label");
     }
     gtk_box_append(GTK_BOX(text), name);
     if (detail && *detail) {
+        GtkWidget *meta = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+        if (!progress && color && *color) {
+            gtk_box_append(GTK_BOX(meta), opus_color_dot(color, 5));
+        }
         GtkWidget *caption = opus_label(detail);
+        gtk_widget_add_css_class(caption, "opus-work-meta");
         gtk_widget_add_css_class(caption, "dim-label");
-        gtk_box_append(GTK_BOX(text), caption);
+        gtk_box_append(GTK_BOX(meta), caption);
+        gtk_box_append(GTK_BOX(text), meta);
     }
     gtk_widget_set_hexpand(text, TRUE);
     gtk_box_append(GTK_BOX(row), text);
@@ -184,7 +182,7 @@ void opus_work_row(const char *id, const char *kind, const char *title,
         char value[32];
         g_snprintf(value, sizeof(value), "%d", page);
         gtk_editable_set_text(GTK_EDITABLE(input), value);
-        gtk_editable_set_width_chars(GTK_EDITABLE(input), 6);
+        gtk_editable_set_width_chars(GTK_EDITABLE(input), 5);
         gtk_entry_set_input_purpose(GTK_ENTRY(input), GTK_INPUT_PURPOSE_NUMBER);
         gtk_widget_set_tooltip_text(input, "Last page read — press Enter to save");
         g_object_set_data_full(G_OBJECT(input), "opus-id", g_strdup(id), g_free);
@@ -222,7 +220,7 @@ void opus_work_row(const char *id, const char *kind, const char *title,
 void opus_empty(const char *message) {
     GtkWidget *parent = opus_ui.rows ? opus_ui.rows : opus_ui.views[opus_ui.active_view];
     GtkWidget *label = opus_label(message);
-    opus_margins(label, 12);
+    gtk_widget_add_css_class(label, "opus-empty");
     gtk_widget_add_css_class(label, "dim-label");
     gtk_box_append(GTK_BOX(parent), label);
 }
@@ -244,6 +242,7 @@ static GtkWidget *period_controls(const char *action, int period,
     static const char *labels[] = {"Day", "Week", "Month"};
     static const char *slugs[] = {"day", "week", "month"};
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(box, "opus-period");
     GtkWidget *first = NULL;
     int count = include_month ? 3 : 2;
     for (int i = 0; i < count; i++) {
@@ -342,6 +341,10 @@ void opus_calendar_begin(const char *heading, int period, int columns) {
     gtk_box_append(GTK_BOX(view),
                    view_toolbar("calendar-period", "calendar-nav",
                                 CLAMP(period, 0, 2), TRUE));
+    GtkWidget *split = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_hexpand(split, TRUE);
+    gtk_widget_set_vexpand(split, TRUE);
+
     GtkWidget *scroll = gtk_scrolled_window_new();
     gtk_widget_set_hexpand(scroll, TRUE);
     gtk_widget_set_vexpand(scroll, TRUE);
@@ -351,7 +354,22 @@ void opus_calendar_begin(const char *heading, int period, int columns) {
     gtk_grid_set_column_homogeneous(GTK_GRID(opus_ui.calendar_grid), TRUE);
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll),
                                   opus_ui.calendar_grid);
-    gtk_box_append(GTK_BOX(view), scroll);
+    gtk_box_append(GTK_BOX(split), scroll);
+
+    gtk_box_append(GTK_BOX(split),
+                   gtk_separator_new(GTK_ORIENTATION_VERTICAL));
+
+    GtkWidget *side = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_size_request(side, 220, -1);
+    GtkWidget *side_title = opus_label("No due date");
+    gtk_widget_add_css_class(side_title, "opus-section-label");
+    opus_margins(side_title, 10);
+    gtk_box_append(GTK_BOX(side), side_title);
+    GtkWidget *side_scroll = opus_scrolled_box(&opus_ui.calendar_undated);
+    gtk_box_append(GTK_BOX(side), side_scroll);
+    gtk_box_append(GTK_BOX(split), side);
+
+    gtk_box_append(GTK_BOX(view), split);
     opus_ui.calendar_columns = MAX(1, columns);
     opus_ui.calendar_index = 0;
     opus_ui.calendar_days = g_hash_table_new_full(g_str_hash, g_str_equal,
@@ -366,19 +384,23 @@ void opus_calendar_day(const char *day, const char *label, int in_month,
     GtkWidget *cell = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
     opus_margins(cell, 6);
     gtk_widget_set_size_request(cell, 120, 112);
+    gtk_widget_add_css_class(cell, "opus-calendar-cell");
     gtk_widget_add_css_class(cell, "card");
     if (!in_month) {
-        gtk_widget_set_opacity(cell, 0.55);
+        gtk_widget_add_css_class(cell, "opus-out-month");
+    }
+    if (is_today) {
+        gtk_widget_add_css_class(cell, "opus-today");
     }
     if (selected) {
+        gtk_widget_add_css_class(cell, "opus-selected");
         gtk_widget_add_css_class(cell, "accent");
     }
     GtkWidget *day_button = gtk_button_new_with_label(label ? label : "");
+    gtk_widget_add_css_class(day_button, "flat");
+    gtk_widget_add_css_class(day_button, "opus-calendar-day-number");
     g_object_set_data_full(G_OBJECT(day_button), "opus-day",
                            g_strdup(day ? day : ""), g_free);
-    if (is_today) {
-        gtk_widget_add_css_class(day_button, "suggested-action");
-    }
     g_signal_connect(day_button, "clicked", G_CALLBACK(calendar_day_clicked), NULL);
     gtk_box_append(GTK_BOX(cell), day_button);
 
@@ -432,6 +454,7 @@ void opus_calendar_item(const char *day, const char *id, const char *kind,
                         const char *title, int done, int confirmed,
                         const char *color) {
     (void)done;
+    (void)confirmed;
     CalendarDay *info = opus_ui.calendar_days
         ? g_hash_table_lookup(opus_ui.calendar_days, day)
         : NULL;
@@ -449,14 +472,12 @@ void opus_calendar_item(const char *day, const char *id, const char *kind,
 
     GtkWidget *button = gtk_button_new();
     gtk_widget_add_css_class(button, "flat");
+    gtk_widget_add_css_class(button, "opus-calendar-item");
     GtkWidget *line = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     gtk_box_append(GTK_BOX(line), opus_color_dot(color, 8));
     GtkWidget *caption = opus_label(title);
     gtk_label_set_ellipsize(GTK_LABEL(caption), PANGO_ELLIPSIZE_END);
     gtk_widget_set_hexpand(caption, TRUE);
-    if (!confirmed) {
-        gtk_widget_set_opacity(caption, 0.65);
-    }
     gtk_box_append(GTK_BOX(line), caption);
     gtk_button_set_child(GTK_BUTTON(button), line);
     g_object_set_data_full(G_OBJECT(button), "opus-id", g_strdup(id), g_free);
@@ -470,6 +491,36 @@ void opus_calendar_item(const char *day, const char *id, const char *kind,
                           closure_data_free, 0);
     gtk_widget_add_controller(button, GTK_EVENT_CONTROLLER(source));
     gtk_box_append(GTK_BOX(info->items), button);
+}
+
+void opus_calendar_undated(const char *id, const char *kind, const char *title,
+                           const char *detail, const char *color) {
+    if (!opus_ui.calendar_undated) {
+        return;
+    }
+    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_add_css_class(row, "opus-work-row");
+    opus_set_identity(row, "undated-%s", id);
+    gtk_box_append(GTK_BOX(row), opus_color_dot(color, 8));
+    GtkWidget *text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    gtk_widget_set_hexpand(text, TRUE);
+    GtkWidget *name = opus_label(title);
+    gtk_widget_add_css_class(name, "opus-work-title");
+    gtk_box_append(GTK_BOX(text), name);
+    if (detail && *detail) {
+        GtkWidget *caption = opus_label(detail);
+        gtk_widget_add_css_class(caption, "opus-work-meta");
+        gtk_widget_add_css_class(caption, "dim-label");
+        gtk_box_append(GTK_BOX(text), caption);
+    }
+    gtk_box_append(GTK_BOX(row), text);
+    GtkWidget *edit = gtk_button_new_from_icon_name("document-edit-symbolic");
+    gtk_widget_add_css_class(edit, "flat");
+    g_object_set_data_full(G_OBJECT(edit), "opus-id", g_strdup(id), g_free);
+    opus_set_work_kind(edit, kind);
+    g_signal_connect(edit, "clicked", G_CALLBACK(edit_work), NULL);
+    gtk_box_append(GTK_BOX(row), edit);
+    gtk_box_append(GTK_BOX(opus_ui.calendar_undated), row);
 }
 
 static void draw_schedule(GtkDrawingArea *area, cairo_t *cr, int width,
@@ -555,9 +606,24 @@ void opus_schedule_begin(const char *heading, int period, int day_count) {
     gtk_widget_set_vexpand(scroll, TRUE);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll),
                                    GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+    GtkWidget *board = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    GtkWidget *gutter = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_size_request(gutter, 56, -1);
+    gtk_widget_set_margin_top(gutter, 28);
+    for (int hour = 0; hour < 24; hour++) {
+        char label[16];
+        g_snprintf(label, sizeof(label), "%d:00", hour);
+        GtkWidget *tick = opus_label(label);
+        gtk_widget_add_css_class(tick, "opus-schedule-gutter");
+        gtk_widget_add_css_class(tick, "dim-label");
+        gtk_widget_set_size_request(tick, 50, OPUS_HOUR_HEIGHT);
+        gtk_label_set_xalign(GTK_LABEL(tick), 1.0f);
+        gtk_box_append(GTK_BOX(gutter), tick);
+    }
+    gtk_box_append(GTK_BOX(board), gutter);
     opus_ui.schedule_columns = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll),
-                                  opus_ui.schedule_columns);
+    gtk_box_append(GTK_BOX(board), opus_ui.schedule_columns);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), board);
     gtk_box_append(GTK_BOX(view), scroll);
     opus_ui.schedule_days = g_hash_table_new_full(g_str_hash, g_str_equal,
                                                   g_free, schedule_day_free);
@@ -624,20 +690,42 @@ void opus_schedule_block(const char *id, const char *title, const char *detail,
 
     GtkWidget *button = gtk_button_new();
     gtk_widget_set_size_request(button, width, height);
+    gtk_widget_add_css_class(button, "opus-schedule-block");
     gtk_widget_add_css_class(button, "flat");
-    if (is_class) {
-        gtk_widget_add_css_class(button, "dim-label");
-    }
+    GdkRGBA rgba = opus_color(color);
+    char *klass = g_strdup_printf("opus-block-%02x%02x%02x-%d",
+                                  (int)(rgba.red * 255),
+                                  (int)(rgba.green * 255),
+                                  (int)(rgba.blue * 255),
+                                  is_class ? 1 : 0);
+    gtk_widget_add_css_class(button, klass);
+    char *css = g_strdup_printf(
+        "button.%s {"
+        "  background: rgba(%d,%d,%d,%.2f);"
+        "  color: white;"
+        "  border-radius: 5px;"
+        "  border: none;"
+        "  padding: 4px 6px;"
+        "}",
+        klass,
+        (int)(rgba.red * 255), (int)(rgba.green * 255), (int)(rgba.blue * 255),
+        is_class ? 0.72 : 0.92);
+    GtkCssProvider *provider = gtk_css_provider_new();
+    gtk_css_provider_load_from_string(provider, css);
+    gtk_style_context_add_provider_for_display(
+        gdk_display_get_default(),
+        GTK_STYLE_PROVIDER(provider),
+        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(provider);
+    g_free(css);
+    g_free(klass);
+
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 1);
-    GtkWidget *line = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
-    gtk_box_append(GTK_BOX(line), opus_color_dot(color, 8));
     GtkWidget *name = opus_label(title);
     gtk_label_set_ellipsize(GTK_LABEL(name), PANGO_ELLIPSIZE_END);
-    gtk_box_append(GTK_BOX(line), name);
-    gtk_box_append(GTK_BOX(box), line);
+    gtk_box_append(GTK_BOX(box), name);
     if (detail && *detail && height >= 42) {
         GtkWidget *caption = opus_label(detail);
-        gtk_widget_add_css_class(caption, "dim-label");
         gtk_box_append(GTK_BOX(box), caption);
     }
     gtk_button_set_child(GTK_BUTTON(button), box);
@@ -664,25 +752,33 @@ void opus_rhythm_row(const char *id, const char *title, const char *detail,
     if (!opus_ui.rows) {
         return;
     }
-    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    opus_margins(row, 5);
+    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_add_css_class(row, "opus-rhythm-row");
     opus_set_identity(row, "rhythm-%s", id);
-    gtk_box_append(GTK_BOX(row), opus_color_dot(color, 10));
+    GtkWidget *icon = gtk_image_new_from_icon_name("media-playlist-repeat-symbolic");
+    gtk_widget_set_opacity(icon, enabled ? 0.85 : 0.4);
+    gtk_box_append(GTK_BOX(row), icon);
+    gtk_box_append(GTK_BOX(row), opus_color_dot(color, 8));
     GtkWidget *text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
     gtk_widget_set_hexpand(text, TRUE);
-    gtk_box_append(GTK_BOX(text), opus_label(title));
+    GtkWidget *name = opus_label(title);
+    gtk_widget_add_css_class(name, "opus-work-title");
+    gtk_box_append(GTK_BOX(text), name);
     GtkWidget *caption = opus_label(detail);
+    gtk_widget_add_css_class(caption, "opus-work-meta");
     gtk_widget_add_css_class(caption, "dim-label");
     gtk_box_append(GTK_BOX(text), caption);
     gtk_box_append(GTK_BOX(row), text);
 
     GtkWidget *toggle = gtk_button_new_with_label(enabled ? "Pause" : "Resume");
+    gtk_widget_add_css_class(toggle, "flat");
     g_object_set_data_full(G_OBJECT(toggle), "opus-id", g_strdup(id), g_free);
     opus_set_identity(toggle, "toggle-rule-%s", id);
     g_signal_connect(toggle, "clicked", G_CALLBACK(rhythm_toggle), NULL);
     gtk_box_append(GTK_BOX(row), toggle);
 
     GtkWidget *edit = gtk_button_new_from_icon_name("document-edit-symbolic");
+    gtk_widget_add_css_class(edit, "flat");
     gtk_widget_set_tooltip_text(edit, "Edit rhythm");
     g_object_set_data_full(G_OBJECT(edit), "opus-id", g_strdup(id), g_free);
     opus_set_identity(edit, "edit-rule-%s", id);

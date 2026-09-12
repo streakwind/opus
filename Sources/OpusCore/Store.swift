@@ -40,6 +40,10 @@ package final class Store {
             state.tasks[index] = task
             needsSave = true
         }
+        for index in state.assessments.indices where !state.assessments[index].confirmed {
+            state.assessments[index].confirmed = true
+            needsSave = true
+        }
         if needsSave { try database.save(state) }
         refreshOccurrences()
     }
@@ -69,6 +73,8 @@ package final class Store {
         }
     }
     package func save(_ assessment: Assessment) {
+        var assessment = assessment
+        assessment.confirmed = true
         change { state in
             if let index = state.assessments.firstIndex(where: { $0.id == assessment.id }) { state.assessments[index] = assessment }
             else { state.assessments.append(assessment) }
@@ -134,7 +140,7 @@ package final class Store {
                 state.generated.insert(key)
                 switch rule.kind {
                 case .assessment:
-                    state.assessments.append(Assessment(courseID: rule.courseID, title: rule.title, day: day, confirmed: rule.confirmsAssessments, topics: rule.notes ?? "", ruleID: rule.id, occurrence: day))
+                    state.assessments.append(Assessment(courseID: rule.courseID, title: rule.title, day: day, confirmed: true, topics: rule.notes ?? "", ruleID: rule.id, occurrence: day))
                 case .task:
                     let kind = (rule.taskKind == .progress) ? TaskKind.progress : .checkbox
                     let start = kind == .progress ? max(1, rule.startCount ?? 1) : 1
@@ -159,7 +165,7 @@ package final class Store {
     private static func removeUntouched(_ rule: QuizRule, in state: inout Snapshot) {
         var removedDays: [String] = []
         state.assessments.removeAll { item in
-            let remove = item.ruleID == rule.id && item.confirmed == rule.confirmsAssessments && item.day >= Day.today && item.day == item.occurrence && item.title == rule.title && item.topics == (rule.notes ?? "") && item.courseID == rule.courseID
+            let remove = item.ruleID == rule.id && item.day >= Day.today && item.day == item.occurrence && item.title == rule.title && item.topics == (rule.notes ?? "") && item.courseID == rule.courseID
             if remove, let day = item.occurrence { removedDays.append(day) }
             return remove
         }

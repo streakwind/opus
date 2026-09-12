@@ -50,7 +50,6 @@ struct WorkItemEditor: View {
     @State private var course: String?
     @State private var day: String?
     @State private var kind: WorkKind
-    @State private var confirmed: Bool
     @State private var notes: String
     @State private var notesVisible: Bool
     @State private var start: Int
@@ -69,7 +68,6 @@ struct WorkItemEditor: View {
             _course = State(initialValue: courseID)
             _day = State(initialValue: day)
             _kind = State(initialValue: kind)
-            _confirmed = State(initialValue: true)
             _notes = State(initialValue: "")
             _notesVisible = State(initialValue: false)
             _start = State(initialValue: 1)
@@ -80,7 +78,6 @@ struct WorkItemEditor: View {
             _course = State(initialValue: task.courseID)
             _day = State(initialValue: task.calendarDay)
             _kind = State(initialValue: task.kind == .progress ? .progress : .task)
-            _confirmed = State(initialValue: true)
             _notes = State(initialValue: task.notes)
             _notesVisible = State(initialValue: !task.notes.isEmpty)
             _start = State(initialValue: task.start)
@@ -91,7 +88,6 @@ struct WorkItemEditor: View {
             _course = State(initialValue: item.courseID)
             _day = State(initialValue: item.day)
             _kind = State(initialValue: .assessment)
-            _confirmed = State(initialValue: item.confirmed)
             _notes = State(initialValue: item.topics)
             _notesVisible = State(initialValue: !item.topics.isEmpty)
             _start = State(initialValue: 1)
@@ -136,14 +132,6 @@ struct WorkItemEditor: View {
                 PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $course) }
                 PropertyRow(kind == .assessment ? "Date" : "Due") {
                     DateMenu(title: kind == .assessment ? "Date" : "No deadline", value: $day)
-                }
-                if kind == .assessment {
-                    PropertyRow("Status") {
-                        PillPicker("Status", label: confirmed ? "Confirmed" : "Tentative", selection: $confirmed) {
-                            Text("Confirmed").tag(true)
-                            Text("Tentative").tag(false)
-                        }.labelsHidden().pickerStyle(.menu)
-                    }
                 }
                 if kind == .progress {
                     PropertyRow("Range") {
@@ -241,7 +229,7 @@ struct WorkItemEditor: View {
                     start: start, target: target, current: min(target, max(start - 1, current))
                 ))
             case .assessment:
-                store.save(Assessment(courseID: course, title: name, day: on, confirmed: confirmed, topics: notes))
+                store.save(Assessment(courseID: course, title: name, day: on, topics: notes))
             }
         case .task(let original):
             guard var currentTask = store.state.tasks.first(where: { $0.id == original.id }) else { onDismiss(); return }
@@ -270,7 +258,7 @@ struct WorkItemEditor: View {
             item.title = name
             item.topics = notes
             item.day = on
-            item.confirmed = confirmed
+            item.confirmed = true
             item.courseID = course
             store.save(item)
         }

@@ -15,6 +15,7 @@ typedef struct {
 typedef struct {
     GtkApplication *application;
     GtkWidget *window;
+    GtkWidget *overlay;
     GtkWidget *sidebar;
     GtkWidget *heading;
     GtkWidget *title_row;
@@ -31,6 +32,7 @@ typedef struct {
     int active_view;
 
     GtkWidget *calendar_grid;
+    GtkWidget *calendar_undated;
     GHashTable *calendar_days;
     int calendar_columns;
     int calendar_index;
@@ -40,6 +42,9 @@ typedef struct {
     int schedule_period;
 
     GtkWidget *editor;
+    GtkWidget *editor_dim;
+    GtkWidget *editor_card;
+    GtkWidget *editor_heading;
     GtkWidget *editor_error;
     GtkWidget *editor_body;
     int editor_type;

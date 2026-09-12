@@ -126,8 +126,8 @@ def work_row(title: str):
     raise AssertionError(f'Could not locate controls for {title}')
 
 
-def focus_and_type(window_name: str, text: str):
-    wid = wait_for(lambda: window_id(window_name))
+def focus_and_type(text: str):
+    wid = wait_for(lambda: window_id('Opus'))
     command('xdotool', 'windowraise', wid)
     command('xdotool', 'windowfocus', '--sync', wid)
     time.sleep(0.2)
@@ -154,6 +154,11 @@ def dismiss_help_if_present():
             pass
 
 
+def courses(db: Path):
+    with sqlite3.connect(db) as conn:
+        return [json.loads(row[0]) for row in conn.execute('SELECT payload FROM courses')]
+
+
 with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
     env = dict(os.environ, OPUS_DATA_DIR=data, GDK_BACKEND='x11', GTK_A11Y='atspi')
     process = subprocess.Popen(['dist/linux/bin/opus'], env=env)
@@ -164,9 +169,9 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
 
         click(('nav-inbox', 'Inbox'))
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+n')
-        wait_for(lambda: window_id('New work'))
-        focus_and_type('New work', 'Interface test task')
-        command('import', '-window', window_id('New work'), str(artifacts / 'editor.png'))
+        find_accessible('editor-cancel')
+        focus_and_type('Interface test task')
+        command('import', '-window', main, str(artifacts / 'editor.png'))
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+Return')
 
         db = Path(data) / 'Opus.sqlite'
@@ -193,6 +198,20 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         click(('nav-rhythm', 'Rhythm'))
         find_accessible(('add-rhythm', 'Add a rhythm…'))
 
+        # Save a list with class times (regression for the save crash).
+        click(('New list button', 'New list'))
+        find_accessible(('New list', 'Edit list', 'editor-cancel'))
+        # Focus name field and type, then add a class time and save.
+        focus_and_type('Physics Lab')
+        try:
+            click('Add class time', role='push button')
+        except AssertionError:
+            pass
+        command('xdotool', 'key', '--clearmodifiers', 'ctrl+Return')
+        wait_for(lambda: any(course.get('name') == 'Physics Lab' for course in courses(db)))
+        saved_course = next(course for course in courses(db) if course.get('name') == 'Physics Lab')
+        assert 'classTimes' in saved_course or saved_course.get('classStart') is not None
+
         click('Settings')
         find_accessible(('set-appearance', 'Appearance'))
         click(('settings-done', 'Done'))
@@ -204,12 +223,25 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+shift+z')
         wait_for(lambda: len(tasks()) == 1)
 
-        command('import', '-window', 'root', str(artifacts / 'shell.png'))
+        command('import', '-window', 'root', str(artifacts / 'shell-light.png'))
+        # Toggle dark appearance for a second screenshot when settings allow it.
+        click('Settings')
+        find_accessible(('set-appearance', 'Appearance'))
+        try:
+            click('Dark')
+        except AssertionError:
+            pass
+        click(('settings-done', 'Done'))
+        time.sleep(0.3)
+        command('import', '-window', 'root', str(artifacts / 'shell-dark.png'))
+
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+q')
         assert process.wait(timeout=10) == 0
         subprocess.run(['dist/linux/bin/opus', '--smoke-test'], env=env, check=True, timeout=15)
         assert tasks()[0]['id'] == task_id
-        print('Accessibility UI checks passed for tasks, calendar, schedule, rhythm, and persistence.')
+        css = Path('dist/linux/share/opus/opus.css')
+        assert css.is_file(), 'Bundled Opus CSS missing from Linux package'
+        print('Accessibility UI checks passed for tasks, calendar, schedule, rhythm, class times, and persistence.')
     finally:
         if process.poll() is None:
             process.terminate()

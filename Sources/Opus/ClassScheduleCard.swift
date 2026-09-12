@@ -87,7 +87,7 @@ private struct CourseWorkPopover: View {
     }
     private func assessmentRow(_ item: Assessment) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 9) {
-            Image(systemName: item.confirmed ? "calendar" : "questionmark.circle")
+            Image(systemName: "calendar")
                 .foregroundStyle(course.tint).frame(width: 16)
             Text(item.title).lineLimit(2)
             if item.ruleID != nil { RepeatBadge() }
