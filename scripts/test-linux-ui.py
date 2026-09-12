@@ -86,15 +86,38 @@ def find_accessible(name: str, role=None, root=None):
         raise
 
 
-def click(name: str, role=None):
-    node = find_accessible(name, role=role)
+def activate(node, description: str):
+    while node is not None and not node.actions:
+        node = node.parent
+    assert node is not None, f'No actionable ancestor for {description}'
     for action in ('click', 'toggle', 'press'):
         if action in node.actions:
-            assert node.doActionNamed(action), f'Failed to invoke {action} on {name}'
-            break
-    else:
-        node.click()
+            assert node.doActionNamed(action), f'Failed to invoke {action} on {description}'
+            return node
+    node.click()
     return node
+
+
+def click(name: str, role=None):
+    return activate(find_accessible(name, role=role), str(name))
+
+
+def descendants(node):
+    for child in node.children:
+        yield child
+        yield from descendants(child)
+
+
+def work_row(title: str):
+    node = find_accessible(title)
+    while node is not None:
+        controls = list(descendants(node))
+        toggles = [item for item in controls if item.roleName in ('check box', 'toggle button')]
+        buttons = [item for item in controls if item.roleName == 'push button']
+        if toggles and len(buttons) >= 2:
+            return node, toggles[0], buttons
+        node = node.parent
+    raise AssertionError(f'Could not locate controls for {title}')
 
 
 def focus_and_type(window_name: str, text: str):
@@ -150,7 +173,8 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         assert len(saved) == 1 and saved[0]['title'] == 'Interface test task'
         task_id = saved[0]['id']
 
-        click(f'toggle-{task_id}')
+        _, toggle, _ = work_row('Interface test task')
+        activate(toggle, 'task completion')
         wait_for(lambda: tasks()[0]['completed'])
         command('xdotool', 'windowfocus', '--sync', main)
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+shift+z')
@@ -167,7 +191,9 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         find_accessible('set-appearance')
         click(('settings-done', 'Done'))
 
-        click(f'delete-work-{task_id}')
+        click(('nav-inbox', 'Inbox'))
+        _, _, row_buttons = work_row('Interface test task')
+        activate(row_buttons[-1], 'delete task')
         wait_for(lambda: tasks() == [])
         command('xdotool', 'key', '--clearmodifiers', 'ctrl+shift+z')
         wait_for(lambda: len(tasks()) == 1)
