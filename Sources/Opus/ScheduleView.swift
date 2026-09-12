@@ -218,9 +218,9 @@ private struct ScheduleAllDayRow: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.13)).frame(height: 0.5) }
     }
     @ViewBuilder private func dayItems(_ day: String) -> some View {
-        let events = store.state.schedule.filter { $0.isAllDay && $0.day == day && matches($0.title, courseID: $0.courseID) }
-        let assessments = store.state.assessments.filter { $0.day == day && matches($0.title, courseID: $0.courseID) }
-        let tasks = store.state.tasks.filter { $0.calendarDay == day && matches($0.title, courseID: $0.courseID) }
+        let events = ScheduleWork.inboxEvents(on: day, in: store.state).filter { matches($0.title, courseID: nil) }
+        let assessments = ScheduleWork.inboxAssessments(on: day, in: store.state).filter { matches($0.title, courseID: nil) }
+        let tasks = ScheduleWork.inboxTasks(on: day, in: store.state).filter { matches($0.title, courseID: nil) }
         ScrollView {
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(events) { event in

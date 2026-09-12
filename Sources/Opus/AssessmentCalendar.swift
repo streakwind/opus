@@ -229,7 +229,7 @@ private struct CalendarDayCell: View {
             .onDrag { NSItemProvider(object: ("assessment:" + item.id) as NSString) }
             .contextMenu {
                 Button("Edit") { editing = .assessment(item) }
-                Button("Add preparation task") { store.save(StudyTask(courseID: item.courseID, title: "Prepare: " + item.title, notes: item.topics, due: item.day)) }
+                Button("Add preparation task") { store.save(StudyTask(courseID: item.courseID, title: "Prepare: " + item.title, due: item.day)) }
                 Button("Delete", role: .destructive) { store.deleteAssessment(item.id) }
             }
     }

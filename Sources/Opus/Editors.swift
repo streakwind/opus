@@ -140,9 +140,9 @@ struct RuleEditor: View {
     var store: Store
     @State var rule: QuizRule
     @State private var days: Set<Int>
-    @Environment(\.dismiss) private var dismiss
-    init(store: Store, rule: QuizRule) {
-        self.store = store; _rule = State(initialValue: rule); _days = State(initialValue: rule.days)
+    var onDismiss: () -> Void
+    init(store: Store, rule: QuizRule, onDismiss: @escaping () -> Void = {}) {
+        self.store = store; _rule = State(initialValue: rule); _days = State(initialValue: rule.days); self.onDismiss = onDismiss
     }
     private var valid: Bool {
         let start = rule.startCount ?? 1
@@ -194,12 +194,6 @@ struct RuleEditor: View {
                     }
                 }
             }
-            TextField(rule.kind == .assessment ? "Topics" : "Details", text: Binding(
-                get: { rule.notes ?? "" },
-                set: { rule.notes = $0.isEmpty ? nil : $0 }
-            ), axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(2...5)
             Text("Repeat on").font(.callout.weight(.medium))
             WeekdayPicker(days: $days)
             VStack(spacing: 0) {
@@ -212,15 +206,13 @@ struct RuleEditor: View {
             }
             Text("Changes apply to future untouched occurrences. Deleting keeps today and past history, and removes later occurrences.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack {
-                if store.state.rules.contains(where: { $0.id == rule.id }) { Button("Delete", role: .destructive) { store.deleteRule(rule.id); dismiss() } }
+                if store.state.rules.contains(where: { $0.id == rule.id }) { Button("Delete", role: .destructive) { store.deleteRule(rule.id); onDismiss() } }
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel") { onDismiss() }.keyboardShortcut(.cancelAction)
                 Button("Done") {
                     rule.title = rule.title.trimmingCharacters(in: .whitespacesAndNewlines)
-                    rule.notes = rule.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if rule.notes?.isEmpty == true { rule.notes = nil }
                     rule.weekdays = days.sorted(); rule.startDate = rule.startDate ?? Day.today
-                    store.saveRule(rule); if store.error == nil { dismiss() }
+                    store.saveRule(rule); if store.error == nil { onDismiss() }
                 }.keyboardShortcut(.defaultAction).disabled(!valid)
             }
         }.padding(20).frame(width: 360).roundedControls()

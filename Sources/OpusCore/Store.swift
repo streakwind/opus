@@ -44,6 +44,23 @@ package final class Store {
             state.assessments[index].confirmed = true
             needsSave = true
         }
+        for index in state.tasks.indices where !state.tasks[index].notes.isEmpty {
+            state.tasks[index].notes = ""
+            needsSave = true
+        }
+        for index in state.assessments.indices where !state.assessments[index].topics.isEmpty {
+            state.assessments[index].topics = ""
+            needsSave = true
+        }
+        for index in state.rules.indices where state.rules[index].notes != nil {
+            state.rules[index].notes = nil
+            needsSave = true
+        }
+        for index in state.schedule.indices where !state.schedule[index].notes.isEmpty {
+            state.schedule[index].notes = ""
+            needsSave = true
+        }
+        Self.syncJournalLinks(in: &state)
         if needsSave { try database.save(state) }
         refreshOccurrences()
     }
@@ -51,6 +68,7 @@ package final class Store {
         let previous = state
         var next = state
         mutation(&next)
+        Self.syncJournalLinks(in: &next)
         do {
             try database.save(next)
             error = nil
@@ -66,6 +84,48 @@ package final class Store {
     }
     package func course(_ id: String?) -> Course? { state.courses.first { $0.id == id } }
     package func rule(_ id: String?) -> QuizRule? { id.flatMap { ruleID in state.rules.first { $0.id == ruleID } } }
+    package func journalEntries(on day: String) -> [JournalEntry] {
+        state.journal.filter { $0.appears(on: day) }.sorted {
+            if ($0.link != nil) != ($1.link != nil) { return $0.link != nil }
+            return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
+    }
+    package func save(_ entry: JournalEntry) {
+        change { state in
+            if let index = state.journal.firstIndex(where: { $0.id == entry.id }) { state.journal[index] = entry }
+            else { state.journal.append(entry) }
+        }
+    }
+    package func deleteJournalEntry(_ id: String) {
+        change { $0.journal.removeAll { $0.id == id } }
+    }
+    private static func syncJournalLinks(in state: inout Snapshot) {
+        for index in state.journal.indices {
+            guard let link = state.journal[index].link else {
+                state.journal[index].throughDay = nil
+                continue
+            }
+            let resolved: (title: String, through: String?)?
+            switch link {
+            case .task(let id):
+                resolved = state.tasks.first { $0.id == id }.map { ($0.title, $0.calendarDay) }
+            case .assessment(let id):
+                resolved = state.assessments.first { $0.id == id }.map { ($0.title, $0.day) }
+            case .schedule(let id):
+                resolved = state.schedule.first { $0.id == id }.map { ($0.title, $0.day) }
+            case .rhythm(let id):
+                guard let rule = state.rules.first(where: { $0.id == id }) else { resolved = nil; break }
+                let occurrenceDays =
+                    state.tasks.filter { $0.ruleID == id }.compactMap { $0.occurrence ?? $0.calendarDay } +
+                    state.assessments.filter { $0.ruleID == id }.map { $0.occurrence ?? $0.day } +
+                    state.schedule.filter { $0.ruleID == id }.map { $0.occurrence ?? $0.day }
+                resolved = (rule.title, occurrenceDays.filter { $0 >= state.journal[index].day }.min() ?? rule.endDate)
+            }
+            guard let resolved else { continue }
+            state.journal[index].title = resolved.title
+            state.journal[index].throughDay = max(state.journal[index].day, resolved.through ?? state.journal[index].day)
+        }
+    }
     package func save(_ task: StudyTask) {
         change { state in
             if let index = state.tasks.firstIndex(where: { $0.id == task.id }) { state.tasks[index] = task }
@@ -120,6 +180,7 @@ package final class Store {
     package func refreshOccurrences(through: String? = nil) {
         var next = state
         Self.generate(in: &next, through: through)
+        Self.syncJournalLinks(in: &next)
         do { try database.save(next); state = next } catch { self.error = error.localizedDescription }
     }
     package static func generate(in state: inout Snapshot, today: String = Day.today, through: String? = nil) {
@@ -140,14 +201,13 @@ package final class Store {
                 state.generated.insert(key)
                 switch rule.kind {
                 case .assessment:
-                    state.assessments.append(Assessment(courseID: rule.courseID, title: rule.title, day: day, confirmed: true, topics: rule.notes ?? "", ruleID: rule.id, occurrence: day))
+                    state.assessments.append(Assessment(courseID: rule.courseID, title: rule.title, day: day, confirmed: true, ruleID: rule.id, occurrence: day))
                 case .task:
                     let kind = (rule.taskKind == .progress) ? TaskKind.progress : .checkbox
                     let start = kind == .progress ? max(1, rule.startCount ?? 1) : 1
                     state.tasks.append(StudyTask(
                         courseID: rule.courseID,
                         title: rule.title,
-                        notes: rule.notes ?? "",
                         kind: kind,
                         due: day,
                         start: start,
@@ -157,7 +217,7 @@ package final class Store {
                         occurrence: day
                     ))
                 case .schedule:
-                    state.schedule.append(ScheduleBlock(courseID: rule.courseID, title: rule.title, day: day, startMinute: rule.startMinute ?? 540, duration: rule.duration ?? 60, allDay: rule.allDay == true, notes: rule.notes ?? "", ruleID: rule.id, occurrence: day))
+                    state.schedule.append(ScheduleBlock(courseID: rule.courseID, title: rule.title, day: day, startMinute: rule.startMinute ?? 540, duration: rule.duration ?? 60, allDay: rule.allDay == true, ruleID: rule.id, occurrence: day))
                 }
             }
         }
@@ -165,7 +225,7 @@ package final class Store {
     private static func removeUntouched(_ rule: QuizRule, in state: inout Snapshot) {
         var removedDays: [String] = []
         state.assessments.removeAll { item in
-            let remove = item.ruleID == rule.id && item.day >= Day.today && item.day == item.occurrence && item.title == rule.title && item.topics == (rule.notes ?? "") && item.courseID == rule.courseID
+            let remove = item.ruleID == rule.id && item.day >= Day.today && item.day == item.occurrence && item.title == rule.title && item.courseID == rule.courseID
             if remove, let day = item.occurrence { removedDays.append(day) }
             return remove
         }
@@ -176,7 +236,7 @@ package final class Store {
             let start = kind == .progress ? max(1, rule.startCount ?? 1) : 1
             let target = max(start, rule.targetCount ?? 30)
             let current = kind == .progress ? start - 1 : 0
-            guard item.title == rule.title, item.notes == (rule.notes ?? ""), item.current == current, item.start == start, item.target == target, item.kind == kind else { return false }
+            guard item.title == rule.title, item.current == current, item.start == start, item.target == target, item.kind == kind else { return false }
             let remove: Bool
             if item.kind == .progress {
                 remove = (item.due ?? "") >= Day.today && item.due == item.occurrence && item.planned == nil
@@ -187,7 +247,7 @@ package final class Store {
             return remove
         }
         state.schedule.removeAll { item in
-            let remove = item.ruleID == rule.id && item.day >= Day.today && item.day == item.occurrence && item.title == rule.title && item.notes == (rule.notes ?? "") && item.startMinute == (rule.startMinute ?? 540) && item.duration == (rule.duration ?? 60) && item.isAllDay == (rule.allDay == true) && item.courseID == rule.courseID
+            let remove = item.ruleID == rule.id && item.day >= Day.today && item.day == item.occurrence && item.title == rule.title && item.startMinute == (rule.startMinute ?? 540) && item.duration == (rule.duration ?? 60) && item.isAllDay == (rule.allDay == true) && item.courseID == rule.courseID
             if remove, let day = item.occurrence { removedDays.append(day) }
             return remove
         }

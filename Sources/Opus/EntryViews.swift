@@ -51,8 +51,6 @@ struct WorkItemEditor: View {
     @State private var course: String?
     @State private var day: String?
     @State private var kind: WorkKind
-    @State private var notes: String
-    @State private var notesVisible: Bool
     @State private var start: Int
     @State private var target: Int
     @State private var current: Int
@@ -70,8 +68,6 @@ struct WorkItemEditor: View {
             _course = State(initialValue: courseID)
             _day = State(initialValue: day)
             _kind = State(initialValue: kind)
-            _notes = State(initialValue: "")
-            _notesVisible = State(initialValue: false)
             _start = State(initialValue: 1)
             _target = State(initialValue: 30)
             _current = State(initialValue: 0)
@@ -80,8 +76,6 @@ struct WorkItemEditor: View {
             _course = State(initialValue: task.courseID)
             _day = State(initialValue: task.calendarDay)
             _kind = State(initialValue: task.kind == .progress ? .progress : .task)
-            _notes = State(initialValue: task.notes)
-            _notesVisible = State(initialValue: !task.notes.isEmpty)
             _start = State(initialValue: task.start)
             _target = State(initialValue: task.target)
             _current = State(initialValue: task.current)
@@ -90,8 +84,6 @@ struct WorkItemEditor: View {
             _course = State(initialValue: item.courseID)
             _day = State(initialValue: item.day)
             _kind = State(initialValue: .assessment)
-            _notes = State(initialValue: item.topics)
-            _notesVisible = State(initialValue: !item.topics.isEmpty)
             _start = State(initialValue: 1)
             _target = State(initialValue: 30)
             _current = State(initialValue: 0)
@@ -153,14 +145,6 @@ struct WorkItemEditor: View {
                         Text(pace).font(.caption).foregroundStyle(.secondary).padding(.leading, 76)
                     }
                 }
-            }
-
-            if notesVisible {
-                TextField(kind == .assessment ? "Topics" : "Details", text: $notes, axis: .vertical)
-                    .textFieldStyle(.plain).lineLimit(2...6)
-            } else {
-                Button(kind == .assessment ? "Add topics" : "Add details") { notesVisible = true }
-                    .buttonStyle(.plain).foregroundStyle(.secondary).font(.caption)
             }
 
             if let rhythmNote {
@@ -238,20 +222,19 @@ struct WorkItemEditor: View {
         case .new:
             switch kind {
             case .task:
-                store.save(StudyTask(courseID: course, title: name, notes: notes, due: on))
+                store.save(StudyTask(courseID: course, title: name, due: on))
             case .progress:
                 store.save(StudyTask(
-                    courseID: course, title: name, notes: notes, kind: .progress, due: on,
+                    courseID: course, title: name, kind: .progress, due: on,
                     start: start, target: target, current: min(target, max(start - 1, current))
                 ))
             case .assessment:
-                store.save(Assessment(courseID: course, title: name, day: on, topics: notes))
+                store.save(Assessment(courseID: course, title: name, day: on))
             }
         case .task(let original):
             guard var currentTask = store.state.tasks.first(where: { $0.id == original.id }) else { onDismiss(); return }
             let previousCurrent = currentTask.current
             currentTask.title = name
-            currentTask.notes = notes
             currentTask.courseID = course
             if kind == .progress {
                 currentTask.kind = .progress
@@ -272,7 +255,6 @@ struct WorkItemEditor: View {
             }
         case .assessment(var item):
             item.title = name
-            item.topics = notes
             item.day = on
             item.confirmed = true
             item.courseID = course
@@ -350,7 +332,6 @@ struct ScheduleEditor: View {
             } else if block.ruleID != nil {
                 PropertyRow("Until") { DateMenu(title: "No end date", value: $repeatEnd) }
             }
-            if !block.notes.isEmpty { TextField("Details", text: $block.notes, axis: .vertical).textFieldStyle(.plain).lineLimit(1...4) }
             if !block.isAllDay && block.startMinute + block.duration > 1440 { Text("Choose a duration that ends before midnight.").font(.caption).foregroundStyle(.orange) }
             HStack {
                 if existing {
@@ -378,7 +359,7 @@ struct ScheduleEditor: View {
         guard valid else { return }
         if repeatBlock {
             var rule = QuizRule(courseID: block.courseID, title: block.title)
-            rule.itemKind = .schedule; rule.weekdays = repeatDays.sorted(); rule.startDate = block.day; rule.endDate = repeatEnd; rule.startMinute = block.startMinute; rule.duration = block.duration; rule.allDay = block.allDay; rule.notes = block.notes
+            rule.itemKind = .schedule; rule.weekdays = repeatDays.sorted(); rule.startDate = block.day; rule.endDate = repeatEnd; rule.startMinute = block.startMinute; rule.duration = block.duration; rule.allDay = block.allDay
             store.saveRule(rule)
         } else {
             store.save(block)

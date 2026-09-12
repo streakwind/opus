@@ -18,7 +18,7 @@ package final class Database {
         try execute("PRAGMA foreign_keys = ON;")
         try execute("PRAGMA journal_mode = WAL;")
         let version = Int(try rows("PRAGMA user_version").first ?? "0") ?? 0
-        guard version <= 2 else { throw StorageError.message("This database needs a newer version of Opus.") }
+        guard version <= 3 else { throw StorageError.message("This database needs a newer version of Opus.") }
         // Typed JSON payloads allow optional tracker fields to evolve, with relational IDs and constraints.
         try execute("""
         BEGIN;
@@ -29,7 +29,8 @@ package final class Database {
         CREATE TABLE IF NOT EXISTS activities (id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, payload TEXT NOT NULL, position INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS schedule (id TEXT PRIMARY KEY, course_id TEXT REFERENCES courses(id) ON DELETE SET NULL, payload TEXT NOT NULL, position INTEGER NOT NULL);
-        PRAGMA user_version = 2;
+        CREATE TABLE IF NOT EXISTS journal (id TEXT PRIMARY KEY, payload TEXT NOT NULL, position INTEGER NOT NULL);
+        PRAGMA user_version = 3;
         COMMIT;
         """)
     }
@@ -80,6 +81,7 @@ package final class Database {
         state.rules = try decode("rules")
         state.schedule = try decode("schedule")
         state.activities = try decode("activities")
+        state.journal = try decode("journal")
         state.setupComplete = try rows("SELECT value FROM metadata WHERE key = 'setup'").first == "true"
         if let generated = try rows("SELECT value FROM metadata WHERE key = 'generated'").first {
             state.generated = try JSONDecoder().decode(Set<String>.self, from: Data(generated.utf8))
@@ -91,7 +93,7 @@ package final class Database {
         func json<T: Encodable>(_ value: T) throws -> String { String(decoding: try encoder.encode(value), as: UTF8.self) }
         try execute("BEGIN IMMEDIATE")
         do {
-            for table in ["activities", "tasks", "assessments", "rules", "schedule", "courses", "metadata"] { try execute("DELETE FROM \(table)") }
+            for table in ["activities", "tasks", "assessments", "rules", "schedule", "journal", "courses", "metadata"] { try execute("DELETE FROM \(table)") }
             for (i, item) in state.courses.enumerated() {
                 try write("INSERT INTO courses VALUES (?, ?, ?)", [item.id, try json(item), String(i)])
             }
@@ -109,6 +111,9 @@ package final class Database {
             }
             for (i, item) in state.activities.enumerated() {
                 try write("INSERT INTO activities VALUES (?, ?, ?, ?)", [item.id, item.taskID, try json(item), String(i)])
+            }
+            for (i, item) in state.journal.enumerated() {
+                try write("INSERT INTO journal VALUES (?, ?, ?)", [item.id, try json(item), String(i)])
             }
             try write("INSERT INTO metadata VALUES ('setup', ?)", [state.setupComplete ? "true" : "false"])
             try write("INSERT INTO metadata VALUES ('generated', ?)", [try json(state.generated)])

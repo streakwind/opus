@@ -145,7 +145,7 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(rule.kind, .task)
         XCTAssertEqual(rule.taskKind, .checkbox)
     }
-    @MainActor func testProgressRhythmGeneratesConfiguredRangeAndDetails() async {
+    @MainActor func testProgressRhythmGeneratesConfiguredRangeWithoutLegacyDetails() async {
         var state = Snapshot()
         let rule = QuizRule(
             title: "Read",
@@ -165,7 +165,7 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(state.tasks[0].start, 17)
         XCTAssertEqual(state.tasks[0].target, 49)
         XCTAssertEqual(state.tasks[0].current, 16)
-        XCTAssertEqual(state.tasks[0].notes, "Chapter 3")
+        XCTAssertEqual(state.tasks[0].notes, "")
     }
     @MainActor func testCustomDaysGenerateTasksAndRespectEndDate() async {
         var state = Snapshot()
@@ -261,6 +261,29 @@ final class RedesignTests: XCTestCase {
             from: Data(#"{"id":"old","title":"Class","day":"2026-09-12","startMinute":540,"duration":60,"notes":""}"#.utf8)
         )
         XCTAssertFalse(legacy.isAllDay)
+    }
+    func testScheduleAllDayRowContainsOnlyInboxWork() {
+        let day = "2026-09-12"
+        let course = Course(name: "Physics")
+        var state = Snapshot()
+        state.tasks = [
+            StudyTask(title: "Inbox task", due: day),
+            StudyTask(courseID: course.id, title: "Listed task", due: day)
+        ]
+        state.assessments = [
+            Assessment(title: "Inbox quiz", day: day),
+            Assessment(courseID: course.id, title: "Listed quiz", day: day)
+        ]
+        state.schedule = [
+            ScheduleBlock(title: "Inbox event", day: day, allDay: true),
+            ScheduleBlock(courseID: course.id, title: "Listed event", day: day, allDay: true),
+            ScheduleBlock(title: "Timed event", day: day)
+        ]
+
+        XCTAssertEqual(ScheduleWork.inboxTasks(on: day, in: state).map(\.title), ["Inbox task"])
+        XCTAssertEqual(ScheduleWork.inboxAssessments(on: day, in: state).map(\.title), ["Inbox quiz"])
+        XCTAssertEqual(ScheduleWork.inboxEvents(on: day, in: state).map(\.title), ["Inbox event"])
+        XCTAssertEqual(ScheduleWork.listedEvents(courseID: course.id, on: day, in: state).map(\.title), ["Listed event"])
     }
     func testCourseWorkSeparatesProgressAndCollapsesRhythms() {
         let course = Course(name: "Example list")

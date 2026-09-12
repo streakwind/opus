@@ -266,6 +266,56 @@ package struct Activity: Identifiable, Codable, Equatable {
         self.value = value
     }
 }
+package enum JournalLink: Codable, Equatable, Hashable {
+    case task(String)
+    case assessment(String)
+    case rhythm(String)
+    case schedule(String)
+
+    package var token: String {
+        switch self {
+        case .task(let id): "task:" + id
+        case .assessment(let id): "assessment:" + id
+        case .rhythm(let id): "rhythm:" + id
+        case .schedule(let id): "schedule:" + id
+        }
+    }
+    package static func from(token: String?) -> JournalLink? {
+        guard let token, let separator = token.firstIndex(of: ":") else { return nil }
+        let kind = String(token[..<separator])
+        let id = String(token[token.index(after: separator)...])
+        switch kind {
+        case "task": return .task(id)
+        case "assessment": return .assessment(id)
+        case "rhythm": return .rhythm(id)
+        case "schedule": return .schedule(id)
+        default: return nil
+        }
+    }
+}
+package struct JournalEntry: Identifiable, Codable, Equatable {
+    package var id = UUID().uuidString
+    /// First day this note appears.
+    package var day = Day.today
+    package var title = "Untitled"
+    package var markdown = ""
+    package var link: JournalLink?
+    /// Last day a linked note appears. Ordinary entries use their own day.
+    package var throughDay: String?
+
+    package init(id: String = UUID().uuidString, day: String = Day.today, title: String = "Untitled", markdown: String = "", link: JournalLink? = nil, throughDay: String? = nil) {
+        self.id = id
+        self.day = day
+        self.title = title
+        self.markdown = markdown
+        self.link = link
+        self.throughDay = throughDay
+    }
+    package func appears(on selectedDay: String) -> Bool {
+        guard link != nil else { return day == selectedDay }
+        return selectedDay >= day && selectedDay <= (throughDay ?? day)
+    }
+}
 package struct Snapshot: Codable {
     package var courses: [Course] = []
     package var tasks: [StudyTask] = []
@@ -273,16 +323,18 @@ package struct Snapshot: Codable {
     package var rules: [QuizRule] = []
     package var schedule: [ScheduleBlock] = []
     package var activities: [Activity] = []
+    package var journal: [JournalEntry] = []
     // Occurrence keys survive deletion so skipped quizzes never regenerate.
     package var generated: Set<String> = []
     package var setupComplete = false
-    package init(courses: [Course] = [], tasks: [StudyTask] = [], assessments: [Assessment] = [], rules: [QuizRule] = [], schedule: [ScheduleBlock] = [], activities: [Activity] = [], generated: Set<String> = [], setupComplete: Bool = false) {
+    package init(courses: [Course] = [], tasks: [StudyTask] = [], assessments: [Assessment] = [], rules: [QuizRule] = [], schedule: [ScheduleBlock] = [], activities: [Activity] = [], journal: [JournalEntry] = [], generated: Set<String> = [], setupComplete: Bool = false) {
         self.courses = courses
         self.tasks = tasks
         self.assessments = assessments
         self.rules = rules
         self.schedule = schedule
         self.activities = activities
+        self.journal = journal
         self.generated = generated
         self.setupComplete = setupComplete
     }
@@ -321,6 +373,21 @@ package enum CourseWork {
                 guard let ruleID = item.ruleID else { return true }
                 return seenRules.insert(ruleID).inserted
             }
+    }
+}
+
+package enum ScheduleWork {
+    package static func inboxTasks(on day: String, in state: Snapshot) -> [StudyTask] {
+        state.tasks.filter { $0.courseID == nil && $0.calendarDay == day }
+    }
+    package static func inboxAssessments(on day: String, in state: Snapshot) -> [Assessment] {
+        state.assessments.filter { $0.courseID == nil && $0.day == day }
+    }
+    package static func inboxEvents(on day: String, in state: Snapshot) -> [ScheduleBlock] {
+        state.schedule.filter { $0.courseID == nil && $0.isAllDay && $0.day == day }
+    }
+    package static func listedEvents(courseID: String, on day: String, in state: Snapshot) -> [ScheduleBlock] {
+        state.schedule.filter { $0.courseID == courseID && $0.isAllDay && $0.day == day }
     }
 }
 

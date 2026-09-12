@@ -3,16 +3,12 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-private enum Editor: Identifiable {
-    case course(Course), rule(QuizRule)
-    var id: String { switch self { case .course(let value): value.id; case .rule(let value): value.id } }
-}
-
 struct ContentView: View {
     @Bindable var store: Store
     @State private var selection: String? = "today"
     @State private var query = ""
-    @State private var editor: Editor?
+    @State private var courseEditor: Course?
+    @State private var ruleDetail: QuizRule?
     @State private var workDetail: WorkDraft?
     @State private var quickTitle = ""
     @State private var quickKind: WorkKind = .task
@@ -21,6 +17,7 @@ struct ContentView: View {
     @State private var quickStart = 1
     @State private var quickEnd = 30
     @State private var newEntryRequest = 0
+    @State private var journalNewEntryRequest = 0
     @State private var showSettings = false
     @State private var showTutorial = false
     @AppStorage("appearance") private var appearance = "system"
@@ -28,10 +25,9 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     private var course: Course? { store.course(selection) }
     private var isCalendar: Bool { selection == "upcoming" || selection == "schedule" }
-    private func matchesQuery(title: String, details: String = "", courseID: String?) -> Bool {
+    private func matchesQuery(title: String, courseID: String?) -> Bool {
         query.isEmpty ||
         title.localizedCaseInsensitiveContains(query) ||
-        details.localizedCaseInsensitiveContains(query) ||
         (store.course(courseID)?.name.localizedCaseInsensitiveContains(query) ?? false)
     }
     private var heading: String {
@@ -39,6 +35,7 @@ struct ContentView: View {
         case "today": Date().formatted(.dateTime.weekday(.wide).month(.wide).day().year())
         case "all": "Tasks"
         case "inbox": "Inbox"
+        case "journal": "Journal"
         case "routines": "Rhythm"
         default: course?.name ?? "Today"
         }
@@ -53,7 +50,7 @@ struct ContentView: View {
             default: matches = task.courseID == selection
             }
             let visible = task.kind == .progress ? task.current < task.target : !task.completed
-            return matches && visible && matchesQuery(title: task.title, details: task.notes, courseID: task.courseID)
+            return matches && visible && matchesQuery(title: task.title, courseID: task.courseID)
         }
     }
     private func nextRhythms(_ items: [StudyTask]) -> [StudyTask] {
@@ -78,7 +75,7 @@ struct ContentView: View {
         return store.state.assessments
             .filter {
                 (courseID == nil || $0.courseID == courseID) && $0.day >= Day.today &&
-                matchesQuery(title: $0.title, details: $0.topics, courseID: $0.courseID)
+                matchesQuery(title: $0.title, courseID: $0.courseID)
             }
             .sorted { $0.day == $1.day ? $0.title < $1.title : $0.day < $1.day }
             .filter { item in
@@ -93,14 +90,14 @@ struct ContentView: View {
     }
     private var root: some View {
         splitView
-            .sheet(item: $editor, content: editorSheet)
+            .sheet(item: $courseEditor) { CourseEditor(store: store, course: $0) }
             .sheet(isPresented: $showSettings) { settingsView }
             .alert("Couldn't save changes", isPresented: saveErrorPresented) {
                 Button("OK") { store.error = nil }
             } message: {
                 Text(store.error ?? "")
             }
-            .onChange(of: selection) { _, _ in workDetail = nil; quickCourse = course?.id }
+            .onChange(of: selection) { _, _ in workDetail = nil; ruleDetail = nil; quickCourse = course?.id }
             .onChange(of: scenePhase) { _, phase in if phase == .active { store.refreshOccurrences() } }
             .onChange(of: store.state.tasks.map(\.id)) { _, ids in
                 if case .task(let task) = workDetail, !ids.contains(task.id) { workDetail = nil }
@@ -119,12 +116,6 @@ struct ContentView: View {
     private var saveErrorPresented: Binding<Bool> {
         Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })
     }
-    @ViewBuilder private func editorSheet(_ item: Editor) -> some View {
-        switch item {
-        case .course(let course): CourseEditor(store: store, course: course)
-        case .rule(let rule): RuleEditor(store: store, rule: rule)
-        }
-    }
     private var splitView: some View {
         NavigationSplitView {
             sidebar
@@ -142,6 +133,7 @@ struct ContentView: View {
                 Label("Today", systemImage: "sun.max").tag("today")
                 Label("Tasks", systemImage: "checklist").tag("all")
                 Label("Inbox", systemImage: "tray").tag("inbox")
+                Label("Journal", systemImage: "book.closed").tag("journal")
                 Section {
                     Label("Calendar", systemImage: "calendar").tag("upcoming")
                     Label("Schedule", systemImage: "clock").tag("schedule")
@@ -150,13 +142,13 @@ struct ContentView: View {
                 Section("Your lists") {
                     ForEach(store.state.courses) { course in
                         Label { Text(course.name) } icon: { Circle().fill(course.tint).frame(width: 8, height: 8) }.tag(course.id)
-                            .contextMenu { Button("Edit list…") { editor = .course(course) } }
+                            .contextMenu { Button("Edit list…") { courseEditor = course } }
                             .accessibilityIdentifier("sidebar-list-\(course.id)")
                     }
                 }
             }.listStyle(.sidebar)
             HStack {
-                Button { editor = .course(Course(name: "")) } label: { Label("New list", systemImage: "plus") }
+                Button { courseEditor = Course(name: "") } label: { Label("New list", systemImage: "plus") }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("new-list-button")
                 Spacer()
@@ -172,13 +164,16 @@ struct ContentView: View {
             if !store.state.setupComplete { welcome }
             else if selection == "upcoming" {
                 AssessmentCalendar(store: store, query: query, newEntryRequest: newEntryRequest) { rule in
-                    editor = .rule(rule)
+                    ruleDetail = rule
                 }
             }
             else if selection == "schedule" {
                 ScheduleView(store: store, query: query, newEntryRequest: newEntryRequest) { rule in
-                    editor = .rule(rule)
+                    ruleDetail = rule
                 }
+            }
+            else if selection == "journal" {
+                JournalView(store: store, query: query, newEntryRequest: journalNewEntryRequest)
             }
             else {
                 if selection != "all" && selection != "inbox" && selection != "routines" {
@@ -207,10 +202,16 @@ struct ContentView: View {
                     WorkItemEditor(
                         store: store,
                         source: draft,
-                        onEditRhythm: { rule in workDetail = nil; editor = .rule(rule) },
+                        onEditRhythm: { rule in workDetail = nil; ruleDetail = rule },
                         onDismiss: { workDetail = nil }
                     )
                         .id(draft.id)
+                        .editorCard()
+                }
+            } else if let rule = ruleDetail {
+                EditorCardBackdrop {
+                    RuleEditor(store: store, rule: rule, onDismiss: { ruleDetail = nil })
+                        .id(rule.id)
                         .editorCard()
                 }
             }
@@ -398,8 +399,8 @@ struct ContentView: View {
     private var routines: some View {
         VStack(alignment: .leading, spacing: 0) {
             List {
-                ForEach(store.state.rules.filter { matchesQuery(title: $0.title, details: $0.notes ?? "", courseID: $0.courseID) }) { rule in
-                    Button { editor = .rule(rule) } label: {
+                ForEach(store.state.rules.filter { matchesQuery(title: $0.title, courseID: $0.courseID) }) { rule in
+                    Button { ruleDetail = rule } label: {
                         HStack(spacing: 12) {
                         Image(systemName: rule.kind == .task ? "checkmark.circle" : rule.kind == .assessment ? "calendar" : "clock").foregroundStyle(store.course(rule.courseID)?.tint ?? .teal)
                         VStack(alignment: .leading, spacing: 4) {
@@ -410,12 +411,12 @@ struct ContentView: View {
                         Image(systemName: "pencil").foregroundStyle(.secondary)
                     }
                     }.buttonStyle(.plain).padding(.vertical, 6).listRowSeparator(.hidden).contextMenu {
-                        Button("Edit") { editor = .rule(rule) }
+                        Button("Edit") { ruleDetail = rule }
                         Button(rule.enabled ? "Pause" : "Resume") { var copy = rule; copy.enabled.toggle(); store.saveRule(copy) }
                         Button("Delete", role: .destructive) { store.deleteRule(rule.id) }
                     }
                 }
-                Button { editor = .rule(QuizRule(itemKind: .task, startDate: Day.today)) } label: { Label("Add a rhythm", systemImage: "plus") }
+                Button { ruleDetail = QuizRule(itemKind: .task, startDate: Day.today) } label: { Label("Add a rhythm", systemImage: "plus") }
                     .buttonStyle(.plain).foregroundStyle(.secondary).padding(.vertical, 8)
                     .accessibilityIdentifier("add-rhythm-button")
             }.listStyle(.inset).scrollContentBackground(.hidden)
@@ -463,7 +464,8 @@ struct ContentView: View {
     }
     private func add() {
         if isCalendar { newEntryRequest += 1 }
-        else if selection == "routines" { editor = .rule(QuizRule(itemKind: .task, startDate: Day.today)) }
+        else if selection == "journal" { journalNewEntryRequest += 1 }
+        else if selection == "routines" { ruleDetail = QuizRule(itemKind: .task, startDate: Day.today) }
         else { quickFocused = true }
     }
     private func exportData() {

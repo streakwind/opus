@@ -73,7 +73,7 @@ final class StorageTests: XCTestCase {
         XCTAssertTrue(store.state.tasks.isEmpty)
         XCTAssertTrue(store.state.assessments.allSatisfy {
             $0.courseID == course.id && $0.title == "Chapter quiz" &&
-                $0.confirmed && $0.topics == "Chapter 4" && $0.ruleID == rule.id
+                $0.confirmed && $0.topics.isEmpty && $0.ruleID == rule.id
         })
 
         rule.title = "Chapter exam"
@@ -82,7 +82,7 @@ final class StorageTests: XCTestCase {
         store.saveRule(rule)
         XCTAssertEqual(store.state.assessments.count, 3)
         XCTAssertTrue(store.state.assessments.allSatisfy {
-            $0.title == "Chapter exam" && $0.confirmed && $0.topics == "Chapters 4–5"
+            $0.title == "Chapter exam" && $0.confirmed && $0.topics.isEmpty
         })
 
         store.deleteRule(rule.id)
@@ -122,6 +122,48 @@ final class StorageTests: XCTestCase {
         XCTAssertEqual(store.state.schedule.map(\.title), ["Past event"])
         XCTAssertNil(store.state.schedule.first?.ruleID)
         XCTAssertFalse(store.state.generated.contains { $0.hasPrefix(rule.id + ":") })
+    }
+    @MainActor func testJournalLinkedEntryCarriesThroughDueDateAndSurvivesTaskDeletion() async throws {
+        let database = try database()
+        let store = try Store(database: database)
+        var task = StudyTask(title: "Essay", due: Day.adding(3))
+        store.save(task)
+        let entry = JournalEntry(day: Day.today, title: "Temporary", markdown: "# Outline", link: .task(task.id))
+        store.save(entry)
+
+        var linked = try XCTUnwrap(store.state.journal.first)
+        XCTAssertEqual(linked.title, "Essay")
+        XCTAssertEqual(linked.throughDay, Day.adding(3))
+        XCTAssertTrue(linked.appears(on: Day.adding(2)))
+        XCTAssertFalse(linked.appears(on: Day.adding(4)))
+
+        task.due = Day.adding(5)
+        store.save(task)
+        linked = try XCTUnwrap(store.state.journal.first)
+        XCTAssertEqual(linked.throughDay, Day.adding(5))
+
+        store.deleteTask(task.id)
+        linked = try XCTUnwrap(store.state.journal.first)
+        XCTAssertEqual(linked.title, "Essay")
+        XCTAssertEqual(linked.markdown, "# Outline")
+        XCTAssertEqual(linked.throughDay, Day.adding(5))
+        XCTAssertEqual(try Database(url: database.url).load().journal, [linked])
+    }
+    @MainActor func testLegacyNotesAreDiscardedOnOpen() async throws {
+        let database = try database()
+        var state = Snapshot()
+        state.tasks = [StudyTask(title: "Task", notes: "old task note")]
+        state.assessments = [Assessment(title: "Quiz", topics: "old topics")]
+        state.rules = [QuizRule(title: "Rhythm", notes: "old rhythm note")]
+        state.schedule = [ScheduleBlock(title: "Event", notes: "old event note")]
+        try database.save(state)
+
+        let store = try Store(database: database)
+
+        XCTAssertEqual(store.state.tasks[0].notes, "")
+        XCTAssertEqual(store.state.assessments[0].topics, "")
+        XCTAssertNil(store.state.rules[0].notes)
+        XCTAssertEqual(store.state.schedule[0].notes, "")
     }
     @MainActor func testRemoveListPreservesWorkAndUndoRestoresIt() async throws {
         let store = try Store(database: database())
