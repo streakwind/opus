@@ -21,6 +21,7 @@ struct ContentView: View {
     @State private var quickEnd = 30
     @State private var newEntryRequest = 0
     @State private var showSettings = false
+    @State private var showTutorial = false
     @State private var confirmDeleteArchive = false
     @AppStorage("appearance") private var appearance = "system"
     @FocusState private var quickFocused: Bool
@@ -261,7 +262,9 @@ struct ContentView: View {
             .pickerStyle(.segmented)
             .accessibilityIdentifier("appearance-picker")
 
-            Divider().padding(.vertical, 22)
+            Button { showTutorial = true } label: {
+                Label("Quick start tutorial", systemImage: "questionmark.circle")
+            }.padding(.vertical, 20).accessibilityIdentifier("settings-tutorial")
 
             Text("Data").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 .padding(.bottom, 8)
@@ -281,6 +284,7 @@ struct ContentView: View {
         }
         .padding(24)
         .frame(width: 440)
+        .sheet(isPresented: $showTutorial) { QuickStartView() }
         .fixedSize(horizontal: false, vertical: true)
         .roundedControls()
     }
@@ -449,10 +453,8 @@ struct ContentView: View {
             Text("Welcome to Opus").font(.title.bold())
             Text("Tasks, notes, and a little structure for your school day.").foregroundStyle(.secondary)
             HStack {
-                Button("Get started") { store.setup(personalized: true) }
+                Button("Get started") { store.setup() }
                     .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("setup-personalized")
-                Button("Start empty") { store.setup(personalized: false) }
                     .accessibilityIdentifier("setup-empty")
             }
         }.padding(40).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)

@@ -2,3 +2,10 @@
 .swiftpm/
 dist/
 .DS_Store
+
+# Local user data and database sidecars
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+exports/

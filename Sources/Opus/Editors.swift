@@ -10,10 +10,7 @@ struct CourseEditor: View {
         _course = State(initialValue: course)
         _classTimes = State(initialValue: course.resolvedClassTimes)
     }
-    private var suggestedClassStart: Int {
-        let starts: [String: Int] = [:]
-        return starts[course.name] ?? 540
-    }
+    private var suggestedClassStart: Int { 540 }
     private var valid: Bool {
         !course.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         classTimes.allSatisfy { !$0.days.isEmpty && $0.startMinute >= 0 && $0.endMinute > $0.startMinute && $0.endMinute <= 1440 }

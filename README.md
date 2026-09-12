@@ -13,7 +13,7 @@ Open `Package.swift` in Xcode to edit and run the executable, or use `swift run`
 
 ## Use
 
-New installations start empty; users create their own lists and rhythms.
+- New installations start empty. Add your own lists and rhythms; no personal course or timetable defaults are shipped.
 - **⌘N** adds in context: inline task entry in lists, an entry on the selected calendar date, or a timed Schedule block. Type a title and press Return to add it and keep typing. List, task type, and optional deadline appear when the entry field is focused. Select a row for an autosaving details/notes panel.
 - **Today** includes work planned or due through tomorrow, plus overdue work. Old recurring tasks do not accumulate unless overdue. **All tasks** also shows unscheduled work. Right-click a task to plan it for today or tomorrow.
 - For notes on pages 206–235, use Start 206, Finish 235, Finished through 205. Edit the last-read page directly beside the task title; the standard checkbox marks completion. Lower the stopping point to correct an entry. A simple pace suggestion divides remaining work across calendar days through the deadline.
@@ -51,3 +51,7 @@ The app includes editable lists/tasks, direct textbook progress, practice histor
 ## Interface references
 
 The interface uses progressive disclosure and low-effort actions from the [GNOME design principles](https://developer.gnome.org/hig/principles.html), compact checklist interaction inspired by [Apple Notes](https://support.apple.com/en-ca/guide/notes/apd93c815aa0/mac), month/week navigation inspired by [Google Calendar](https://support.google.com/calendar/answer/6110849?co=GENIE.Platform%3DDesktop&hl=en-GB), and plain-text Markdown/checklists familiar from [Obsidian](https://help.obsidian.md/syntax). It remains a SwiftUI/AppKit Mac app with system controls.
+
+Settings includes a short Quick start tutorial. It never inserts sample tasks or changes your data.
+
+See [the Linux port plan](docs/linux-port.md) for the native desktop architecture. Linux is not yet a supported app build.

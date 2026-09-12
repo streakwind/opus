@@ -194,7 +194,7 @@ private struct CalendarDayCell: View {
         return Button { select(); overflow = false; editing = .assessment(item) } label: {
             HStack(spacing: 4) {
                 Capsule().fill(tint).frame(width: 3, height: 14)
-                Text((store.course(item.courseID)?.shortName).map { $0 + " · " } ?? "") + Text(item.title == "Example recurrence" ? "Quiz" : item.title)
+                Text((store.course(item.courseID)?.shortName).map { $0 + " · " } ?? "") + Text(item.title)
                 if !item.confirmed { Image(systemName: "questionmark.circle").font(.system(size: 9)).foregroundStyle(.secondary) }
                 Spacer(minLength: 0)
             }.font(.system(size: wide ? 13 : 11)).lineLimit(1).frame(height: 21).foregroundStyle(.primary)

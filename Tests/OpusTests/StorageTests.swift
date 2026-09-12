@@ -94,7 +94,7 @@ final class StorageTests: XCTestCase {
     }
     @MainActor func testRemoveListPreservesWorkAndUndoRestoresIt() throws {
         let store = try Store(database: database())
-        let course = Course(name: "Example F")
+        let course = Course(name: "Example list")
         store.save(course)
         let task = StudyTask(courseID: course.id, title: "Notes")
         store.save(task)
@@ -217,7 +217,7 @@ final class CalendarInteractionTests: XCTestCase {
     }
     @MainActor func testAssessmentCreationAndUpdate() throws {
         let store = try Store(database: Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusAssess-" + UUID().uuidString).appendingPathComponent("test.sqlite")))
-        let course = Course(name: "Example F")
+        let course = Course(name: "Example list")
         store.save(course)
         let item = Assessment(courseID: course.id, title: "Unit test", day: "2026-09-15", confirmed: true, topics: "Ch. 4")
         store.save(item)

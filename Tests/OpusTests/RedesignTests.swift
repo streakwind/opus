@@ -63,7 +63,7 @@ final class RedesignTests: XCTestCase {
         XCTAssertTrue(schedule.schedule.contains { $0.day == twoWeeksAgo })
     }
     func testClassTimesDecodeLegacyAndFollowWeekdays() throws {
-        let legacy = try JSONDecoder().decode(Course.self, from: Data(#"{"id":"c","name":"Example A","color":"blue"}"#.utf8))
+        let legacy = try JSONDecoder().decode(Course.self, from: Data(#"{"id":"c","name":"Example list","color":"blue"}"#.utf8))
         XCTAssertNil(legacy.classBlock(on: "2026-09-09"))
         var course = legacy
         course.classStart = 465; course.classDuration = 50; course.classDays = [2,3,4,5,6]
@@ -89,15 +89,27 @@ final class RedesignTests: XCTestCase {
         let copy = try JSONDecoder().decode(Course.self, from: JSONEncoder().encode(course))
         XCTAssertEqual(copy.resolvedClassTimes, course.classTimes)
     }
+    @MainActor func testFreshInstallAndSetupNeverSeedUserData() throws {
+        let database = try db()
+        let store = try Store(database: database)
+        store.setup()
+        let reopened = try Store(database: database)
+        XCTAssertTrue(reopened.state.setupComplete)
+        XCTAssertTrue(reopened.state.courses.isEmpty)
+        XCTAssertTrue(reopened.state.rules.isEmpty)
+        XCTAssertTrue(reopened.state.tasks.isEmpty)
+        XCTAssertTrue(reopened.state.assessments.isEmpty)
+        XCTAssertTrue(reopened.state.schedule.isEmpty)
+    }
     private func db() throws -> Database {
         try Database(url: FileManager.default.temporaryDirectory.appendingPathComponent("OpusV3-" + UUID().uuidString).appendingPathComponent("test.sqlite"))
     }
-    @MainActor func testWeeklyQuizzesBecomeConfirmedOnce() throws {
+    @MainActor func testExplicitRecurringConfirmationPersists() throws {
         let database = try db()
-        let rule = QuizRule(title: "Example recurrence")
+        let rule = QuizRule(title: "Example review", assessmentsConfirmed: true)
         var state = Snapshot()
         state.rules = [rule]
-        state.assessments = [Assessment(title: "Example recurrence", day: Day.today, ruleID: rule.id, occurrence: Day.today)]
+        state.assessments = [Assessment(title: "Example review", day: Day.today, confirmed: true, ruleID: rule.id, occurrence: Day.today)]
         try database.save(state)
         let store = try Store(database: database)
         XCTAssertTrue(store.state.assessments.allSatisfy(\.confirmed))
@@ -385,10 +397,11 @@ final class RedesignTests: XCTestCase {
     }
     @MainActor func testEndToEndWorkflowSeed() throws {
         let store = try Store(database: db())
-        store.setup(personalized: true)
-        XCTAssertEqual(store.state.courses.count, 8)
-        XCTAssertFalse(store.state.rules.isEmpty)
-        let lit = store.state.courses.first { $0.name == "Example B" }!
+        store.setup()
+        XCTAssertTrue(store.state.courses.isEmpty)
+        XCTAssertTrue(store.state.rules.isEmpty)
+        let lit = Course(name: "Example list")
+        store.save(lit)
         store.save(StudyTask(courseID: lit.id, title: "Read ch. 3", due: Day.adding(1)))
         store.save(StudyTask(courseID: lit.id, title: "Pages", kind: .progress, due: Day.today, start: 10, target: 40, current: 12))
         store.save(Assessment(courseID: lit.id, title: "Essay check", day: Day.adding(3), confirmed: true, topics: "Prompt A"))

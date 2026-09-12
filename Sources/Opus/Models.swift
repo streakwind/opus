@@ -82,7 +82,7 @@ struct QuizRule: Identifiable, Codable, Equatable {
     var enabled = true
     // Optional additions keep version-one rules readable without altering their meaning.
     var assessmentsConfirmed: Bool?
-    var confirmsAssessments: Bool { assessmentsConfirmed ?? (title == "Example recurrence") }
+    var confirmsAssessments: Bool { assessmentsConfirmed ?? false }
     var weekdays: [Int]?
     var itemKind: RepeatItem?
     var intervalWeeks: Int?

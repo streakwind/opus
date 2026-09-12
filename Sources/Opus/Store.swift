@@ -17,14 +17,6 @@ final class Store {
         self.database = database
         state = try database.load()
         var needsSave = false
-        let fixedRules = Set(state.rules.filter { $0.kind == .assessment && $0.title == "Example recurrence" && $0.assessmentsConfirmed == nil }.map(\.id))
-        if !fixedRules.isEmpty {
-            for index in state.rules.indices where fixedRules.contains(state.rules[index].id) { state.rules[index].assessmentsConfirmed = true }
-            for index in state.assessments.indices where fixedRules.contains(state.assessments[index].ruleID ?? "") && state.assessments[index].day >= Day.today {
-                state.assessments[index].confirmed = true
-            }
-            needsSave = true
-        }
         for index in state.tasks.indices where state.tasks[index].kind == .progress && state.tasks[index].completed {
             state.tasks[index].completed = false
             needsSave = true
@@ -264,9 +256,10 @@ final class Store {
         guard task.current != bounded else { return }
         record(task, value: bounded, note: "Finished through \(bounded) \(task.unit)")
     }
-    func setup(personalized: Bool) {
+    func setup() {
         change { $0.setupComplete = true }
     }
+
 }
 
 extension Course {
@@ -329,7 +322,7 @@ extension Course {
 
 extension Course {
     var shortName: String {
-        name.replacingOccurrences(of: "AP ", with: "").replacingOccurrences(of: "Honors ", with: "")
+        name
     }
 }
 extension Store {
