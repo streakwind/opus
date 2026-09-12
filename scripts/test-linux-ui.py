@@ -79,7 +79,10 @@ def find_accessible(name: str, role=None, root=None):
     try:
         return wait_for(lambda: walk(root or accessibility_root))
     except AssertionError:
-        accessibility_root.dump()
+        try:
+            accessibility_root.dump()
+        except Exception:
+            pass
         raise
 
 
@@ -107,7 +110,7 @@ def dismiss_help_if_present():
         wait_for(lambda: window_id('Quick start'), timeout=3)
     except AssertionError:
         return
-    for _ in range(5):
+    for _ in range(4):
         try:
             click('Next', role='push button')
             time.sleep(0.15)
