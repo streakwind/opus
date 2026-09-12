@@ -53,14 +53,13 @@ final class PresentationTests: XCTestCase {
     }
 }
 
-@MainActor
 final class SessionTests: XCTestCase {
-    private func session() throws -> LinuxSession {
+    @MainActor private func session() throws -> LinuxSession {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("OpusGTK-" + UUID().uuidString).appendingPathComponent("test.sqlite")
         return try LinuxSession(store: Store(database: Database(url: url)))
     }
 
-    func testTaskAssessmentCourseRuleAndArchiveFlow() throws {
+    @MainActor func testTaskAssessmentCourseRuleAndArchiveFlow() async throws {
         let app = try session()
         _ = app.handle(.setupComplete)
         _ = app.handle(.newList("Biology"))
@@ -90,7 +89,7 @@ final class SessionTests: XCTestCase {
         XCTAssertTrue(app.handle(.exportJSON).contains { if case .exportJSON = $0 { return true }; return false })
     }
 
-    func testScheduleCreateAndReschedule() throws {
+    @MainActor func testScheduleCreateAndReschedule() async throws {
         let app = try session()
         _ = app.handle(.setupComplete)
         let commands = app.handle(.scheduleCreate(day: Day.today, startY: 480, endY: 540))
@@ -111,7 +110,7 @@ final class SessionTests: XCTestCase {
         XCTAssertNotNil(rule.validationError)
     }
 
-    func testCalendarNavigationSettingsAndSearch() throws {
+    @MainActor func testCalendarNavigationSettingsAndSearch() async throws {
         let app = try session()
         _ = app.handle(.setupComplete)
         _ = app.handle(.select("calendar"))
