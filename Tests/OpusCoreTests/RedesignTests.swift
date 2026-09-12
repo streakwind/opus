@@ -345,8 +345,8 @@ final class RedesignTests: XCTestCase {
     func testRhythmCaptionMarksNextRepeatAndDeadline() {
         let rule = QuizRule(title: "Review", weekdays: [3], itemKind: .task, startDate: "2026-09-01", endDate: "2026-10-20")
         let task = StudyTask(title: "Review", due: "2026-09-14", ruleID: rule.id, occurrence: "2026-09-14")
-        XCTAssertEqual(task.rhythmCaption(rule: rule, markNext: true), "Next · Due Sep 14 · Repeats Tue · ends Oct 20")
-        XCTAssertEqual(task.rhythmCaption(rule: rule, markNext: false), "Due Sep 14 · Repeats Tue · ends Oct 20")
+        XCTAssertEqual(task.rhythmCaption(rule: rule, markNext: true), "Next · Due \(Day.label("2026-09-14")) · Repeats \(Calendar.current.shortWeekdaySymbols[2]) · ends \(Day.label("2026-10-20"))")
+        XCTAssertEqual(task.rhythmCaption(rule: rule, markNext: false), "Due \(Day.label("2026-09-14")) · Repeats \(Calendar.current.shortWeekdaySymbols[2]) · ends \(Day.label("2026-10-20"))")
     }
     func testArchiveKeepsDistinctRhythmOccurrences() {
         let rule = "weekly"
