@@ -14,11 +14,9 @@ artifacts = Path('/tmp/opus-linux-ui')
 artifacts.mkdir(exist_ok=True)
 
 try:
-    import gi
-    gi.require_version('Atspi', '2.0')
-    from gi.repository import Atspi
+    from dogtail.tree import root as accessibility_root
 except Exception as error:  # pragma: no cover
-    raise SystemExit(f'python3-gi / Atspi required for Linux UI checks: {error}') from error
+    raise SystemExit(f'python3-dogtail required for Linux UI checks: {error}') from error
 
 
 def command(*args: str) -> str:
@@ -42,17 +40,12 @@ def window_id(name: str) -> str:
     return command('xdotool', 'search', '--onlyvisible', '--name', f'^{name}$').splitlines()[0]
 
 
-def desktop():
-    Atspi.init()
-    return Atspi.get_desktop(0)
-
-
 def find_accessible(name: str, role=None, root=None):
     def match(node):
         try:
-            if node.get_name() != name:
+            if node.name != name:
                 return False
-            if role is not None and node.get_role_name() != role:
+            if role is not None and node.roleName != role:
                 return False
             return True
         except Exception:
@@ -64,23 +57,21 @@ def find_accessible(name: str, role=None, root=None):
         if match(node):
             return node
         try:
-            count = node.get_child_count()
+            children = node.children
         except Exception:
             return None
-        for index in range(count):
-            found = walk(node.get_child_at_index(index), depth + 1)
+        for child in children:
+            found = walk(child, depth + 1)
             if found:
                 return found
         return None
 
-    return wait_for(lambda: walk(root or desktop()))
+    return wait_for(lambda: walk(root or accessibility_root))
 
 
 def click(name: str, role=None):
     node = find_accessible(name, role=role)
-    action = node.get_action_iface()
-    assert action is not None, f'No action interface for {name}'
-    assert action.do_action(0), f'Failed to activate {name}'
+    node.click()
     return node
 
 
