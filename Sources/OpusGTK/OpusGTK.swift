@@ -133,10 +133,13 @@ private func handleGTKEvent(_ action: UnsafePointer<CChar>?, _ id: UnsafePointer
                             _ title: UnsafePointer<CChar>?, _ day: UnsafePointer<CChar>?,
                             _ course: UnsafePointer<CChar>?, _ kind: Int32, _ start: Int32,
                             _ end: Int32, _ page: Int32) {
+    // Copy borrowed C strings before entering actor isolation.
+    let actionValue = String(cString: action!), idValue = String(cString: id!)
+    let titleValue = String(cString: title!), dayValue = String(cString: day!), courseValue = String(cString: course!)
     // GTK's blocking loop and all callbacks execute on the main thread.
     MainActor.assumeIsolated {
-        OpusGTK.controller?.event(String(cString: action!), id: String(cString: id!), text: String(cString: title!),
-                                  day: String(cString: day!), course: String(cString: course!),
+        OpusGTK.controller?.event(actionValue, id: idValue, text: titleValue,
+                                  day: dayValue, course: courseValue,
                                   kind: Int(kind), start: Int(start), end: Int(end), page: Int(page))
     }
 }

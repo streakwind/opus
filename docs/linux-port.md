@@ -15,9 +15,11 @@ swift test
 ./dist/linux/bin/opus
 ```
 
+Keyboard shortcuts: Ctrl+N opens a task, Ctrl+Enter saves its editor, Escape cancels, Ctrl+Shift+Z undoes a task change, F1 opens Quick Start, and Ctrl+Q quits.
+
 GTK uses the desktop theme and native widgets. The C bridge owns the widgets and forwards user actions to Swift; it contains no database or recurrence logic. The bridge targets GTK 4.8 or newer. [GTK documentation](https://docs.gtk.org/gtk4/).
 
-`dist/linux` contains the executable, desktop entry, and the existing Opus icon. Install under a prefix such as `~/.local` with its `bin` on PATH. The binary currently requires the Swift runtime, GTK, and SQLite to be installed; this is not a self-contained Flatpak. GitHub Actions builds and smoke-tests the preview on Ubuntu using an isolated database.
+`dist/Opus-linux-preview.tar.gz` preserves executable permissions and contains the `dist/linux` layout: launcher, executable, desktop entry, and the existing Opus icon. Install under a prefix such as `~/.local` with its `bin` on PATH. The launcher finds a Swift runtime through `swift` on PATH. Swift, GTK, and SQLite must be installed; this is not a self-contained Flatpak. GitHub Actions builds and smoke-tests the preview on Ubuntu using an isolated database.
 
 ## Data
 

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+prefix=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
+# Swiftly and system Swift installations keep their runtime beside the toolchain.
+if command -v swift >/dev/null 2>&1; then
+    toolchain=$(dirname "$(dirname "$(readlink -f "$(command -v swift)")")")
+    export LD_LIBRARY_PATH="$toolchain/lib/swift/linux${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+exec "$prefix/libexec/opus" "$@"
