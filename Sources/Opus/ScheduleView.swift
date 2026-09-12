@@ -4,9 +4,11 @@ struct ScheduleView: View {
     var store: Store
     var query: String
     var newEntryRequest: Int
+    var editRhythm: (QuizRule) -> Void
     @State private var anchor = Date()
     @State private var period = CalendarPeriod.week
     @State private var editing: ScheduleBlock?
+    @State private var editingWork: WorkDraft?
     @State private var creating: ScheduleBlock?
     @State private var selectedMinute = 7 * 60
     private let hourHeight: CGFloat = 60
@@ -29,6 +31,17 @@ struct ScheduleView: View {
                     }
                 }.frame(height: 58).padding(.bottom, 8)
             }
+            ScheduleAllDayRow(
+                store: store,
+                days: days,
+                query: query,
+                editEvent: { editing = $0 },
+                editWork: { editingWork = $0 },
+                add: {
+                    let day = days.contains(Day.today) ? Day.today : Day.string(anchor)
+                    editing = ScheduleBlock(day: day, allDay: true)
+                }
+            )
             GeometryReader { geometry in
                 let columnWidth = max(1, (geometry.size.width - 56) / CGFloat(days.count))
                 ScrollViewReader { reader in
@@ -66,6 +79,18 @@ struct ScheduleView: View {
                     .id(draft.id)
                     .editorCard()
                 }
+            } else if let draft = editingWork {
+                EditorCardBackdrop {
+                    WorkItemEditor(
+                        store: store,
+                        source: draft,
+                        onDateChange: { day in if !days.contains(day) { anchor = Day.date(day) } },
+                        onEditRhythm: { rule in editingWork = nil; editRhythm(rule) },
+                        onDismiss: { editingWork = nil }
+                    )
+                    .id(draft.id)
+                    .editorCard()
+                }
             }
         }
         .onChange(of: newEntryRequest) { _, _ in
@@ -77,7 +102,7 @@ struct ScheduleView: View {
     }
     private func dayColumn(_ day: String, width: CGFloat) -> some View {
         let classes = store.state.courses.flatMap { $0.classBlocks(on: day) }
-        let displayed = classes + store.state.schedule.filter { $0.id != editing?.id } + (editing.map { [$0] } ?? [])
+        let displayed = classes + store.state.schedule.filter { !$0.isAllDay && $0.id != editing?.id } + (editing.map { $0.isAllDay ? [] : [$0] } ?? [])
         let blocks = displayed.filter {
             $0.day == day &&
             (query.isEmpty ||
@@ -156,6 +181,97 @@ struct ScheduleView: View {
             }
     }
 }
+
+private struct ScheduleAllDayRow: View {
+    var store: Store
+    var days: [String]
+    var query: String
+    var editEvent: (ScheduleBlock) -> Void
+    var editWork: (WorkDraft) -> Void
+    var add: () -> Void
+    private func matches(_ title: String, courseID: String?) -> Bool {
+        query.isEmpty ||
+        title.localizedCaseInsensitiveContains(query) ||
+        (store.course(courseID)?.name.localizedCaseInsensitiveContains(query) ?? false)
+    }
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            Button(action: add) {
+                Image(systemName: "plus").font(.system(size: 15, weight: .medium))
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 9).strokeBorder(Color.primary.opacity(0.12)) }
+            .help("Add all-day event")
+            .padding(.horizontal, 12)
+
+            ForEach(days, id: \.self) { day in
+                dayItems(day)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .padding(.horizontal, 4)
+                    .overlay(alignment: .trailing) { Rectangle().fill(Color.primary.opacity(0.1)).frame(width: 0.5) }
+            }
+        }
+        .frame(minHeight: 40, maxHeight: 100, alignment: .top)
+        .padding(.bottom, 8)
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.13)).frame(height: 0.5) }
+    }
+    @ViewBuilder private func dayItems(_ day: String) -> some View {
+        let events = store.state.schedule.filter { $0.isAllDay && $0.day == day && matches($0.title, courseID: $0.courseID) }
+        let assessments = store.state.assessments.filter { $0.day == day && matches($0.title, courseID: $0.courseID) }
+        let tasks = store.state.tasks.filter { $0.calendarDay == day && matches($0.title, courseID: $0.courseID) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(events) { event in
+                    allDayButton(event.title, icon: "calendar.badge.clock", tint: store.course(event.courseID)?.tint ?? .teal) {
+                        editEvent(event)
+                    }
+                }
+                ForEach(assessments) { item in
+                    allDayButton(item.title, icon: "calendar", tint: store.course(item.courseID)?.tint ?? .teal, repeating: item.ruleID != nil) {
+                        editWork(.assessment(item))
+                    }
+                }
+                ForEach(tasks) { task in
+                    allDayButton(
+                        task.title,
+                        icon: task.kind == .progress ? "chart.bar.fill" : task.completed ? "checkmark.circle.fill" : "circle",
+                        tint: store.course(task.courseID)?.tint ?? .teal,
+                        repeating: task.ruleID != nil,
+                        dimmed: task.completed
+                    ) {
+                        editWork(.task(task))
+                    }
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+    }
+    private func allDayButton(
+        _ title: String,
+        icon: String,
+        tint: Color,
+        repeating: Bool = false,
+        dimmed: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 9))
+                Text(title).font(.system(size: 10, weight: .medium)).lineLimit(1)
+                if repeating { RepeatBadge() }
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6).frame(height: 20)
+            .background(tint.opacity(dimmed ? 0.45 : 0.9), in: RoundedRectangle(cornerRadius: 5))
+        }
+        .buttonStyle(.plain)
+        .help(title)
+    }
+}
+
 private struct ScheduleEventCard: View {
     var store: Store
     var block: ScheduleBlock

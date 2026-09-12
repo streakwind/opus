@@ -42,10 +42,12 @@ struct AssessmentCalendar: View {
     var store: Store
     var query: String
     var newEntryRequest: Int
+    var editRhythm: (QuizRule) -> Void
     @State private var anchor = Date()
     @State private var period = CalendarPeriod.month
     @State private var selectedDay = Day.today
     @State private var editing: CalendarDraft?
+    @State private var editingEvent: ScheduleBlock?
     private var days: [String] { period == .day ? [Day.string(anchor)] : CalendarLayout.days(containing: anchor, week: period == .week) }
     var body: some View {
         VStack(spacing: 0) {
@@ -65,7 +67,7 @@ struct AssessmentCalendar: View {
                         ForEach(0..<rows, id: \.self) { row in
                             HStack(spacing: 0) {
                                 ForEach(Array(days[(row*columns)..<(row*columns+columns)]), id: \.self) { day in
-                                    CalendarDayCell(store: store, day: day, inMonth: period != .month || Calendar.current.isDate(Day.date(day), equalTo: anchor, toGranularity: .month), query: query, capacity: max(1, Int((height - 52) / 23)), wide: period == .day, select: { selectedDay = day }, editing: $editing)
+                                    CalendarDayCell(store: store, day: day, inMonth: period != .month || Calendar.current.isDate(Day.date(day), equalTo: anchor, toGranularity: .month), query: query, capacity: max(1, Int((height - 52) / 23)), wide: period == .day, select: { selectedDay = day }, editing: $editing, editingEvent: $editingEvent)
                                         .frame(width: geometry.size.width / CGFloat(columns), height: height).id(day)
                                 }
                             }
@@ -92,9 +94,25 @@ struct AssessmentCalendar: View {
                             selectedDay = day
                             if !days.contains(day) { anchor = Day.date(day) }
                         },
+                        onEditRhythm: { rule in editing = nil; editRhythm(rule) },
                         onDismiss: { editing = nil }
                     )
                     .id(draft.id)
+                    .editorCard()
+                }
+            } else if let event = editingEvent {
+                EditorCardBackdrop {
+                    ScheduleEditor(
+                        store: store,
+                        block: event,
+                        onChange: { updated in
+                            editingEvent = updated
+                            selectedDay = updated.day
+                            if !days.contains(updated.day) { anchor = Day.date(updated.day) }
+                        },
+                        onDismiss: { editingEvent = nil }
+                    )
+                    .id(event.id)
                     .editorCard()
                 }
             }
@@ -127,6 +145,7 @@ private struct CalendarDayCell: View {
     var wide: Bool
     var select: () -> Void
     @Binding var editing: CalendarDraft?
+    @Binding var editingEvent: ScheduleBlock?
     @State private var overflow = false
     @State private var targeted = false
     private func matches(_ title: String, courseID: String?) -> Bool {
@@ -142,7 +161,12 @@ private struct CalendarDayCell: View {
             $0.due == day && matches($0.title, courseID: $0.courseID)
         }.sorted { !$0.completed && $1.completed }
     }
-    private var count: Int { assessments.count + tasks.count }
+    private var allDayEvents: [ScheduleBlock] {
+        store.state.schedule.filter {
+            $0.isAllDay && $0.day == day && matches($0.title, courseID: $0.courseID)
+        }.sorted { $0.title < $1.title }
+    }
+    private var count: Int { allDayEvents.count + assessments.count + tasks.count }
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
@@ -153,8 +177,9 @@ private struct CalendarDayCell: View {
                         .frame(width: 30, height: 30).background(day == Day.today ? Color.accentColor : .clear, in: Circle())
                 }.buttonStyle(.plain).help("Add task or assessment on " + day).accessibilityLabel("Add on " + day)
             }.padding(.horizontal, 7).padding(.vertical, 3)
-            ForEach(assessments.prefix(capacity)) { item in assessmentLine(item) }
-            ForEach(tasks.prefix(max(0, capacity - assessments.count))) { task in taskLine(task) }
+            ForEach(allDayEvents.prefix(capacity)) { event in eventLine(event) }
+            ForEach(assessments.prefix(max(0, capacity - allDayEvents.count))) { item in assessmentLine(item) }
+            ForEach(tasks.prefix(max(0, capacity - allDayEvents.count - assessments.count))) { task in taskLine(task) }
             if count > capacity {
                 Button("+\(count-capacity) more") { overflow = true }.buttonStyle(.plain).font(.caption).foregroundStyle(.secondary).padding(.leading, 9)
                     .popover(isPresented: $overflow) {
@@ -162,6 +187,7 @@ private struct CalendarDayCell: View {
                             Text(Day.date(day).formatted(.dateTime.weekday(.wide).month().day())).font(.headline)
                             ScrollView {
                                 VStack(spacing: 5) {
+                                    ForEach(allDayEvents) { eventLine($0) }
                                     ForEach(assessments) { assessmentLine($0) }
                                     ForEach(tasks) { taskLine($0) }
                                 }
@@ -206,6 +232,25 @@ private struct CalendarDayCell: View {
                 Button("Add preparation task") { store.save(StudyTask(courseID: item.courseID, title: "Prepare: " + item.title, notes: item.topics, due: item.day)) }
                 Button("Delete", role: .destructive) { store.deleteAssessment(item.id) }
             }
+    }
+    private func eventLine(_ event: ScheduleBlock) -> some View {
+        let tint = store.course(event.courseID)?.tint ?? .teal
+        return Button { select(); overflow = false; editingEvent = event } label: {
+            HStack(spacing: 4) {
+                Capsule().fill(tint).frame(width: 3, height: 14)
+                Image(systemName: "calendar.badge.clock").font(.system(size: 9)).foregroundStyle(.secondary)
+                Text(event.title).lineLimit(1)
+                if event.ruleID != nil { RepeatBadge() }
+                Spacer(minLength: 0)
+            }.font(.system(size: wide ? 13 : 11)).frame(height: 21).foregroundStyle(.primary)
+        }
+        .buttonStyle(.plain).padding(.horizontal, 5)
+        .help(event.title + " · All day")
+        .onDrag { NSItemProvider(object: ("schedule:" + event.id) as NSString) }
+        .contextMenu {
+            Button("Edit") { editingEvent = event }
+            Button("Delete", role: .destructive) { store.deleteSchedule(event, scope: .thisEvent) }
+        }
     }
     private func taskLine(_ task: StudyTask) -> some View {
         HStack(spacing: 4) {

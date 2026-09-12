@@ -7,8 +7,8 @@ struct ClassScheduleCard: View {
     var block: ScheduleBlock
     @State private var editingCourse = false
     @State private var showingWork = false
-    private var assessments: [Assessment] { CourseWork.assessments(courseID: course.id, from: block.day, in: store.state) }
-    private var tasks: [StudyTask] { CourseWork.tasks(courseID: course.id, from: block.day, in: store.state, progress: false) }
+    private var assessments: [Assessment] { store.state.assessments.filter { $0.courseID == course.id && $0.day == block.day } }
+    private var tasks: [StudyTask] { CourseWork.tasks(courseID: course.id, from: block.day, in: store.state, progress: false, exactDay: true) }
     private var progress: [StudyTask] { CourseWork.tasks(courseID: course.id, from: block.day, in: store.state, progress: true, exactDay: true) }
     var body: some View {
         Button { showingWork = true } label: {
@@ -35,7 +35,7 @@ struct ClassScheduleCard: View {
             }
             .contextMenu { Button("Edit class schedule…") { editingCourse = true } }
             .sheet(isPresented: $editingCourse) { CourseEditor(store: store, course: course) }
-            .help("Open upcoming work for " + course.name)
+            .help("Open today's work for " + course.name)
     }
 }
 
@@ -43,8 +43,8 @@ private struct CourseWorkPopover: View {
     var store: Store
     var course: Course
     var from: String
-    private var assessments: [Assessment] { CourseWork.assessments(courseID: course.id, from: from, in: store.state) }
-    private var tasks: [StudyTask] { CourseWork.tasks(courseID: course.id, from: from, in: store.state, progress: false) }
+    private var assessments: [Assessment] { store.state.assessments.filter { $0.courseID == course.id && $0.day == from } }
+    private var tasks: [StudyTask] { CourseWork.tasks(courseID: course.id, from: from, in: store.state, progress: false, exactDay: true) }
     private var progress: [StudyTask] { CourseWork.tasks(courseID: course.id, from: from, in: store.state, progress: true, exactDay: true) }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -52,11 +52,11 @@ private struct CourseWorkPopover: View {
                 Circle().fill(course.tint).frame(width: 9, height: 9)
                 Text(course.name).font(.headline)
                 Spacer()
-                Text("Upcoming").font(.caption).foregroundStyle(.secondary)
+                Text(Day.label(from)).font(.caption).foregroundStyle(.secondary)
             }.padding(.bottom, 12)
 
             if assessments.isEmpty && tasks.isEmpty && progress.isEmpty {
-                ContentUnavailableView("No upcoming work", systemImage: "checkmark.circle", description: Text("Nothing dated for this class after \(Day.label(from))."))
+                ContentUnavailableView("No work this day", systemImage: "checkmark.circle", description: Text("Nothing dated for \(Day.label(from))."))
                     .frame(width: 320, height: 150)
             } else {
                 ScrollView {

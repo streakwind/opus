@@ -23,17 +23,11 @@ struct ContentView: View {
     @State private var newEntryRequest = 0
     @State private var showSettings = false
     @State private var showTutorial = false
-    @State private var confirmDeleteArchive = false
     @AppStorage("appearance") private var appearance = "system"
     @FocusState private var quickFocused: Bool
     @Environment(\.scenePhase) private var scenePhase
     private var course: Course? { store.course(selection) }
     private var isCalendar: Bool { selection == "upcoming" || selection == "schedule" }
-    private var archivedCount: Int { store.state.tasks.filter { $0.kind != .progress && $0.completed }.count }
-    private var archiveDeleteMessage: String {
-        let noun = archivedCount == 1 ? "task" : "tasks"
-        return "Permanently removes \(archivedCount) completed \(noun). Undo with ⌥⌘Z."
-    }
     private func matchesQuery(title: String, details: String = "", courseID: String?) -> Bool {
         query.isEmpty ||
         title.localizedCaseInsensitiveContains(query) ||
@@ -45,7 +39,6 @@ struct ContentView: View {
         case "today": Date().formatted(.dateTime.weekday(.wide).month(.wide).day().year())
         case "all": "Tasks"
         case "inbox": "Inbox"
-        case "archive": "Archive"
         case "routines": "Rhythm"
         default: course?.name ?? "Today"
         }
@@ -56,23 +49,14 @@ struct ContentView: View {
             switch selection {
             case "all": matches = true
             case "inbox": matches = task.courseID == nil
-            case "archive": matches = task.kind != .progress && task.completed
             case "today": matches = task.isInToday(on: Day.today)
             default: matches = task.courseID == selection
             }
-            let visible = selection == "archive" || task.kind == .progress || !task.completed
+            let visible = task.kind == .progress ? task.current < task.target : !task.completed
             return matches && visible && matchesQuery(title: task.title, details: task.notes, courseID: task.courseID)
         }
     }
     private func nextRhythms(_ items: [StudyTask]) -> [StudyTask] {
-        if selection == "archive" {
-            return items.sorted {
-                let left = $0.calendarDay ?? ""
-                let right = $1.calendarDay ?? ""
-                if left == right { return $0.title < $1.title }
-                return left > right
-            }
-        }
         let ordered = items.sorted {
             let left = $0.calendarDay ?? "9999"
             let right = $1.calendarDay ?? "9999"
@@ -116,12 +100,6 @@ struct ContentView: View {
             } message: {
                 Text(store.error ?? "")
             }
-            .confirmationDialog("Delete all archived tasks?", isPresented: $confirmDeleteArchive, titleVisibility: .visible) {
-                Button("Delete All", role: .destructive) { store.deleteArchivedTasks() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text(archiveDeleteMessage)
-            }
             .onChange(of: selection) { _, _ in workDetail = nil; quickCourse = course?.id }
             .onChange(of: scenePhase) { _, phase in if phase == .active { store.refreshOccurrences() } }
             .onChange(of: store.state.tasks.map(\.id)) { _, ids in
@@ -164,7 +142,6 @@ struct ContentView: View {
                 Label("Today", systemImage: "sun.max").tag("today")
                 Label("Tasks", systemImage: "checklist").tag("all")
                 Label("Inbox", systemImage: "tray").tag("inbox")
-                Label("Archive", systemImage: "archivebox").tag("archive")
                 Section {
                     Label("Calendar", systemImage: "calendar").tag("upcoming")
                     Label("Schedule", systemImage: "clock").tag("schedule")
@@ -194,10 +171,14 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             if !store.state.setupComplete { welcome }
             else if selection == "upcoming" {
-                AssessmentCalendar(store: store, query: query, newEntryRequest: newEntryRequest)
+                AssessmentCalendar(store: store, query: query, newEntryRequest: newEntryRequest) { rule in
+                    editor = .rule(rule)
+                }
             }
             else if selection == "schedule" {
-                ScheduleView(store: store, query: query, newEntryRequest: newEntryRequest)
+                ScheduleView(store: store, query: query, newEntryRequest: newEntryRequest) { rule in
+                    editor = .rule(rule)
+                }
             }
             else {
                 if selection != "all" && selection != "inbox" && selection != "routines" {
@@ -223,7 +204,12 @@ struct ContentView: View {
         .overlay {
             if let draft = workDetail, !isCalendar {
                 EditorCardBackdrop {
-                    WorkItemEditor(store: store, source: draft, onDismiss: { workDetail = nil })
+                    WorkItemEditor(
+                        store: store,
+                        source: draft,
+                        onEditRhythm: { rule in workDetail = nil; editor = .rule(rule) },
+                        onDismiss: { workDetail = nil }
+                    )
                         .id(draft.id)
                         .editorCard()
                 }
@@ -234,12 +220,6 @@ struct ContentView: View {
         HStack(alignment: .firstTextBaseline) {
             Text(heading).font(.system(size: 26, weight: .bold)).lineLimit(1)
             Spacer()
-            if selection == "archive" {
-                Button("Delete All") { confirmDeleteArchive = true }
-                    .disabled(archivedCount == 0)
-                    .help("Delete all archived tasks")
-                    .accessibilityIdentifier("archive-delete-all")
-            }
         }.padding(.horizontal, 22).padding(.top, 18).padding(.bottom, course != nil ? 2 : 12)
     }
     private var settingsView: some View {
@@ -291,7 +271,7 @@ struct ContentView: View {
     }
     private var taskContent: some View {
         VStack(spacing: 0) {
-            if selection != "archive" { quickEntry }
+            quickEntry
             List {
                 if !assessments.isEmpty {
                     listHeading("Assessments")
@@ -338,7 +318,7 @@ struct ContentView: View {
                 }
                 if !tasks.isEmpty && (!assessments.isEmpty || !progressItems.isEmpty) { listHeading("Tasks") }
                 ForEach(tasks) { task in
-                    TaskLine(store: store, task: task, selected: workDetail?.id == "task:" + task.id, markNext: task.ruleID != nil && selection != "archive") {
+                    TaskLine(store: store, task: task, selected: workDetail?.id == "task:" + task.id, markNext: task.ruleID != nil) {
                         workDetail = .task(task)
                     }
                     .listRowSeparator(.hidden)
@@ -418,17 +398,19 @@ struct ContentView: View {
     private var routines: some View {
         VStack(alignment: .leading, spacing: 0) {
             List {
-                ForEach(store.state.rules.filter { $0.kind != .schedule && matchesQuery(title: $0.title, details: $0.notes ?? "", courseID: $0.courseID) }) { rule in
-                    HStack(spacing: 12) {
+                ForEach(store.state.rules.filter { matchesQuery(title: $0.title, details: $0.notes ?? "", courseID: $0.courseID) }) { rule in
+                    Button { editor = .rule(rule) } label: {
+                        HStack(spacing: 12) {
                         Image(systemName: rule.kind == .task ? "checkmark.circle" : rule.kind == .assessment ? "calendar" : "clock").foregroundStyle(store.course(rule.courseID)?.tint ?? .teal)
-                        Button { editor = .rule(rule) } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(rule.title).font(.system(size: 14, weight: .medium))
-                                Text(rule.summary + (rule.enabled ? "" : " · Paused")).font(.caption).foregroundStyle(.secondary)
-                            }.frame(maxWidth: .infinity, alignment: .leading)
-                        }.buttonStyle(.plain)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(rule.title).font(.system(size: 14, weight: .medium))
+                            Text(rule.summary + (rule.enabled ? "" : " · Paused")).font(.caption).foregroundStyle(.secondary)
+                        }.frame(maxWidth: .infinity, alignment: .leading)
                         Text(store.course(rule.courseID)?.shortName ?? rule.kind.rawValue).font(.caption).foregroundStyle(.secondary)
-                    }.padding(.vertical, 6).listRowSeparator(.hidden).contextMenu {
+                        Image(systemName: "pencil").foregroundStyle(.secondary)
+                    }
+                    }.buttonStyle(.plain).padding(.vertical, 6).listRowSeparator(.hidden).contextMenu {
+                        Button("Edit") { editor = .rule(rule) }
                         Button(rule.enabled ? "Pause" : "Resume") { var copy = rule; copy.enabled.toggle(); store.saveRule(copy) }
                         Button("Delete", role: .destructive) { store.deleteRule(rule.id) }
                     }
@@ -482,7 +464,6 @@ struct ContentView: View {
     private func add() {
         if isCalendar { newEntryRequest += 1 }
         else if selection == "routines" { editor = .rule(QuizRule(itemKind: .task, startDate: Day.today)) }
-        else if selection == "archive" { return }
         else { quickFocused = true }
     }
     private func exportData() {

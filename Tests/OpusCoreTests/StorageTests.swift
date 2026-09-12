@@ -87,9 +87,41 @@ final class StorageTests: XCTestCase {
 
         store.deleteRule(rule.id)
         XCTAssertFalse(store.state.rules.contains { $0.id == rule.id })
-        XCTAssertFalse(store.state.assessments.contains { $0.ruleID == rule.id })
+        XCTAssertEqual(store.state.assessments.count, 1)
+        XCTAssertEqual(store.state.assessments.first?.day, Day.today)
+        XCTAssertNil(store.state.assessments.first?.ruleID)
+        XCTAssertNil(store.state.assessments.first?.occurrence)
         store.undo()
         XCTAssertEqual(store.state.assessments.filter { $0.ruleID == rule.id }.count, 3)
+    }
+    @MainActor func testDeletingRhythmKeepsAndDetachesHistoryButRemovesFutureOccurrences() async throws {
+        let store = try Store(database: database())
+        let rule = QuizRule(title: "Daily", weekdays: Array(1...7), itemKind: .task, startDate: Day.adding(-1), endDate: Day.adding(2))
+        store.change { state in
+            state.rules = [rule]
+            state.tasks = [
+                StudyTask(title: "Past", due: Day.adding(-1), ruleID: rule.id, occurrence: Day.adding(-1)),
+                StudyTask(title: "Today", due: Day.today, ruleID: rule.id, occurrence: Day.today),
+                StudyTask(title: "Edited future", due: Day.adding(10), completed: true, ruleID: rule.id, occurrence: Day.adding(1))
+            ]
+            state.assessments = [
+                Assessment(title: "Future quiz", day: Day.adding(2), ruleID: rule.id, occurrence: Day.adding(2))
+            ]
+            state.schedule = [
+                ScheduleBlock(title: "Past event", day: Day.adding(-1), allDay: true, ruleID: rule.id, occurrence: Day.adding(-1)),
+                ScheduleBlock(title: "Future event", day: Day.adding(2), allDay: true, ruleID: rule.id, occurrence: Day.adding(2))
+            ]
+            state.generated = Set((-1...2).map { "\(rule.id):\(Day.adding($0))" })
+        }
+
+        store.deleteRule(rule.id)
+
+        XCTAssertEqual(Set(store.state.tasks.map(\.title)), Set(["Past", "Today"]))
+        XCTAssertTrue(store.state.tasks.allSatisfy { $0.ruleID == nil && $0.occurrence == nil })
+        XCTAssertTrue(store.state.assessments.isEmpty)
+        XCTAssertEqual(store.state.schedule.map(\.title), ["Past event"])
+        XCTAssertNil(store.state.schedule.first?.ruleID)
+        XCTAssertFalse(store.state.generated.contains { $0.hasPrefix(rule.id + ":") })
     }
     @MainActor func testRemoveListPreservesWorkAndUndoRestoresIt() async throws {
         let store = try Store(database: database())

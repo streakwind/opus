@@ -45,6 +45,7 @@ struct WorkItemEditor: View {
     var store: Store
     var source: WorkDraft
     var onDateChange: (String) -> Void
+    var onEditRhythm: ((QuizRule) -> Void)?
     var onDismiss: () -> Void
     @State private var title: String
     @State private var course: String?
@@ -57,10 +58,11 @@ struct WorkItemEditor: View {
     @State private var current: Int
     @FocusState private var titleFocused: Bool
 
-    init(store: Store, source: WorkDraft, onDateChange: @escaping (String) -> Void = { _ in }, onDismiss: @escaping () -> Void = {}) {
+    init(store: Store, source: WorkDraft, onDateChange: @escaping (String) -> Void = { _ in }, onEditRhythm: ((QuizRule) -> Void)? = nil, onDismiss: @escaping () -> Void = {}) {
         self.store = store
         self.source = source
         self.onDateChange = onDateChange
+        self.onEditRhythm = onEditRhythm
         self.onDismiss = onDismiss
         switch source {
         case .new(let day, let courseID, let title, let kind):
@@ -162,7 +164,14 @@ struct WorkItemEditor: View {
             }
 
             if let rhythmNote {
-                Text(rhythmNote).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Text(rhythmNote).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    if let rhythmRule, let onEditRhythm {
+                        Button("Edit rhythm") { onEditRhythm(rhythmRule) }
+                            .buttonStyle(.plain).foregroundStyle(.secondary).font(.caption)
+                    }
+                }
             }
 
             if !valid {
@@ -207,8 +216,15 @@ struct WorkItemEditor: View {
         return draft.pacing(on: Day.today)
     }
 
+    private var rhythmRule: QuizRule? {
+        switch source {
+        case .task(let task): return store.rule(task.ruleID)
+        case .assessment(let item): return store.rule(item.ruleID)
+        case .new: return nil
+        }
+    }
     private var rhythmNote: String? {
-        guard case .task(let task) = source, let rule = store.rule(task.ruleID) else { return nil }
+        guard let rule = rhythmRule else { return nil }
         var parts = [rule.repeatsLabel]
         if let end = rule.endDate { parts.append("Rhythm ends " + Day.label(end)) }
         return parts.joined(separator: " · ")
@@ -301,17 +317,29 @@ struct ScheduleEditor: View {
         originalRepeatEnd = end
     }
     private var existing: Bool { store.state.schedule.contains { $0.id == block.id } }
-    private var valid: Bool { !block.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && block.duration > 0 && block.startMinute + block.duration <= 1440 && (!repeatBlock || !repeatDays.isEmpty) }
+    private var valid: Bool {
+        !block.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        (block.isAllDay || (block.duration > 0 && block.startMinute + block.duration <= 1440)) &&
+        (!repeatBlock || !repeatDays.isEmpty)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(Day.date(block.day).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) + " · " + block.timeLabel).font(.caption).foregroundStyle(.secondary)
+            Text(Day.date(block.day).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) + " · " + (block.isAllDay ? "All day" : block.timeLabel)).font(.caption).foregroundStyle(.secondary)
             TextField("Class, study session, or event", text: $block.title).textFieldStyle(.plain).font(.system(size: 18, weight: .semibold)).focused($titleFocused).onSubmit(save)
                 .accessibilityIdentifier("schedule-title-field")
             VStack(spacing: 0) {
                 PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $block.courseID) }
                 PropertyRow("Date") { DateMenu(title: "Date", value: Binding(get: { block.day }, set: { block.day = $0 ?? Day.today })) }
-                PropertyRow("Starts") { TimeControl(minutes: $block.startMinute) }
-                PropertyRow("Ends") { TimeControl(minutes: Binding(get: { block.endMinute }, set: { block.endMinute = $0 })) }
+                PropertyRow("All day") {
+                    Toggle("All day", isOn: Binding(
+                        get: { block.isAllDay },
+                        set: { block.allDay = $0 ? true : nil }
+                    )).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                }
+                if !block.isAllDay {
+                    PropertyRow("Starts") { TimeControl(minutes: $block.startMinute) }
+                    PropertyRow("Ends") { TimeControl(minutes: Binding(get: { block.endMinute }, set: { block.endMinute = $0 })) }
+                }
             }
             if !existing {
                 Toggle("Repeat", isOn: $repeatBlock).toggleStyle(.checkbox)
@@ -323,7 +351,7 @@ struct ScheduleEditor: View {
                 PropertyRow("Until") { DateMenu(title: "No end date", value: $repeatEnd) }
             }
             if !block.notes.isEmpty { TextField("Details", text: $block.notes, axis: .vertical).textFieldStyle(.plain).lineLimit(1...4) }
-            if block.startMinute + block.duration > 1440 { Text("Choose a duration that ends before midnight.").font(.caption).foregroundStyle(.orange) }
+            if !block.isAllDay && block.startMinute + block.duration > 1440 { Text("Choose a duration that ends before midnight.").font(.caption).foregroundStyle(.orange) }
             HStack {
                 if existing {
                     if block.ruleID != nil {
@@ -350,7 +378,7 @@ struct ScheduleEditor: View {
         guard valid else { return }
         if repeatBlock {
             var rule = QuizRule(courseID: block.courseID, title: block.title)
-            rule.itemKind = .schedule; rule.weekdays = repeatDays.sorted(); rule.startDate = block.day; rule.endDate = repeatEnd; rule.startMinute = block.startMinute; rule.duration = block.duration; rule.notes = block.notes
+            rule.itemKind = .schedule; rule.weekdays = repeatDays.sorted(); rule.startDate = block.day; rule.endDate = repeatEnd; rule.startMinute = block.startMinute; rule.duration = block.duration; rule.allDay = block.allDay; rule.notes = block.notes
             store.saveRule(rule)
         } else {
             store.save(block)

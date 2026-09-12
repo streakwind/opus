@@ -157,7 +157,7 @@ package final class Store {
                         occurrence: day
                     ))
                 case .schedule:
-                    state.schedule.append(ScheduleBlock(courseID: rule.courseID, title: rule.title, day: day, startMinute: rule.startMinute ?? 540, duration: rule.duration ?? 60, notes: rule.notes ?? "", ruleID: rule.id, occurrence: day))
+                    state.schedule.append(ScheduleBlock(courseID: rule.courseID, title: rule.title, day: day, startMinute: rule.startMinute ?? 540, duration: rule.duration ?? 60, allDay: rule.allDay == true, notes: rule.notes ?? "", ruleID: rule.id, occurrence: day))
                 }
             }
         }
@@ -187,7 +187,7 @@ package final class Store {
             return remove
         }
         state.schedule.removeAll { item in
-            let remove = item.ruleID == rule.id && item.day >= Day.today && item.day == item.occurrence && item.title == rule.title && item.notes == (rule.notes ?? "") && item.startMinute == (rule.startMinute ?? 540) && item.duration == (rule.duration ?? 60) && item.courseID == rule.courseID
+            let remove = item.ruleID == rule.id && item.day >= Day.today && item.day == item.occurrence && item.title == rule.title && item.notes == (rule.notes ?? "") && item.startMinute == (rule.startMinute ?? 540) && item.duration == (rule.duration ?? 60) && item.isAllDay == (rule.allDay == true) && item.courseID == rule.courseID
             if remove, let day = item.occurrence { removedDays.append(day) }
             return remove
         }
@@ -205,12 +205,35 @@ package final class Store {
     }
     package func deleteRule(_ id: String) {
         change { state in
-            if let rule = state.rules.first(where: { $0.id == id }) { Self.removeUntouched(rule, in: &state) }
+            let taskIDs = Set(state.tasks.filter {
+                $0.ruleID == id && ($0.occurrence ?? $0.calendarDay ?? "") > Day.today
+            }.map(\.id))
+            state.activities.removeAll { taskIDs.contains($0.taskID) }
+            state.tasks.removeAll { taskIDs.contains($0.id) }
+            state.assessments.removeAll {
+                $0.ruleID == id && ($0.occurrence ?? $0.day) > Day.today
+            }
+            state.schedule.removeAll {
+                $0.ruleID == id && ($0.occurrence ?? $0.day) > Day.today
+            }
+            for index in state.tasks.indices where state.tasks[index].ruleID == id {
+                state.tasks[index].ruleID = nil
+                state.tasks[index].occurrence = nil
+            }
+            for index in state.assessments.indices where state.assessments[index].ruleID == id {
+                state.assessments[index].ruleID = nil
+                state.assessments[index].occurrence = nil
+            }
+            for index in state.schedule.indices where state.schedule[index].ruleID == id {
+                state.schedule[index].ruleID = nil
+                state.schedule[index].occurrence = nil
+            }
+            state.generated = state.generated.filter { !$0.hasPrefix(id + ":") }
             state.rules.removeAll { $0.id == id }
         }
     }
     package func save(_ block: ScheduleBlock) {
-        guard block.startMinute >= 0, block.duration > 0, block.startMinute + block.duration <= 1440 else { return }
+        guard block.isAllDay || (block.startMinute >= 0 && block.duration > 0 && block.startMinute + block.duration <= 1440) else { return }
         change { state in
             if let index = state.schedule.firstIndex(where: { $0.id == block.id }) { state.schedule[index] = block }
             else { state.schedule.append(block) }
@@ -235,6 +258,10 @@ package final class Store {
             change { $0.schedule.removeAll { $0.id == block.id } }
             return
         }
+        if scope == .allEvents {
+            deleteRule(ruleID)
+            return
+        }
         let boundary = block.occurrence ?? block.day
         change { state in
             switch scope {
@@ -250,9 +277,7 @@ package final class Store {
                     return day < boundary
                 }
             case .allEvents:
-                state.schedule.removeAll { $0.ruleID == ruleID }
-                state.rules.removeAll { $0.id == ruleID }
-                state.generated = state.generated.filter { !$0.hasPrefix(ruleID + ":") }
+                break
             }
         }
     }

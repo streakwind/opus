@@ -151,16 +151,20 @@ struct RuleEditor: View {
             !days.isEmpty &&
             (rule.endDate == nil || rule.endDate! >= (rule.startDate ?? Day.today)) &&
             (rule.workKind != .progress || (start > 0 && target >= start && target <= 1_000_000)) &&
-            (rule.kind != .schedule || (rule.startMinute ?? 540) + (rule.duration ?? 60) <= 1440)
+            (rule.kind != .schedule || rule.allDay == true || (rule.startMinute ?? 540) + (rule.duration ?? 60) <= 1440)
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("Repeat something", text: $rule.title).textFieldStyle(.plain).font(.system(size: 19, weight: .semibold))
             VStack(spacing: 0) {
                 PropertyRow("Type") {
-                    PillPicker("Type", label: rule.workKind.rawValue, selection: Binding(get: { rule.workKind }, set: { rule.workKind = $0 })) {
-                        ForEach(WorkKind.allCases) { Text($0.rawValue).tag($0) }
-                    }.labelsHidden().pickerStyle(.menu)
+                    if rule.kind == .schedule {
+                        Text("Schedule").foregroundStyle(.secondary)
+                    } else {
+                        PillPicker("Type", label: rule.workKind.rawValue, selection: Binding(get: { rule.workKind }, set: { rule.workKind = $0 })) {
+                            ForEach(WorkKind.allCases) { Text($0.rawValue).tag($0) }
+                        }.labelsHidden().pickerStyle(.menu)
+                    }
                 }
                 PropertyRow("List") { CourseMenu(courses: store.state.courses, value: $rule.courseID) }
                 if rule.workKind == .progress {
@@ -173,12 +177,20 @@ struct RuleEditor: View {
                     }
                 }
                 if rule.kind == .schedule {
-                    PropertyRow("Starts") { TimeControl(minutes: Binding(get: { rule.startMinute ?? 540 }, set: { rule.startMinute = $0 })) }
-                    PropertyRow("Ends") {
-                        TimeControl(minutes: Binding(
-                            get: { min(1440, (rule.startMinute ?? 540) + (rule.duration ?? 60)) },
-                            set: { rule.duration = max(15, min(1440, $0) - (rule.startMinute ?? 540)) }
-                        ))
+                    PropertyRow("All day") {
+                        Toggle("All day", isOn: Binding(
+                            get: { rule.allDay == true },
+                            set: { rule.allDay = $0 ? true : nil }
+                        )).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    }
+                    if rule.allDay != true {
+                        PropertyRow("Starts") { TimeControl(minutes: Binding(get: { rule.startMinute ?? 540 }, set: { rule.startMinute = $0 })) }
+                        PropertyRow("Ends") {
+                            TimeControl(minutes: Binding(
+                                get: { min(1440, (rule.startMinute ?? 540) + (rule.duration ?? 60)) },
+                                set: { rule.duration = max(15, min(1440, $0) - (rule.startMinute ?? 540)) }
+                            ))
+                        }
                     }
                 }
             }
@@ -198,7 +210,7 @@ struct RuleEditor: View {
                 PropertyRow("Rhythm ends") { DateMenu(title: "No end date", value: $rule.endDate) }
                 PropertyRow("Active") { Toggle("Active", isOn: $rule.enabled).labelsHidden().toggleStyle(.switch).controlSize(.small) }
             }
-            Text("Changes apply to future untouched occurrences. Completed or individually edited items stay as they are.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text("Changes apply to future untouched occurrences. Deleting keeps today and past history, and removes later occurrences.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack {
                 if store.state.rules.contains(where: { $0.id == rule.id }) { Button("Delete", role: .destructive) { store.deleteRule(rule.id); dismiss() } }
                 Spacer()

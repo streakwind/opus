@@ -31,16 +31,20 @@ final class RedesignTests: XCTestCase {
         let late = ScheduleLayout.block(day: "2026-09-09", startY: 1438, endY: 1500)
         XCTAssertEqual(late.startMinute + late.duration, 1440)
     }
-    func testTodayIncludesTomorrowWithoutRecurringBacklog() {
+    func testTodayUsesSevenDayDeadlinesAndAllUnfinishedProgress() {
         let today = "2026-09-09"
-        XCTAssertTrue(StudyTask(title: "Tomorrow", planned: "2026-09-10").isInToday(on: today))
         XCTAssertTrue(StudyTask(title: "Due tomorrow", due: "2026-09-10").isInToday(on: today))
+        XCTAssertTrue(StudyTask(title: "Due in a week", due: "2026-09-16").isInToday(on: today))
+        XCTAssertFalse(StudyTask(title: "Due later", due: "2026-09-17").isInToday(on: today))
         XCTAssertTrue(StudyTask(title: "Overdue", due: "2026-09-08").isInToday(on: today))
-        XCTAssertFalse(StudyTask(title: "Later", planned: "2026-09-11").isInToday(on: today))
+        XCTAssertFalse(StudyTask(title: "Planned only", planned: "2026-09-10").isInToday(on: today))
+        XCTAssertFalse(StudyTask(title: "Completed", due: "2026-09-10", completed: true).isInToday(on: today))
         XCTAssertFalse(StudyTask(title: "Past repeat", due: "2026-09-08", ruleID: "r").isInToday(on: today))
-        XCTAssertTrue(StudyTask(title: "Next repeat", due: "2026-09-10", ruleID: "r").isInToday(on: today))
-        XCTAssertFalse(StudyTask(title: "Legacy past repeat", planned: "2026-09-08", ruleID: "r").isInToday(on: today))
-        XCTAssertTrue(StudyTask(title: "Legacy next repeat", planned: "2026-09-10", ruleID: "r").isInToday(on: today))
+        XCTAssertTrue(StudyTask(title: "Next repeat", due: "2026-09-16", ruleID: "r").isInToday(on: today))
+        XCTAssertFalse(StudyTask(title: "Later repeat", due: "2026-09-17", ruleID: "r").isInToday(on: today))
+        XCTAssertTrue(StudyTask(title: "Book", kind: .progress, due: "2027-01-01", start: 1, target: 30, current: 10).isInToday(on: today))
+        XCTAssertTrue(StudyTask(title: "Undated book", kind: .progress, start: 1, target: 30, current: 10).isInToday(on: today))
+        XCTAssertFalse(StudyTask(title: "Finished book", kind: .progress, start: 1, target: 30, current: 30).isInToday(on: today))
     }
     @MainActor func testGenerationRetainsYesterdayTaskButNotPastCalendarEvents() async {
         let today = "2026-09-09"
@@ -247,6 +251,16 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(placements.map(\.columns), [2,2,1])
         XCTAssertNotEqual(placements[0].column, placements[1].column)
         XCTAssertEqual(placements[2].column, 0)
+    }
+    func testAllDayScheduleRoundTripsAndLegacyEventsStayTimed() throws {
+        let allDay = ScheduleBlock(title: "Deadline", day: "2026-09-12", allDay: true)
+        let copy = try JSONDecoder().decode(ScheduleBlock.self, from: JSONEncoder().encode(allDay))
+        XCTAssertTrue(copy.isAllDay)
+        let legacy = try JSONDecoder().decode(
+            ScheduleBlock.self,
+            from: Data(#"{"id":"old","title":"Class","day":"2026-09-12","startMinute":540,"duration":60,"notes":""}"#.utf8)
+        )
+        XCTAssertFalse(legacy.isAllDay)
     }
     func testCourseWorkSeparatesProgressAndCollapsesRhythms() {
         let course = Course(name: "Example list")

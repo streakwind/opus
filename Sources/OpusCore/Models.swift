@@ -135,6 +135,7 @@ package struct QuizRule: Identifiable, Codable, Equatable {
     package var targetCount: Int?
     package var startMinute: Int?
     package var duration: Int?
+    package var allDay: Bool?
     package var notes: String?
     package var days: Set<Int> { Set(weekdays ?? [weekday]) }
     package var kind: RepeatItem { itemKind ?? .assessment }
@@ -181,7 +182,7 @@ package struct QuizRule: Identifiable, Codable, Equatable {
         let current = calendar.dateInterval(of: .weekOfYear, for: Day.date(day))!.start
         return (calendar.dateComponents([.day], from: start, to: current).day! / 7) % interval == 0
     }
-    package init(id: String = UUID().uuidString, courseID: String? = nil, title: String = "", weekday: Int = 4, enabled: Bool = true, assessmentsConfirmed: Bool? = nil, weekdays: [Int]? = nil, itemKind: RepeatItem? = nil, intervalWeeks: Int? = nil, startDate: String? = nil, endDate: String? = nil, taskKind: TaskKind? = nil, startCount: Int? = nil, targetCount: Int? = nil, startMinute: Int? = nil, duration: Int? = nil, notes: String? = nil) {
+    package init(id: String = UUID().uuidString, courseID: String? = nil, title: String = "", weekday: Int = 4, enabled: Bool = true, assessmentsConfirmed: Bool? = nil, weekdays: [Int]? = nil, itemKind: RepeatItem? = nil, intervalWeeks: Int? = nil, startDate: String? = nil, endDate: String? = nil, taskKind: TaskKind? = nil, startCount: Int? = nil, targetCount: Int? = nil, startMinute: Int? = nil, duration: Int? = nil, allDay: Bool? = nil, notes: String? = nil) {
         self.id = id
         self.courseID = courseID
         self.title = title
@@ -198,6 +199,7 @@ package struct QuizRule: Identifiable, Codable, Equatable {
         self.targetCount = targetCount
         self.startMinute = startMinute
         self.duration = duration
+        self.allDay = allDay
         self.notes = notes
     }
 }
@@ -212,6 +214,8 @@ package struct ScheduleBlock: Identifiable, Codable, Equatable {
     package var day = Day.today
     package var startMinute = 9 * 60
     package var duration = 60
+    /// Optional so databases written before all-day events remain decodable.
+    package var allDay: Bool?
     package var notes = ""
     package var ruleID: String?
     package var occurrence: String?
@@ -219,14 +223,16 @@ package struct ScheduleBlock: Identifiable, Codable, Equatable {
         get { min(1440, startMinute + duration) }
         set { duration = max(15, min(1440, newValue) - startMinute) }
     }
+    package var isAllDay: Bool { allDay == true }
     package var timeLabel: String { ClockTime.label(startMinute) + "–" + ClockTime.label(startMinute + duration) }
-    package init(id: String = UUID().uuidString, courseID: String? = nil, title: String = "", day: String = Day.today, startMinute: Int = 9 * 60, duration: Int = 60, notes: String = "", ruleID: String? = nil, occurrence: String? = nil) {
+    package init(id: String = UUID().uuidString, courseID: String? = nil, title: String = "", day: String = Day.today, startMinute: Int = 9 * 60, duration: Int = 60, allDay: Bool = false, notes: String = "", ruleID: String? = nil, occurrence: String? = nil) {
         self.id = id
         self.courseID = courseID
         self.title = title
         self.day = day
         self.startMinute = startMinute
         self.duration = duration
+        self.allDay = allDay ? true : nil
         self.notes = notes
         self.ruleID = ruleID
         self.occurrence = occurrence
@@ -389,16 +395,15 @@ extension StudyTask {
 
 extension StudyTask {
     package func isInToday(on today: String) -> Bool {
-        let tomorrow = Day.adding(1, to: today)
-        if let due {
-            if ruleID != nil { return due >= today && due <= tomorrow }
-            return due <= tomorrow
+        let week = Day.adding(7, to: today)
+        if kind == .progress {
+            guard current < target else { return false }
+            guard ruleID != nil else { return true }
+            return (due ?? planned).map { $0 >= today } == true
         }
-        if let planned {
-            if ruleID != nil { return planned >= today && planned <= tomorrow }
-            return planned <= tomorrow
-        }
-        return false
+        guard !completed, let due else { return false }
+        if ruleID != nil { return due >= today && due <= week }
+        return due <= week
     }
     package func rhythmCaption(rule: QuizRule?, markNext: Bool) -> String? {
         guard ruleID != nil else { return nil }
