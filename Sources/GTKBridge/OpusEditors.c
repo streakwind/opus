@@ -332,7 +332,9 @@ static void attach_editor_actions(const char *save_action,
     g_signal_connect(save, "clicked", G_CALLBACK(save_cb), NULL);
     opus_set_accessible_name(save, save_action);
     gtk_box_append(GTK_BOX(actions), save);
-    gtk_box_append(GTK_BOX(opus_ui.editor_body), actions);
+    GtkWidget *host =
+        opus_ui.editor_actions ? opus_ui.editor_actions : opus_ui.editor_body;
+    gtk_box_append(GTK_BOX(host), actions);
     opus_ui.editor_save = save_cb;
 }
 
@@ -384,6 +386,8 @@ static GtkWidget *course_time_row_widget(const char *id, int start, int end,
     row->id = g_strdup(id ? id : "");
     row->row = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
     gtk_widget_add_css_class(row->row, "opus-class-time-card");
+    gtk_widget_set_hexpand(row->row, TRUE);
+    gtk_widget_set_halign(row->row, GTK_ALIGN_FILL);
 
     GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     GtkWidget *caption = opus_label("Class time");

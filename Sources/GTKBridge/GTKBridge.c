@@ -231,6 +231,7 @@ static void activate(GtkApplication *application, gpointer unused) {
     g_signal_connect(new_list_button, "clicked", G_CALLBACK(new_list_blank), NULL);
     GtkWidget *settings = opus_button("Settings", "emblem-system-symbolic",
                                       "settings", NULL);
+    opus_set_identity(settings, "Settings", NULL);
     gtk_box_append(GTK_BOX(footer), list_entry);
     gtk_box_append(GTK_BOX(footer), new_list_button);
     gtk_box_append(GTK_BOX(footer), settings);

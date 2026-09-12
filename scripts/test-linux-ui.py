@@ -173,7 +173,14 @@ def courses(db: Path):
 
 with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
     env = dict(os.environ, OPUS_DATA_DIR=data, GDK_BACKEND='x11', GTK_A11Y='atspi')
-    process = subprocess.Popen(['dist/linux/bin/opus'], env=env)
+    log_path = artifacts / 'opus-stderr.log'
+    log_file = open(log_path, 'w', encoding='utf-8')
+    process = subprocess.Popen(
+        ['dist/linux/bin/opus'],
+        env=env,
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+    )
     try:
         main = wait_for(lambda: window_id('Opus'))
         command('xdotool', 'windowfocus', '--sync', main)
@@ -238,12 +245,14 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
             click('Add class time', role='push button')
         except AssertionError:
             pass
-        command('xdotool', 'key', '--clearmodifiers', 'ctrl+Return')
+        click('Save', role='push button')
         wait_for(lambda: any(course.get('name') == 'Physics Lab' for course in courses(db)))
         saved_course = next(course for course in courses(db) if course.get('name') == 'Physics Lab')
         assert saved_course.get('name') == 'Physics Lab'
+        assert process.poll() is None, f'Opus exited after saving class times; log:\n{log_path.read_text(errors="replace")}'
+        find_accessible('Physics Lab')
 
-        click('Settings')
+        click(('Settings',), role='push button')
         find_accessible(('set-appearance', 'Appearance', 'APPEARANCE'))
         click(('settings-done', 'Done'))
 
@@ -256,7 +265,7 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
 
         command('import', '-window', 'root', str(artifacts / 'shell-light.png'))
         # Toggle dark appearance for a second screenshot when settings allow it.
-        click('Settings')
+        click(('Settings',), role='push button')
         find_accessible(('set-appearance', 'Appearance', 'APPEARANCE'))
         try:
             click('Dark')
@@ -273,7 +282,14 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         css = Path('dist/linux/share/opus/opus.css')
         assert css.is_file(), 'Bundled Opus CSS missing from Linux package'
         print('Accessibility UI checks passed for tasks, calendar, schedule, rhythm, class times, and persistence.')
+    except Exception:
+        try:
+            print(log_path.read_text(errors='replace'))
+        except Exception:
+            pass
+        raise
     finally:
+        log_file.close()
         if process.poll() is None:
             process.terminate()
             process.wait(timeout=10)

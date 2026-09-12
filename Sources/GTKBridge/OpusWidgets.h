@@ -47,6 +47,7 @@ typedef struct {
     GtkWidget *editor_heading;
     GtkWidget *editor_error;
     GtkWidget *editor_body;
+    GtkWidget *editor_actions;
     int editor_type;
     char *editor_id;
     char *editor_rule_id;

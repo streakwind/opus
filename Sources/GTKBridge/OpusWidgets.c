@@ -280,10 +280,14 @@ static void weekday_toggled(GtkCheckButton *check, gpointer data) {
 }
 
 GtkWidget *opus_weekday_box(int selected_mask) {
-    static const char *labels[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    static const char *labels[] = {"S", "M", "T", "W", "T", "F", "S"};
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
+    gtk_widget_set_hexpand(box, FALSE);
     for (int day = 1; day <= 7; day++) {
         GtkWidget *toggle = gtk_check_button_new_with_label(labels[day - 1]);
+        gtk_widget_set_tooltip_text(
+            toggle, (const char *[]) {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri",
+                                      "Sat"}[day - 1]);
         if (selected_mask & (1 << day)) {
             gtk_check_button_set_active(GTK_CHECK_BUTTON(toggle), TRUE);
         }
@@ -318,6 +322,7 @@ static void clear_editor_state(void) {
     opus_ui.editor_heading = NULL;
     opus_ui.editor_error = NULL;
     opus_ui.editor_body = NULL;
+    opus_ui.editor_actions = NULL;
     opus_ui.editor_type = 0;
     g_free(opus_ui.editor_id);
     opus_ui.editor_id = NULL;
@@ -449,12 +454,15 @@ void opus_editor_window_begin(const char *title, int type) {
     opus_ui.editor_body = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
     GtkWidget *scroll = gtk_scrolled_window_new();
     gtk_widget_set_vexpand(scroll, TRUE);
-    gtk_widget_set_size_request(scroll, -1, 360);
+    gtk_widget_set_hexpand(scroll, TRUE);
+    gtk_widget_set_size_request(scroll, 420, 360);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll),
-                                   GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+                                   GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll),
                                   opus_ui.editor_body);
     gtk_box_append(GTK_BOX(body_wrap), scroll);
+    opus_ui.editor_actions = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_box_append(GTK_BOX(body_wrap), opus_ui.editor_actions);
     gtk_box_append(GTK_BOX(opus_ui.editor), body_wrap);
 
     gtk_box_append(GTK_BOX(center), opus_ui.editor);
@@ -496,15 +504,32 @@ void opus_editor_add_actions(GtkWidget *box, const char *save_action,
 void opus_editors_close(gboolean notify) {
     if (opus_ui.editor_dim) {
         GtkWidget *dim = opus_ui.editor_dim;
+        /* Drop row metadata before destroying widgets so free funcs never
+         * touch partially-torn-down spin buttons / day toggles. */
+        if (opus_ui.editor_time_rows) {
+            for (guint i = 0; i < opus_ui.editor_time_rows->len; i++) {
+                OpusCourseTimeRow *row =
+                    g_ptr_array_index(opus_ui.editor_time_rows, i);
+                if (!row) {
+                    continue;
+                }
+                row->row = NULL;
+                row->start = NULL;
+                row->end = NULL;
+                row->days_box = NULL;
+            }
+        }
         g_signal_handlers_disconnect_by_func(dim,
                                              G_CALLBACK(editor_destroyed), NULL);
         GtkWidget *parent = gtk_widget_get_parent(dim);
+        g_object_ref(dim);
         if (parent && GTK_IS_OVERLAY(parent)) {
             gtk_overlay_remove_overlay(GTK_OVERLAY(parent), dim);
         } else if (parent && GTK_IS_BOX(parent)) {
             gtk_box_remove(GTK_BOX(parent), dim);
         }
         clear_editor_state();
+        g_object_unref(dim);
     } else if (opus_ui.editor && GTK_IS_WINDOW(opus_ui.editor)) {
         GtkWidget *editor = opus_ui.editor;
         g_signal_handlers_disconnect_by_func(editor,

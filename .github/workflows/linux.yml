@@ -32,7 +32,9 @@ jobs:
         if: always()
         with:
           name: Linux-UI-check
-          path: /tmp/opus-linux-ui/*.png
+          path: |
+            /tmp/opus-linux-ui/*
+            /tmp/dogtail-root/logs/*
 
   clean-runtime:
     needs: gtk
