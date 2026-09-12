@@ -1,0 +1,64 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to publish (optional)
+        required: false
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Wait for platform artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.tag.outputs.name }}"
+          test -n "$tag"
+          for workflow in macOS Linux; do
+            for _ in $(seq 1 60); do
+              id=$(gh run list --workflow "$workflow" --branch "$tag" --limit 1 --json databaseId,conclusion,status --jq '.[0].databaseId // empty')
+              status=$(gh run list --workflow "$workflow" --branch "$tag" --limit 1 --json status,conclusion --jq '.[0] | "\(.status):\(.conclusion)"')
+              echo "$workflow $status"
+              if [[ "$status" == "completed:success" ]]; then
+                mkdir -p dist
+                gh run download "$id" -D dist
+                break
+              fi
+              if [[ "$status" == completed:* ]]; then
+                echo "$workflow failed" >&2
+                exit 1
+              fi
+              sleep 30
+            done
+          done
+          find dist -type f -print
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.tag.outputs.name }}"
+          version="${tag#v}"
+          mac=$(find dist -name 'Opus-macOS.zip' | head -n1)
+          linux=$(find dist -name 'Opus-linux-x86_64.tar.gz' | head -n1)
+          test -f "$mac" && test -f "$linux"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$mac" "$linux" --clobber
+          else
+            gh release create "$tag" "$mac" "$linux" --title "Opus $version" --generate-notes
+          fi

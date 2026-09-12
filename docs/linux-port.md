@@ -1,12 +1,23 @@
-# Linux GTK preview
+# Linux GTK app
 
-Opus now has a shared `OpusCore` target and separate SwiftUI (Mac) and GTK 4 (Linux) interfaces. Both use the same SQLite schema, models, task mutations, recurrence engine, and progress calculations. Mac-specific colors and window code remain in the Mac target.
+Opus on Linux uses the same `OpusCore` SQLite engine as macOS, with a GTK 4 shell and a testable `OpusGTKSupport` presentation layer. Navigation, lists, tasks, progress, assessments, Calendar, Schedule, Rhythm, settings, export, and Quick Start match macOS functionally with native GTK controls.
 
-The Linux preview supports Today (including tomorrow), Inbox, All Tasks, Completed, custom lists, task creation/editing/deletion, completion, undo, textbook page tracking, due dates, and Quick Start help. It starts empty. Calendar, Schedule, and Rhythm interfaces are not yet available on Linux; their records remain intact in the shared database.
+## Install (Ubuntu 24.04+)
 
-## Build on Ubuntu 24.04
+Download `Opus-linux-x86_64.tar.gz` from [GitHub Releases](https://github.com/streakwind/opus/releases), then:
 
-Install [Swift 6.1 or newer](https://www.swift.org/install/linux/), then:
+```sh
+mkdir -p ~/.local/opt/opus
+tar -xzf Opus-linux-x86_64.tar.gz -C ~/.local/opt/opus
+ln -sf ~/.local/opt/opus/bin/opus ~/.local/bin/opus
+opus
+```
+
+The archive is self-contained: Swift runtime, GTK 4, SQLite, schemas, and loaders ship beside the binary. You do **not** need a system Swift or GTK development install to run it. Only a normal desktop (glibc, display server/drivers) is required. Always launch `bin/opus`, not `libexec/opus`. See `share/doc/opus/INSTALL.md` inside the archive.
+
+## Build from source
+
+Install [Swift 6.1+](https://www.swift.org/install/linux/) and:
 
 ```sh
 sudo apt-get install libgtk-4-dev libsqlite3-dev pkg-config
@@ -15,18 +26,43 @@ swift test
 ./dist/linux/bin/opus
 ```
 
-Keyboard shortcuts: Ctrl+N opens a task, Ctrl+Enter saves its editor, Escape cancels, Ctrl+Shift+Z undoes a task change, F1 opens Quick Start, and Ctrl+Q quits.
+`build-linux.sh` stages a relocatable tree under `dist/linux` and produces `dist/Opus-linux-x86_64.tar.gz`.
 
-GTK uses the desktop theme and native widgets. The C bridge owns the widgets and forwards user actions to Swift; it contains no database or recurrence logic. The bridge targets GTK 4.8 or newer. [GTK documentation](https://docs.gtk.org/gtk4/).
+## Features
 
-`dist/Opus-linux-preview.tar.gz` preserves executable permissions and contains the `dist/linux` layout: launcher, executable, desktop entry, and the existing Opus icon. Install under a prefix such as `~/.local` with its `bin` on PATH. The launcher finds a Swift runtime through `swift` on PATH. Swift, GTK, and SQLite must be installed; this is not a self-contained Flatpak. GitHub Actions builds and smoke-tests the preview on Ubuntu using an isolated database.
+- Sidebar: Today, Tasks, Inbox, Archive, Calendar, Schedule, Rhythm, and custom lists
+- Unified work editor for tasks, page progress, and assessments
+- Calendar day/week/month with drag rescheduling
+- Schedule day/week hour grid with class blocks and timed events
+- Rhythm rules for tasks, progress, assessments, and schedule events
+- Settings: System/Light/Dark appearance, JSON export, reveal database folder
+- Quick Start help and first-run setup
+- Undo, search, archive delete-all confirmation
+
+## Shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| Ctrl+N | New work item |
+| Ctrl+Enter | Save editor |
+| Escape | Cancel editor |
+| Ctrl+Shift+Z | Undo |
+| F1 | Quick Start |
+| Ctrl+Q | Quit |
 
 ## Data
 
-Linux stores data at `$XDG_DATA_HOME/opus/Opus.sqlite`, falling back to `~/.local/share/opus/Opus.sqlite`. `OPUS_DATA_DIR` overrides the directory for testing. No personal presets or sample records are included.
+Linux stores data at `$XDG_DATA_HOME/opus/Opus.sqlite`, falling back to `~/.local/share/opus/Opus.sqlite`. Set `OPUS_DATA_DIR` to isolate test databases. Quit before copying the database; include `-wal`/`-shm` if present.
 
-To transfer a database, quit Opus on both computers and back up the database before copying it. Copy any accompanying `-wal` and `-shm` files with it if present. Shared storage format does not imply synchronization; do not use a live cloud-synced SQLite file.
+## Architecture
 
-## Next
+- `OpusCore` — SQLite, recurrence, undo, calendar/schedule layout
+- `OpusGTKSupport` — navigation, filtering, drafts, session reducer (unit-tested on macOS and Linux)
+- `GTKBridge` — C widgets and events
+- `OpusGTK` — thin Swift adapter over the session
 
-Port Calendar week/month views, Schedule, Rhythm, and list settings. Then validate keyboard navigation, accessibility, Wayland, and packaging on a real Linux desktop before a full Linux release.
+Interactive controls expose stable accessibility names for automated checks (`scripts/test-linux-ui.py`).
+
+## CI and releases
+
+Linux and macOS workflows run on **manual dispatch** or **version tags** (`v*`), not on ordinary commits. Tagging with `./scripts/release.sh 0.2.0` builds both platforms, verifies the self-contained Linux archive in a clean runtime, and publishes GitHub Release assets.

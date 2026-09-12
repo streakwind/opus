@@ -1,9 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 prefix=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
-# Swiftly and system Swift installations keep their runtime beside the toolchain.
-if command -v swift >/dev/null 2>&1; then
-    toolchain=$(dirname "$(dirname "$(readlink -f "$(command -v swift)")")")
-    export LD_LIBRARY_PATH="$toolchain/lib/swift/linux${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+if [[ -d "$prefix/lib/swift/linux" ]]; then
+  export LD_LIBRARY_PATH="$prefix/lib:$prefix/lib/swift/linux${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+elif [[ -d "$prefix/lib" ]]; then
+  export LD_LIBRARY_PATH="$prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 fi
+
+export XDG_DATA_DIRS="$prefix/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+if [[ -d "$prefix/share/glib-2.0/schemas" ]]; then
+  export GSETTINGS_SCHEMA_DIR="$prefix/share/glib-2.0/schemas"
+fi
+export GI_TYPELIB_PATH="$prefix/lib/girepository-1.0${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+
+cache="$prefix/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache"
+if [[ -f "$cache" ]]; then
+  runtime_cache=$(mktemp)
+  sed "s|@PREFIX@|$prefix|g" "$cache" > "$runtime_cache"
+  export GDK_PIXBUF_MODULE_FILE="$runtime_cache"
+  trap 'rm -f "$runtime_cache"' EXIT
+fi
+
+if ! find "$prefix/lib" "$prefix/lib/swift/linux" -name 'libswiftObservation.so*' 2>/dev/null | grep -q .; then
+  cat >&2 <<'EOF'
+Opus could not find its bundled Swift runtime (libswiftObservation.so).
+Reinstall from the official Linux archive so lib/ is present next to bin/.
+EOF
+  exit 1
+fi
+
 exec "$prefix/libexec/opus" "$@"

@@ -1,9 +1,8 @@
 name: Linux
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
+  push:
+    tags: ['v*']
 permissions:
   contents: read
 jobs:
@@ -12,23 +11,46 @@ jobs:
     container: swift:6.1-noble
     steps:
       - uses: actions/checkout@v5
-      - name: Install GTK and test tools
-        run: apt-get update && apt-get install -y libgtk-4-dev libsqlite3-dev pkg-config xvfb dbus-x11 xdotool imagemagick python3
-      - name: Shared core tests
+      - name: Install build dependencies
+        run: apt-get update && apt-get install -y libgtk-4-dev libsqlite3-dev pkg-config xvfb dbus-x11 xdotool imagemagick python3 python3-gi gir1.2-atspi-2.0 at-spi2-core patchelf
+      - name: Shared and presentation tests
         run: swift test
-      - name: Build GTK app
+      - name: Build self-contained archive
         run: ./scripts/build-linux.sh
-      - name: Open GTK window with isolated empty storage
+      - name: Smoke test bundled launcher
         run: |
           OPUS_DATA_DIR="$RUNNER_TEMP/opus-smoke" timeout 30s xvfb-run -a dbus-run-session -- dist/linux/bin/opus --smoke-test
-      - name: Keyboard task creation and persistence
+      - name: Accessibility UI checks
         run: xvfb-run -a dbus-run-session -- python3 scripts/test-linux-ui.py
       - uses: actions/upload-artifact@v7
         with:
-          name: Opus-linux-preview
-          path: dist/Opus-linux-preview.tar.gz
+          name: Opus-linux
+          path: |
+            dist/Opus-linux-x86_64.tar.gz
+            dist/Opus-linux-preview.tar.gz
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: Linux-UI-check
           path: /tmp/opus-linux-ui/*.png
+
+  clean-runtime:
+    needs: gtk
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: Opus-linux
+          path: dist
+      - name: Verify archive without Swift/GTK packages
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y xvfb dbus-x11
+          # Intentionally do not install Swift, GTK, or SQLite packages.
+          rm -rf /tmp/opus-runtime && mkdir -p /tmp/opus-runtime
+          tar -xzf dist/Opus-linux-x86_64.tar.gz -C /tmp/opus-runtime
+          export LD_LIBRARY_PATH="/tmp/opus-runtime/lib/swift/linux:/tmp/opus-runtime/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          ldd /tmp/opus-runtime/libexec/opus | tee /tmp/opus-ldd.txt
+          if grep -F 'not found' /tmp/opus-ldd.txt; then exit 1; fi
+          OPUS_DATA_DIR=/tmp/opus-clean-data timeout 30s xvfb-run -a dbus-run-session -- /tmp/opus-runtime/bin/opus --smoke-test

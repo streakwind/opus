@@ -1,0 +1,9 @@
+Third-party notices for the Linux bundle
+
+This archive redistributes runtime components from:
+
+- Swift open source toolchain (Apache License 2.0 with Runtime Library Exception)
+- GTK 4 and related GNOME libraries (LGPL-2.1+)
+- SQLite (public domain)
+
+Obtain corresponding source from your distribution or from the upstream projects. Opus application code is provided under the repository license.

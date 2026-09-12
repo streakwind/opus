@@ -2,8 +2,8 @@
 set -euo pipefail
 cd "${0:A:h:h}"
 
-version="${OPUS_VERSION:-0.3.0}"
-build_number="${OPUS_BUILD_NUMBER:-7}"
+version="${OPUS_VERSION:-0.2.0}"
+build_number="${OPUS_BUILD_NUMBER:-8}"
 if [[ ! "$version" =~ '^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$' ]]; then
   print -u2 "Invalid OPUS_VERSION: $version"
   exit 1

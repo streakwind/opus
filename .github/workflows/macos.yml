@@ -1,11 +1,10 @@
 name: macOS
-
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
-
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
 jobs:
   test:
     name: Test
@@ -14,11 +13,8 @@ jobs:
       - uses: actions/checkout@v5
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-      - name: Swift version
-        run: swift --version
       - name: Run tests
         run: swift test --scratch-path /tmp/opus-build
-
   build:
     name: Build app
     runs-on: macos-15
@@ -27,10 +23,16 @@ jobs:
       - uses: actions/checkout@v5
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+      - name: Version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: echo "OPUS_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
       - name: Build Opus.app
         run: ./scripts/build-app.sh
-      - name: Upload Opus.app
-        uses: actions/upload-artifact@v7
+      - name: Package zip
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent dist/Opus.app dist/Opus-macOS.zip
+      - uses: actions/upload-artifact@v7
         with:
           name: Opus-macos
-          path: dist/Opus.app
+          path: dist/Opus-macOS.zip

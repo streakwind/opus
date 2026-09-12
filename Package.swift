@@ -1,18 +1,29 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-var products: [Product] = [.library(name: "OpusCore", targets: ["OpusCore"])]
+var products: [Product] = [
+    .library(name: "OpusCore", targets: ["OpusCore"]),
+    .library(name: "OpusGTKSupport", targets: ["OpusGTKSupport"])
+]
 var targets: [Target] = [
     .systemLibrary(name: "CSQLite", pkgConfig: "sqlite3", providers: [.apt(["libsqlite3-dev"])]),
     .target(name: "OpusCore", dependencies: ["CSQLite"]),
-    .testTarget(name: "OpusCoreTests", dependencies: ["OpusCore"], path: "Tests/OpusCoreTests")
+    .target(name: "OpusGTKSupport", dependencies: ["OpusCore"]),
+    .testTarget(name: "OpusCoreTests", dependencies: ["OpusCore"], path: "Tests/OpusCoreTests"),
+    .testTarget(name: "OpusGTKSupportTests", dependencies: ["OpusGTKSupport", "OpusCore"], path: "Tests/OpusGTKSupportTests")
 ]
 #if os(Linux)
 products.append(.executable(name: "opus", targets: ["OpusGTK"]))
 targets += [
     .systemLibrary(name: "CGTK", pkgConfig: "gtk4", providers: [.apt(["libgtk-4-dev"])]),
-    .target(name: "GTKBridge", dependencies: ["CGTK"]),
-    .executableTarget(name: "OpusGTK", dependencies: ["OpusCore", "GTKBridge"])
+    .target(
+        name: "GTKBridge",
+        dependencies: ["CGTK"],
+        exclude: [],
+        publicHeadersPath: "include",
+        cSettings: [.headerSearchPath("include")]
+    ),
+    .executableTarget(name: "OpusGTK", dependencies: ["OpusCore", "OpusGTKSupport", "GTKBridge"])
 ]
 #else
 products.append(.executable(name: "Opus", targets: ["Opus"]))
