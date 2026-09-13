@@ -35,12 +35,12 @@ struct InlineProgress: View {
     }
     private var controls: some View {
         HStack(spacing: 10) {
-            Text("Last page read").font(.caption).foregroundStyle(.secondary)
+            Text("Through").font(.caption).foregroundStyle(.secondary)
             Spacer()
-            TextField("Last page read", value: $number, format: .number.grouping(.never)).textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing)
+            TextField("Through", value: $number, format: .number.grouping(.never)).textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing)
                 .font(.system(size: 13, weight: .medium, design: .monospaced)).frame(width: 68).focused($editing).onSubmit { apply(number) }
-                .accessibilityLabel("Last page read").help("Enter a page and press Return")
-        }.help("Log the last page you read · " + task.progressLabel)
+                .accessibilityLabel("Through").help("Enter a number and press Return")
+        }.help(task.progressLabel)
     }
     private func apply(_ updated: Int) {
         let bounded = task.clampedProgress(updated)

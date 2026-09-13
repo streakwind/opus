@@ -21,7 +21,7 @@ final class StorageTests: XCTestCase {
         XCTAssertEqual(reopened.courses, snapshot.courses)
         XCTAssertTrue(reopened.setupComplete)
         XCTAssertEqual(task.fraction, 0.4, accuracy: 0.001)
-        XCTAssertEqual(task.progressLabel, "12 of 30 pages")
+        XCTAssertEqual(task.progressLabel, "12 of 30")
     }
     func testFailedWriteRollsBack() throws {
         let db = try database()

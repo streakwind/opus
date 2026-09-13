@@ -105,8 +105,7 @@ struct ScheduleView: View {
         .onAppear { store.refreshOccurrences(through: days.last) }
     }
     private func dayColumn(_ day: String, width: CGFloat) -> some View {
-        let classes = store.state.courses.flatMap { $0.classBlocks(on: day) }
-        let displayed = classes + store.state.schedule.filter { !$0.isAllDay && $0.id != editing?.id } + (editing.map { $0.isAllDay ? [] : [$0] } ?? [])
+        let displayed = ScheduleWork.timedBlocks(on: day, in: store.state, excluding: editing?.id) + (editing.map { $0.isAllDay ? [] : [$0] } ?? [])
         let blocks = displayed.filter {
             $0.day == day &&
             (query.isEmpty ||

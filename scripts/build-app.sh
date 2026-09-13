@@ -2,8 +2,10 @@
 set -euo pipefail
 cd "${0:A:h:h}"
 
-version="${OPUS_VERSION:-0.2.0}"
-build_number="${OPUS_BUILD_NUMBER:-8}"
+latest_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)"
+version="${OPUS_VERSION:-${latest_tag#v}}"
+version="${version:-0.0.0}"
+build_number="${OPUS_BUILD_NUMBER:-$(git rev-list --count HEAD)}"
 if [[ ! "$version" =~ '^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$' ]]; then
   print -u2 "Invalid OPUS_VERSION: $version"
   exit 1

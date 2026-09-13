@@ -5,9 +5,9 @@ import CSQLite
 final class RedesignTests: XCTestCase {
     func testPacingUsesInclusiveDaysAndActualPageRange() {
         var task = StudyTask(title: "Notes", kind: .progress, due: "2026-09-11", start: 17, target: 49, current: 25)
-        XCTAssertEqual(task.pacing(on: "2026-09-09"), "Read through page 33 today · 8 pages/day over 3 days")
-        XCTAssertEqual(task.pacing(on: "2026-09-11"), "Read through page 49 today · 24 pages/day over 1 day")
-        XCTAssertEqual(task.pacing(on: "2026-09-12"), "Overdue · 24 pages left")
+        XCTAssertEqual(task.pacing(on: "2026-09-09"), "Through 33 today · 8/day over 3 days")
+        XCTAssertEqual(task.pacing(on: "2026-09-11"), "Through 49 today · 24/day over 1 day")
+        XCTAssertEqual(task.pacing(on: "2026-09-12"), "Overdue · 24 left")
         task.due = nil
         XCTAssertEqual(task.pacing(on: "2026-09-09"), "Set a due date to plan your daily pace")
         task.current = 49
@@ -20,7 +20,7 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(zero.current, 0)
         XCTAssertEqual(zero.pagesRead, 0)
         XCTAssertEqual(zero.pagesTotal, 101)
-        XCTAssertEqual(zero.progressLabel, "0 of 101 pages")
+        XCTAssertEqual(zero.progressLabel, "0 of 101")
         XCTAssertFalse(zero.isProgressComplete)
         XCTAssertEqual(zero.clampedProgress(-1), 0)
         XCTAssertEqual(zero.clampedProgress(10), 10)
@@ -29,13 +29,13 @@ final class RedesignTests: XCTestCase {
         var book = StudyTask(title: "Book", kind: .progress, start: 1, target: 30)
         XCTAssertEqual(book.current, 1)
         XCTAssertEqual(book.pagesRead, 0)
-        XCTAssertEqual(book.progressLabel, "0 of 30 pages")
+        XCTAssertEqual(book.progressLabel, "0 of 30")
         XCTAssertEqual(book.clampedProgress(0), 1)
         book.current = 30
-        XCTAssertEqual(book.progressLabel, "30 of 30 pages")
+        XCTAssertEqual(book.progressLabel, "30 of 30")
         XCTAssertFalse(book.isProgressComplete)
         book.current = 31
-        XCTAssertEqual(book.progressLabel, "30 of 30 pages")
+        XCTAssertEqual(book.progressLabel, "30 of 30")
         XCTAssertTrue(book.isProgressComplete)
         XCTAssertEqual(book.clampedProgress(99), 31)
 
@@ -133,8 +133,14 @@ final class RedesignTests: XCTestCase {
         let copy = try JSONDecoder().decode(Course.self, from: JSONEncoder().encode(course))
         XCTAssertEqual(copy.resolvedClassTimes, course.classTimes)
     }
-    func testListOnlyCoursesStayOffTodayInboxAndCalendar() throws {
+    func testListOnlyCoursesStayOffTodayInboxCalendarAndSchedule() throws {
+        let weekday = Calendar.current.component(.weekday, from: Date())
         let hidden = Course(name: "Personal", listOnly: true)
+        let hiddenClass = Course(
+            name: "Private class",
+            classTimes: [ClassTime(startMinute: 540, endMinute: 600, days: [weekday])],
+            listOnly: true
+        )
         let listed = Course(name: "Bio")
         XCTAssertTrue(hidden.isListOnly)
         XCTAssertFalse(listed.isListOnly)
@@ -144,7 +150,7 @@ final class RedesignTests: XCTestCase {
         ).listOnly)
         let encoded = try JSONDecoder().decode(Course.self, from: JSONEncoder().encode(hidden))
         XCTAssertTrue(encoded.isListOnly)
-        var state = Snapshot(courses: [hidden, listed])
+        var state = Snapshot(courses: [hidden, hiddenClass, listed])
         state.tasks = [
             StudyTask(courseID: hidden.id, title: "Secret", due: Day.today),
             StudyTask(courseID: listed.id, title: "Essay", due: Day.today),
@@ -154,9 +160,19 @@ final class RedesignTests: XCTestCase {
             Assessment(courseID: hidden.id, title: "Private exam", day: Day.today),
             Assessment(courseID: listed.id, title: "Quiz", day: Day.today)
         ]
+        state.schedule = [
+            ScheduleBlock(courseID: hiddenClass.id, title: "Secret event", day: Day.today),
+            ScheduleBlock(courseID: hidden.id, title: "Secret all-day", day: Day.today, allDay: true),
+            ScheduleBlock(courseID: listed.id, title: "Office", day: Day.today)
+        ]
         XCTAssertFalse(state.showsInOverview(hidden.id))
+        XCTAssertFalse(state.showsInOverview(hiddenClass.id))
         XCTAssertTrue(state.showsInOverview(listed.id))
         XCTAssertTrue(state.showsInOverview(nil))
+        XCTAssertEqual(ScheduleWork.untimedTasks(on: Day.today, in: state).map(\.title), ["Essay", "Loose"])
+        XCTAssertEqual(ScheduleWork.untimedAssessments(on: Day.today, in: state).map(\.title), ["Quiz"])
+        XCTAssertTrue(ScheduleWork.untimedEvents(on: Day.today, in: state).isEmpty)
+        XCTAssertEqual(ScheduleWork.timedBlocks(on: Day.today, in: state).map(\.title), ["Office"])
     }
     @MainActor func testFreshInstallAndSetupNeverSeedUserData() async throws {
         let database = try db()

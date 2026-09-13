@@ -1,18 +1,55 @@
 import AppKit
 import SwiftMath
 
-enum MathRenderer {
-    static func image(latex: String, display: Bool, color: NSColor, fontSize: CGFloat) -> NSImage? {
+@MainActor enum MathRenderer {
+    struct Rendered {
+        var image: NSImage
+        var descent: CGFloat
+    }
+
+    static func image(
+        latex: String,
+        display: Bool,
+        color: NSColor,
+        fontSize: CGFloat,
+        appearance: NSAppearance? = nil
+    ) -> NSImage? {
+        render(latex: latex, display: display, color: color, fontSize: fontSize, appearance: appearance)?.image
+    }
+
+    static func render(
+        latex: String,
+        display: Bool,
+        color: NSColor,
+        fontSize: CGFloat,
+        appearance: NSAppearance? = nil
+    ) -> Rendered? {
         let trimmed = latex.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         prepareFonts()
-        let math = MTMathImage(
-            latex: trimmed,
-            fontSize: fontSize,
-            textColor: color,
-            labelMode: display ? .display : .text
-        )
-        return math.asImage().1
+        let currentAppearance = appearance ?? NSApp.effectiveAppearance
+        let resolved = color.usingColorSpace(.deviceRGB) ?? color
+        var rendered: Rendered?
+        currentAppearance.performAsCurrentDrawingAppearance {
+            let math = MTMathImage(
+                latex: trimmed,
+                fontSize: fontSize,
+                textColor: resolved,
+                labelMode: display ? .display : .text
+            )
+            guard let image = math.asImage().1 else { return }
+            let label = MTMathUILabel()
+            label.labelMode = display ? .display : .text
+            label.fontSize = fontSize
+            label.textColor = resolved
+            label.latex = trimmed
+            label.layout()
+            rendered = Rendered(
+                image: image,
+                descent: label.displayList?.descent ?? max(2, fontSize * 0.2)
+            )
+        }
+        return rendered
     }
 
     /// SwiftMath looks for its font bundle beside the .app or at the SPM build

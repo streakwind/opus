@@ -186,7 +186,7 @@ void opus_work_row(const char *id, const char *kind, const char *title,
         gtk_editable_set_text(GTK_EDITABLE(input), value);
         gtk_editable_set_width_chars(GTK_EDITABLE(input), 5);
         gtk_entry_set_input_purpose(GTK_ENTRY(input), GTK_INPUT_PURPOSE_NUMBER);
-        gtk_widget_set_tooltip_text(input, "Last page read — press Enter to save");
+        gtk_widget_set_tooltip_text(input, "Through — press Enter to save");
         g_object_set_data_full(G_OBJECT(input), "opus-id", g_strdup(id), g_free);
         opus_set_identity(input, "page-%s", id);
         g_signal_connect(input, "activate", G_CALLBACK(page_changed), NULL);

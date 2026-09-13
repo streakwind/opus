@@ -75,7 +75,7 @@ final class JournalTextViewTests: XCTestCase {
 
         let presentation = JournalEmbedPresentation(link: .task(task.id), store: store, day: Day.today)
 
-        XCTAssertTrue(presentation.detail.contains("9 of 33 pages"))
+        XCTAssertTrue(presentation.detail.contains("9 of 33"))
         XCTAssertTrue(presentation.detail.contains("24 left"))
     }
     @MainActor func testMathRendererDrawsInlineAndDisplayLaTeX() async {
@@ -98,6 +98,7 @@ final class JournalTextViewTests: XCTestCase {
         XCTAssertEqual(coordinator.source, source)
         let range = (view.string as NSString).range(of: "let")
         XCTAssertEqual(view.textStorage?.attribute(.foregroundColor, at: range.location, effectiveRange: nil) as? NSColor, .systemPurple)
+        XCTAssertEqual(view.textStorage?.attribute(JournalRichText.codeBlock, at: range.location, effectiveRange: nil) as? String, "swift")
         coordinator.parent.preview = false
         coordinator.load(source, in: view)
         XCTAssertEqual(JournalRichText.markdown(view.attributedString()), source)
@@ -109,11 +110,19 @@ final class JournalTextViewTests: XCTestCase {
     }
 
     @MainActor func testReturnContinuesListsAndCodeIndentation() async {
-        for (source, expected) in [("- [x] Done", "- [x] Done\n- [ ] "), ("2. Item", "2. Item\n3. "), ("- ", ""), ("```swift\n    let n = 1", "```swift\n    let n = 1\n    ")] {
+        for (source, expected) in [
+            ("- [x] Done", "- [x] Done\n- [ ] "),
+            ("- [] hello", "- [] hello\n- [ ] "),
+            ("☐ hello", "☐ hello\n- [ ] "),
+            ("2. Item", "2. Item\n3. "),
+            ("- ", ""),
+            ("☐ ", ""),
+            ("```swift\n    let n = 1", "```swift\n    let n = 1\n    ")
+        ] {
             let view = editor(source)
             view.setSelectedRange(NSRange(location: source.utf16.count, length: 0))
             view.insertNewline(nil)
-            XCTAssertEqual(view.string, expected)
+            XCTAssertEqual(view.string, expected, source)
         }
     }
     @MainActor func testFormattingWritesPortableMarkdown() async {
@@ -125,11 +134,17 @@ final class JournalTextViewTests: XCTestCase {
     }
 
     @MainActor func testProsePreviewHandlesNestedFormattingLinksAndEscapes() async {
-        let source = #"**bold _italic_** [link](https://example.com) \*literal\* `code`"#
+        let source = #"**bold _italic_** [link](https://example.com) ![image](example.com) \*literal\* `code`"#
         let rendered = MarkdownProse.render(NSAttributedString(string: source))
-        XCTAssertEqual(rendered.string, "bold italic link *literal* code")
+        XCTAssertEqual(rendered.string, "bold italic link image *literal* code")
         let link = (rendered.string as NSString).range(of: "link")
         XCTAssertEqual(rendered.attribute(.link, at: link.location, effectiveRange: nil) as? URL, URL(string: "https://example.com"))
+        let image = (rendered.string as NSString).range(of: "image")
+        XCTAssertEqual(rendered.attribute(.link, at: image.location, effectiveRange: nil) as? URL, URL(string: "https://example.com"))
+        XCTAssertEqual(MarkdownProse.render(NSAttributedString(string: "- [ ] open\n- [] also\n- [x] done\n- item")).string, "☐ open\n☐ also\n☑ done\n• item")
+        let loose = MarkdownProse.render(NSAttributedString(string: "see [hyperlink](to nothing)"))
+        XCTAssertEqual(loose.string, "see hyperlink")
+        XCTAssertNotNil(loose.attribute(.link, at: (loose.string as NSString).range(of: "hyperlink").location, effectiveRange: nil))
         let italic = (rendered.string as NSString).range(of: "italic")
         let font = rendered.attribute(.font, at: italic.location, effectiveRange: nil) as! NSFont
         XCTAssertTrue(NSFontManager.shared.traits(of: font).contains(.italicFontMask))

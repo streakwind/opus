@@ -494,9 +494,9 @@ void opus_work_editor_open(const char *id, const char *title, const char *day,
     opus_ui.editor_current = opus_spin_int(page, 0, 1000000);
     g_signal_connect(opus_ui.editor_start, "value-changed",
                      G_CALLBACK(start_page_changed), NULL);
-    opus_field(opus_ui.editor_progress_box, "Start page", opus_ui.editor_start);
-    opus_field(opus_ui.editor_progress_box, "Target page", opus_ui.editor_target);
-    opus_field(opus_ui.editor_progress_box, "Current page", opus_ui.editor_current);
+    opus_field(opus_ui.editor_progress_box, "Start", opus_ui.editor_start);
+    opus_field(opus_ui.editor_progress_box, "Target", opus_ui.editor_target);
+    opus_field(opus_ui.editor_progress_box, "Through", opus_ui.editor_current);
     gtk_widget_set_visible(opus_ui.editor_progress_box, kind == 1);
     gtk_box_append(GTK_BOX(opus_ui.editor_body), opus_ui.editor_progress_box);
 
@@ -537,7 +537,7 @@ void opus_course_editor_open(const char *id, const char *name,
                                 list_only);
     gtk_widget_set_tooltip_text(
         opus_ui.editor_list_only,
-        "Hide from Today, Inbox, and Calendar.");
+        "Hide from Today, Inbox, Calendar, and Schedule.");
     opus_field(opus_ui.editor_body, "VISIBILITY", opus_ui.editor_list_only);
     opus_ui.editor_times_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     opus_field(opus_ui.editor_body, "CLASS TIMES", opus_ui.editor_times_box);
@@ -603,8 +603,8 @@ void opus_rule_editor_open(const char *id, const char *title, const char *course
     opus_ui.editor_rule_progress_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     opus_ui.editor_start = opus_spin_int(start, 0, 1000000);
     opus_ui.editor_target = opus_spin_int(target, 1, 1000000);
-    opus_field(opus_ui.editor_rule_progress_box, "Start page", opus_ui.editor_start);
-    opus_field(opus_ui.editor_rule_progress_box, "Target page", opus_ui.editor_target);
+    opus_field(opus_ui.editor_rule_progress_box, "Start", opus_ui.editor_start);
+    opus_field(opus_ui.editor_rule_progress_box, "Target", opus_ui.editor_target);
     gtk_widget_set_visible(opus_ui.editor_rule_progress_box, work_kind == 1);
     gtk_box_append(GTK_BOX(opus_ui.editor_body), opus_ui.editor_rule_progress_box);
 

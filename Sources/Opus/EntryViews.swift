@@ -135,8 +135,8 @@ struct WorkItemEditor: View {
                             TextField("End", value: $target, format: .number.grouping(.never)).frame(width: 55)
                         }.textFieldStyle(.roundedBorder)
                     }
-                    PropertyRow("Read") {
-                        TextField("Last page", value: $current, format: .number.grouping(.never))
+                    PropertyRow("Through") {
+                        TextField("Through", value: $current, format: .number.grouping(.never))
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 68)
                             .accessibilityIdentifier("work-progress-current")

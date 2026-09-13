@@ -19,4 +19,15 @@ final class MarkdownSyntaxTests: XCTestCase {
         XCTAssertEqual(tokens.filter { $0.1 == .keyword }.count, 2)
         XCTAssertEqual(CodeHighlight.tokens(in: "const s = 'hello'", language: "js").filter { $0.1 == .string }.count, 1)
     }
+    func testCPPPreprocessorAndIncludedHeaderHighlight() {
+        let source = "#include <iostream>\nconst auto value = 1;"
+        let tokens = CodeHighlight.tokens(in: source, language: "cpp")
+        let highlighted = tokens.map { (source as NSString).substring(with: $0.0) }
+        XCTAssertTrue(highlighted.contains("#include"))
+        XCTAssertTrue(highlighted.contains("<iostream>"))
+        XCTAssertTrue(highlighted.contains("const"))
+        XCTAssertTrue(highlighted.contains("auto"))
+        XCTAssertEqual(CodeHighlight.displayName("cpp"), "C++")
+        XCTAssertEqual(CodeHighlight.displayName("python"), "Python")
+    }
 }

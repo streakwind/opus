@@ -485,7 +485,7 @@ package final class Store {
         guard let task = state.tasks.first(where: { $0.id == id }), task.kind == .progress else { return }
         let bounded = task.clampedProgress(value)
         guard task.current != bounded else { return }
-        record(task, value: bounded, note: "Finished through \(bounded) \(task.unit)")
+        record(task, value: bounded, note: "Finished through \(bounded)")
     }
     package func setup() {
         change { $0.setupComplete = true }

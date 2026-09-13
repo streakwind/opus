@@ -35,6 +35,7 @@ import SwiftUI
         return result
     }
     static let sourceToken = NSAttributedString.Key("OpusMarkdownSource")
+    static let codeBlock = NSAttributedString.Key("OpusMarkdownCodeBlock")
     static func markdown(_ text: NSAttributedString) -> String {
         var result = ""
         text.enumerateAttributes(in: NSRange(location: 0, length: text.length)) { attributes, range, _ in
@@ -81,6 +82,10 @@ struct JournalNativeEditor: NSViewRepresentable {
         editor.isAutomaticTextReplacementEnabled = false
         editor.usesFindBar = true
         editor.isIncrementalSearchingEnabled = true
+        editor.linkTextAttributes = [
+            .foregroundColor: NSColor.linkColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue
+        ]
         editor.textContainerInset = NSSize(width: 28, height: 10)
         editor.textContainer?.lineFragmentPadding = 0
         editor.textContainer?.widthTracksTextView = true
@@ -98,6 +103,10 @@ struct JournalNativeEditor: NSViewRepresentable {
         editor.onWidthChange = { [weak coordinator = context.coordinator, weak editor] in
             guard let editor else { return }; coordinator?.refreshAttachments(editor)
         }
+        editor.onAppearanceChange = { [weak coordinator = context.coordinator, weak editor] in
+            guard let editor else { return }
+            coordinator?.liveSession?.appearanceChanged(in: editor)
+        }
         scroll.documentView = editor
         context.coordinator.load(markdown, in: editor)
         return scroll
@@ -107,6 +116,9 @@ struct JournalNativeEditor: NSViewRepresentable {
         if let session = coordinator.liveSession { editor.undoManager?.removeAllActions(withTarget: session) }
         editor.onReplace = nil
         editor.onCopy = nil
+        editor.onAppearanceChange = nil
+        editor.onCheckbox = nil
+        editor.onNewline = nil
         editor.delegate = nil
     }
     func updateNSView(_ scroll: NSScrollView, context: Context) {
@@ -211,6 +223,7 @@ struct JournalNativeEditor: NSViewRepresentable {
             storage.removeAttribute(.underlineStyle, range: full)
             storage.removeAttribute(.strikethroughStyle, range: full)
             storage.removeAttribute(.link, range: full)
+            storage.removeAttribute(JournalRichText.codeBlock, range: full)
             storage.addAttributes(base, range: full)
             let text = storage.string
             func matches(_ pattern: String, apply: (NSTextCheckingResult) -> Void) {
@@ -241,16 +254,19 @@ struct JournalNativeEditor: NSViewRepresentable {
                 guard !insideCode(match.range) else { return }
                 storage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: match.range(at: 1))
             }
-            matches(#"\[([^\]\n]+)\]\((https?://[^\)\n]+)\)"#) { match in
+            matches(#"\[([^\]\n]+)\]\(([^\)\n]+)\)"#) { match in
                 guard !insideCode(match.range) else { return }
                 let url = (text as NSString).substring(with: match.range(at: 2))
-                storage.addAttribute(.link, value: url, range: match.range(at: 1))
+                guard let resolved = MarkdownProse.url(from: url) else { return }
+                storage.addAttribute(.link, value: resolved, range: match.range(at: 1))
+                storage.addAttribute(.foregroundColor, value: NSColor.linkColor, range: match.range(at: 1))
+                storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: match.range(at: 1))
             }
             let mono = NSFont.monospacedSystemFont(ofSize: 13.5, weight: .regular)
-            let blockFill = NSColor.labelColor.withAlphaComponent(0.055)
             for block in codeBlocks {
                 storage.addAttribute(.font, value: mono, range: block.range)
-                storage.addAttribute(.backgroundColor, value: blockFill, range: block.innerRange)
+                storage.addAttribute(JournalRichText.codeBlock, value: block.language, range: block.range)
+                decorateCodeParagraphs(in: storage, range: block.range)
                 storage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: block.innerRange)
                 let body = (text as NSString).substring(with: block.innerRange)
                 for (range, kind) in CodeHighlight.tokens(in: body, language: block.language) {
@@ -263,7 +279,7 @@ struct JournalNativeEditor: NSViewRepresentable {
             }
             for span in JournalCode.spans(in: text) {
                 storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 14.5, weight: .regular), range: span.range)
-                storage.addAttribute(.backgroundColor, value: NSColor.labelColor.withAlphaComponent(0.07), range: span.innerRange)
+                storage.addAttribute(.backgroundColor, value: NSColor.labelColor.withAlphaComponent(0.12), range: span.innerRange)
             }
             for span in JournalMath.spans(in: text) {
                 storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 16, weight: .regular), range: span.range)
@@ -282,13 +298,32 @@ struct JournalNativeEditor: NSViewRepresentable {
             let math = JournalMath.spans(in: text)
             var edits: [(NSRange, NSAttributedString)] = []
             func remove(_ range: NSRange) { edits.append((range, NSAttributedString(string: ""))) }
-            for block in blocks { remove(block.openRange); remove(block.closeRange) }
+            for block in blocks {
+                remove(block.openRange)
+                remove(block.closeRange)
+            }
             for span in math {
-                guard let image = MathRenderer.image(latex: span.latex, display: span.display, color: .labelColor, fontSize: span.display ? 22 : 17) else { continue }
+                guard let renderedMath = MathRenderer.render(
+                    latex: span.latex,
+                    display: span.display,
+                    color: .labelColor,
+                    fontSize: span.display ? 22 : 16,
+                    appearance: editor.effectiveAppearance
+                ) else { continue }
                 let attachment = NSTextAttachment()
-                attachment.image = image
-                attachment.bounds = NSRect(origin: NSPoint(x: 0, y: -4), size: image.size)
+                attachment.image = renderedMath.image
+                attachment.bounds = NSRect(
+                    origin: NSPoint(x: 0, y: -renderedMath.descent),
+                    size: renderedMath.image.size
+                )
                 let rendered = NSMutableAttributedString(attachment: attachment)
+                if span.display {
+                    let paragraph = NSMutableParagraphStyle()
+                    paragraph.alignment = .center
+                    paragraph.paragraphSpacingBefore = 10
+                    paragraph.paragraphSpacing = 10
+                    rendered.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: rendered.length))
+                }
                 rendered.addAttribute(JournalRichText.sourceToken, value: (text as NSString).substring(with: span.range), range: NSRange(location: 0, length: rendered.length))
                 edits.append((span.range, rendered))
             }
@@ -311,7 +346,19 @@ struct JournalNativeEditor: NSViewRepresentable {
                 boundary = range.location
             }
             storage.endEditing()
+            restampCodeBlocks(in: storage)
             editor.setSelectedRange(NSRange(location: 0, length: 0))
+        }
+        func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+            if let url = link as? URL {
+                NSWorkspace.shared.open(url)
+                return true
+            }
+            if let string = link as? String, let url = MarkdownProse.url(from: string) {
+                NSWorkspace.shared.open(url)
+                return true
+            }
+            return false
         }
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let editor = notification.object as? JournalTextView else { return }
@@ -321,6 +368,54 @@ struct JournalNativeEditor: NSViewRepresentable {
             guard let session = liveSession, let editor = textView as? JournalTextView else { return true }
             session.replace(affectedCharRange, with: JournalRichText.attributed(replacementString ?? ""), in: editor)
             return false
+        }
+        private func decorateCodeParagraphs(in storage: NSTextStorage, range: NSRange) {
+            let body = codeParagraph()
+            let first = codeParagraph(); first.paragraphSpacingBefore = 12
+            let last = codeParagraph(); last.paragraphSpacing = 12
+            let both = codeParagraph(); both.paragraphSpacingBefore = 12; both.paragraphSpacing = 12
+            let text = storage.string as NSString
+            var lineStart = range.location
+            var isFirst = true
+            while lineStart < NSMaxRange(range) {
+                let line = NSIntersectionRange(text.lineRange(for: NSRange(location: lineStart, length: 0)), range)
+                guard line.length > 0 else { break }
+                let isLast = NSMaxRange(line) >= NSMaxRange(range)
+                let style = isFirst && isLast ? both : isFirst ? first : isLast ? last : body
+                // paragraphSpacingBefore is ignored on the first paragraph of a text view.
+                if isFirst, range.location == 0 { style.minimumLineHeight = 26 }
+                storage.addAttribute(.paragraphStyle, value: style, range: line)
+                isFirst = false
+                lineStart = NSMaxRange(line)
+            }
+        }
+        private func codeParagraph() -> NSMutableParagraphStyle {
+            let style = NSMutableParagraphStyle()
+            style.firstLineHeadIndent = 16
+            style.headIndent = 16
+            style.tailIndent = -44
+            style.lineSpacing = 3
+            return style
+        }
+        private func restampCodeBlocks(in storage: NSTextStorage) {
+            let full = NSRange(location: 0, length: storage.length)
+            var index = 0
+            while index < storage.length {
+                var range = NSRange()
+                guard storage.attribute(JournalRichText.codeBlock, at: index, longestEffectiveRange: &range, in: full) != nil else {
+                    index += 1
+                    continue
+                }
+                var next = NSMaxRange(range)
+                while next < storage.length {
+                    var more = NSRange()
+                    guard storage.attribute(JournalRichText.codeBlock, at: next, longestEffectiveRange: &more, in: full) != nil else { break }
+                    range.length = NSMaxRange(more) - range.location
+                    next = NSMaxRange(more)
+                }
+                decorateCodeParagraphs(in: storage, range: range)
+                index = next
+            }
         }
         private func highlightColor(_ kind: CodeTokenKind) -> NSColor {
             switch kind {
@@ -337,6 +432,23 @@ struct JournalNativeEditor: NSViewRepresentable {
 
 /// Native attributed prose; Markdown remains untouched in the editable document.
 @MainActor enum MarkdownProse {
+    static func url(from raw: String) -> URL? {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        if let url = URL(string: value), let scheme = url.scheme?.lowercased(), ["http", "https", "mailto"].contains(scheme) {
+            return url
+        }
+        if value.contains("://"), let url = URL(string: value) { return url }
+        let host = value.replacingOccurrences(of: " ", with: "-")
+        return URL(string: "https://" + host)
+    }
+    private static func takeLinks(from line: String) -> [(range: NSRange, label: String, url: URL?)] {
+        guard let regex = try? NSRegularExpression(pattern: #"!?\[([^\]\n]*)\]\(([^\)\n]*)\)"#) else { return [] }
+        return regex.matches(in: line, range: NSRange(location: 0, length: (line as NSString).length)).map { match in
+            let ns = line as NSString
+            return (match.range, ns.substring(with: match.range(at: 1)), url(from: ns.substring(with: match.range(at: 2))))
+        }
+    }
     static func render(_ source: NSAttributedString) -> NSAttributedString {
         let result = NSMutableAttributedString(string: "")
         var attachments: [NSTextAttachment] = []
@@ -362,37 +474,79 @@ struct JournalNativeEditor: NSViewRepresentable {
                 line.removeFirst(2)
                 paragraph.firstLineHeadIndent = 16
                 paragraph.headIndent = 16
-            } else if let match = line.range(of: #"^([ \t]*)[-+*] "#, options: .regularExpression) {
-                let indent = String(line[match].prefix(while: { $0 == " " || $0 == "\t" }))
-                line.replaceSubrange(match, with: indent + "• ")
-                if line.hasPrefix("• [ ] ") { line = "☐ " + line.dropFirst(6) }
-                else if line.hasPrefix("• [x] ") || line.hasPrefix("• [X] ") { line = "☑ " + line.dropFirst(6) }
-                paragraph.headIndent = 18
+            } else if let match = try? NSRegularExpression(pattern: #"^([ \t]*)([-+*])[ \t]+(?:\[([ xX]?)\][ \t]*)?(.*)$"#).firstMatch(
+                in: line,
+                range: NSRange(location: 0, length: (line as NSString).length)
+            ) {
+                let ns = line as NSString
+                let indent = ns.substring(with: match.range(at: 1))
+                let body = ns.substring(with: match.range(at: 4))
+                if match.range(at: 3).location != NSNotFound {
+                    line = indent + (ns.substring(with: match.range(at: 3)).lowercased() == "x" ? "☑ " : "☐ ") + body
+                } else {
+                    line = indent + "• " + body
+                }
+                paragraph.headIndent = 22
             }
-            let parsed = (try? AttributedString(markdown: line, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(line)
-            for run in parsed.runs {
-                var font = NSFont.systemFont(ofSize: size, weight: heading ? .semibold : .regular)
-                let intent = run.inlinePresentationIntent ?? []
-                if intent.contains(.stronglyEmphasized) { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask) }
-                if intent.contains(.emphasized) { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
-                var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraph]
-                if intent.contains(.code) {
-                    attributes[.font] = NSFont.monospacedSystemFont(ofSize: 14.5, weight: .regular)
-                    attributes[.backgroundColor] = NSColor.labelColor.withAlphaComponent(0.07)
+            let font = NSFont.systemFont(ofSize: size, weight: heading ? .semibold : .regular)
+            var cursor = 0
+            let nsLine = line as NSString
+            for link in takeLinks(from: line) {
+                if link.range.location > cursor {
+                    result.append(inlineMarkdown(nsLine.substring(with: NSRange(location: cursor, length: link.range.location - cursor)), font: font, heading: heading, paragraph: paragraph, attachments: attachments, attachmentIndex: &attachmentIndex))
                 }
-                if intent.contains(.strikethrough) { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
-                if let link = run.link { attributes[.link] = link }
-                let rendered = NSMutableAttributedString(string: String(parsed[run.range].characters), attributes: attributes)
-                let text = rendered.string as NSString
-                for position in 0..<text.length where text.character(at: position) == 0xfffc {
-                    if attachmentIndex < attachments.count {
-                        rendered.addAttribute(.attachment, value: attachments[attachmentIndex], range: NSRange(location: position, length: 1))
-                        attachmentIndex += 1
-                    }
-                }
-                result.append(rendered)
+                var attributes: [NSAttributedString.Key: Any] = [
+                    .font: font,
+                    .foregroundColor: NSColor.linkColor,
+                    .underlineStyle: NSUnderlineStyle.single.rawValue,
+                    .paragraphStyle: paragraph
+                ]
+                if let url = link.url { attributes[.link] = url }
+                result.append(NSAttributedString(string: link.label, attributes: attributes))
+                cursor = NSMaxRange(link.range)
+            }
+            if cursor < nsLine.length || line.isEmpty {
+                result.append(inlineMarkdown(cursor < nsLine.length ? nsLine.substring(from: cursor) : line, font: font, heading: heading, paragraph: paragraph, attachments: attachments, attachmentIndex: &attachmentIndex))
             }
             if index < lines.count - 1 { result.append(NSAttributedString(string: "\n", attributes: [.font: NSFont.systemFont(ofSize: 17), .paragraphStyle: paragraph])) }
+        }
+        return result
+    }
+    private static func inlineMarkdown(
+        _ line: String,
+        font: NSFont,
+        heading _: Bool,
+        paragraph: NSParagraphStyle,
+        attachments: [NSTextAttachment],
+        attachmentIndex: inout Int
+    ) -> NSAttributedString {
+        let parsed = (try? AttributedString(markdown: line, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(line)
+        let result = NSMutableAttributedString(string: "")
+        for run in parsed.runs {
+            var runFont = font
+            let intent = run.inlinePresentationIntent ?? []
+            if intent.contains(.stronglyEmphasized) { runFont = NSFontManager.shared.convert(runFont, toHaveTrait: .boldFontMask) }
+            if intent.contains(.emphasized) { runFont = NSFontManager.shared.convert(runFont, toHaveTrait: .italicFontMask) }
+            var attributes: [NSAttributedString.Key: Any] = [.font: runFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraph]
+            if intent.contains(.code) {
+                attributes[.font] = NSFont.monospacedSystemFont(ofSize: 14.5, weight: .regular)
+                attributes[.backgroundColor] = NSColor.labelColor.withAlphaComponent(0.12)
+            }
+            if intent.contains(.strikethrough) { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
+            if let link = run.link.flatMap({ url(from: $0.absoluteString) }) ?? run.link {
+                attributes[.link] = link
+                attributes[.foregroundColor] = NSColor.linkColor
+                attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+            }
+            let rendered = NSMutableAttributedString(string: String(parsed[run.range].characters), attributes: attributes)
+            let text = rendered.string as NSString
+            for position in 0..<text.length where text.character(at: position) == 0xfffc {
+                if attachmentIndex < attachments.count {
+                    rendered.addAttribute(.attachment, value: attachments[attachmentIndex], range: NSRange(location: position, length: 1))
+                    attachmentIndex += 1
+                }
+            }
+            result.append(rendered)
         }
         return result
     }
@@ -406,10 +560,113 @@ struct JournalNativeEditor: NSViewRepresentable {
     var onOpen: ((JournalLink) -> Void)?
     var onToggle: ((JournalLink) -> Void)?
     var onWidthChange: (() -> Void)?
+    var onAppearanceChange: (() -> Void)?
+    var onCheckbox: ((Int) -> Void)?
+    var onNewline: (() -> Void)?
     override func setFrameSize(_ newSize: NSSize) {
         let changed = newSize.width != frame.width
         super.setFrameSize(newSize)
         if changed { onWidthChange?() }
+    }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        DispatchQueue.main.async { [weak self] in self?.onAppearanceChange?() }
+    }
+    override func drawBackground(in rect: NSRect) {
+        guard let storage = textStorage, let manager = layoutManager, let container = textContainer else {
+            super.drawBackground(in: rect)
+            return
+        }
+        var index = 0
+        let full = NSRange(location: 0, length: storage.length)
+        while index < storage.length {
+            var range = NSRange()
+            guard let firstLanguage = storage.attribute(
+                JournalRichText.codeBlock,
+                at: index,
+                longestEffectiveRange: &range,
+                in: full
+            ) as? String else {
+                index += 1
+                continue
+            }
+            var language = firstLanguage
+            var next = NSMaxRange(range)
+            while next < storage.length {
+                var more = NSRange()
+                guard let extra = storage.attribute(
+                    JournalRichText.codeBlock,
+                    at: next,
+                    longestEffectiveRange: &more,
+                    in: full
+                ) as? String else { break }
+                if language.isEmpty { language = extra }
+                range.length = NSMaxRange(more) - range.location
+                next = NSMaxRange(more)
+            }
+            let glyphs = manager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            var box = NSRect.zero
+            manager.enumerateLineFragments(forGlyphRange: glyphs) { fragment, used, _, glyphRange, _ in
+                let chars = manager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+                let style = chars.length > 0
+                    ? storage.attribute(.paragraphStyle, at: chars.location, effectiveRange: nil) as? NSParagraphStyle
+                    : nil
+                let before = style?.paragraphSpacingBefore ?? 0
+                let after = style?.paragraphSpacing ?? 0
+                let glyphsHeight = used.height > 1 ? used.height : 20
+                // AppKit drops paragraphSpacingBefore on the first paragraph, so only
+                // peel spacing that actually grew this fragment.
+                let slack = max(0, fragment.height - glyphsHeight)
+                let peelBefore: CGFloat
+                let peelAfter: CGFloat
+                if slack + 0.5 >= before + after, before + after > 0 {
+                    peelBefore = before
+                    peelAfter = after
+                } else if slack + 0.5 >= after, after > 0 {
+                    peelBefore = 0
+                    peelAfter = after
+                } else if slack + 0.5 >= before, before > 0 {
+                    peelBefore = before
+                    peelAfter = 0
+                } else {
+                    peelBefore = 0
+                    peelAfter = 0
+                }
+                var line = fragment
+                line.origin.y += peelBefore
+                line.size.height = max(glyphsHeight, fragment.height - peelBefore - peelAfter)
+                if line.height < 18 { line.size.height = 20 }
+                box = box == .zero ? line : box.union(line)
+            }
+            if box == .zero, glyphs.length > 0 {
+                box = manager.boundingRect(forGlyphRange: glyphs, in: container)
+            }
+            if box.height > 0 || glyphs.length > 0 {
+                if box.height <= 0 { box.size.height = 22 }
+                box.origin.x = textContainerOrigin.x
+                box.origin.y += textContainerOrigin.y
+                box.size.width = max(1, container.size.width)
+                box = box.insetBy(dx: 0, dy: -10)
+                if box.intersects(rect) {
+                    NSColor.labelColor.withAlphaComponent(0.06).setFill()
+                    NSBezierPath(roundedRect: box, xRadius: 8, yRadius: 8).fill()
+                    if !language.isEmpty {
+                        let title = CodeHighlight.displayName(language)
+                        let attributes: [NSAttributedString.Key: Any] = [
+                            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+                            .foregroundColor: NSColor.tertiaryLabelColor
+                        ]
+                        let size = (title as NSString).size(withAttributes: attributes)
+                        (title as NSString).draw(
+                            in: NSRect(x: box.maxX - size.width - 14, y: box.minY + 10, width: size.width, height: size.height),
+                            withAttributes: attributes
+                        )
+                    }
+                }
+            }
+            index = NSMaxRange(range)
+        }
+        super.drawBackground(in: rect)
     }
     override func insertText(_ insertString: Any, replacementRange: NSRange) {
         if let onReplace {
@@ -431,17 +688,52 @@ struct JournalNativeEditor: NSViewRepresentable {
         scrollRangeToVisible(selectedRange())
     }
     override func insertNewline(_ sender: Any?) {
+        if let onNewline { onNewline(); return }
         guard isEditable else { return }
         let selected = selectedRange()
         let ns = string as NSString
         let line = ns.lineRange(for: NSRange(location: selected.location, length: 0))
         let prefix = ns.substring(with: NSRange(location: line.location, length: selected.location - line.location))
+        let openingPattern = #"^([ ]{0,3})(`{3,}|~{3,})[^\n]*$"#
+        if let opening = try? NSRegularExpression(pattern: openingPattern).firstMatch(
+            in: prefix,
+            range: NSRange(location: 0, length: prefix.utf16.count)
+        ), JournalCode.blocks(in: string).contains(where: {
+            $0.closeRange.length == 0 && $0.openRange.location == line.location
+        }) {
+            let source = prefix as NSString
+            let indent = source.substring(with: opening.range(at: 1))
+            let fence = source.substring(with: opening.range(at: 2))
+            insertText("\n\n" + indent + fence + "\n", replacementRange: selected)
+            return
+        }
+        if prefix.range(of: #"^ {0,3}(`{3,}|~{3,})"#, options: .regularExpression) == nil,
+           let storage = textStorage, storage.length > 0,
+           storage.attribute(JournalRichText.codeBlock, at: min(selected.location, storage.length - 1), effectiveRange: nil) != nil {
+            let indent = String(prefix.prefix(while: { $0 == " " || $0 == "\t" }))
+            insertText("\n" + indent, replacementRange: selected)
+            return
+        }
         if JournalCode.blocks(in: string).contains(where: { NSLocationInRange(selected.location, $0.innerRange) || selected.location == NSMaxRange($0.innerRange) && $0.closeRange.length == 0 }) {
             let indent = String(prefix.prefix(while: { $0 == " " || $0 == "\t" }))
             insertText("\n" + indent, replacementRange: selected)
             return
         }
-        let pattern = #"^([ \t]*)([-+*]|[0-9]+[.)]|>)([ \t]+)(\[[ xX]\] )?(.*)$"#
+        if let rendered = try? NSRegularExpression(pattern: #"^([ \t]*)([☐☑•])[ \t]?(.*)$"#).firstMatch(
+            in: prefix,
+            range: NSRange(location: 0, length: prefix.utf16.count)
+        ) {
+            let text = prefix as NSString
+            if text.substring(with: rendered.range(at: 3)).isEmpty {
+                insertText("", replacementRange: NSRange(location: line.location, length: selected.location - line.location))
+                return
+            }
+            let box = text.substring(with: rendered.range(at: 2))
+            let next = (box == "☐" || box == "☑") ? "- [ ] " : "- "
+            insertText("\n" + text.substring(with: rendered.range(at: 1)) + next, replacementRange: selected)
+            return
+        }
+        let pattern = #"^([ \t]*)([-+*]|[0-9]+[.)]|>)([ \t]+)(\[[ xX]?\][ \t]*)?(.*)$"#
         if let match = try? NSRegularExpression(pattern: pattern).firstMatch(in: prefix, range: NSRange(location: 0, length: prefix.utf16.count)) {
             let text = prefix as NSString
             if text.substring(with: match.range(at: 5)).isEmpty {
@@ -496,7 +788,33 @@ struct JournalNativeEditor: NSViewRepresentable {
         guard rect.contains(point), let link = JournalRichText.link(in: storage.attributes(at: index, effectiveRange: nil)) else { return nil }
         return (link, index, rect.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y))
     }
+    private func characterIndex(at event: NSEvent) -> Int? {
+        guard let container = textContainer, let manager = layoutManager, let storage = textStorage, storage.length > 0 else { return nil }
+        let location = convert(event.locationInWindow, from: nil)
+        let point = NSPoint(x: location.x - textContainerOrigin.x, y: location.y - textContainerOrigin.y)
+        var fraction: CGFloat = 0
+        let index = manager.characterIndex(for: point, in: container, fractionOfDistanceBetweenInsertionPoints: &fraction)
+        return index < storage.length ? index : nil
+    }
+    private func url(at event: NSEvent) -> URL? {
+        guard let storage = textStorage, let index = characterIndex(at: event) else { return nil }
+        let value = storage.attribute(.link, at: index, effectiveRange: nil)
+        if let url = value as? URL { return MarkdownProse.url(from: url.absoluteString) ?? url }
+        if let string = value as? String { return MarkdownProse.url(from: string) }
+        return nil
+    }
     override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 1, let index = characterIndex(at: event), index < (string as NSString).length {
+            let character = (string as NSString).character(at: index)
+            if character == 0x2610 || character == 0x2611 {
+                onCheckbox?(index)
+                return
+            }
+        }
+        if event.clickCount == 1, let url = url(at: event) {
+            NSWorkspace.shared.open(url)
+            return
+        }
         if let (link, index, rect) = hit(event) {
             if event.clickCount == 2 { onOpen?(link); return }
             let click = convert(event.locationInWindow, from: nil)
@@ -561,7 +879,7 @@ struct JournalNativeEditor: NSViewRepresentable {
             var parts = [store.course(task.courseID)?.name ?? "Inbox"]
             if let due = task.due { parts.append(Day.label(due)) }
             if task.kind == .progress {
-                parts.append("\(task.pagesRead) of \(task.pagesTotal) \(task.unit)")
+                parts.append(task.progressLabel)
                 parts.append("\(task.pagesTotal - task.pagesRead) left")
             }
             detail = parts.joined(separator: " · ")

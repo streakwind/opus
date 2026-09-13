@@ -113,7 +113,7 @@ package struct StudyTask: Identifiable, Codable, Equatable {
         return min(pagesTotal, current - start + 1)
     }
     package var fraction: Double { min(1, max(0, Double(pagesRead) / Double(pagesTotal))) }
-    package var progressLabel: String { "\(pagesRead) of \(pagesTotal) \(unit)" }
+    package var progressLabel: String { "\(pagesRead) of \(pagesTotal)" }
     package var progressCompleteAt: Int { target + 1 }
     package var isProgressComplete: Bool { current > target }
     package func clampedProgress(_ value: Int) -> Int { min(progressCompleteAt, max(start, value)) }
@@ -547,13 +547,36 @@ package enum ScheduleWork {
         return state.courses.first { $0.id == courseID }?.classBlocks(on: day).isEmpty != false
     }
     package static func untimedTasks(on day: String, in state: Snapshot) -> [StudyTask] {
-        state.tasks.filter { $0.calendarDay == day && isUntimed(courseID: $0.courseID, on: day, in: state) }
+        state.tasks.filter {
+            $0.calendarDay == day &&
+            state.showsInOverview($0.courseID) &&
+            isUntimed(courseID: $0.courseID, on: day, in: state)
+        }
     }
     package static func untimedAssessments(on day: String, in state: Snapshot) -> [Assessment] {
-        state.assessments.filter { $0.day == day && isUntimed(courseID: $0.courseID, on: day, in: state) }
+        state.assessments.filter {
+            $0.day == day &&
+            state.showsInOverview($0.courseID) &&
+            isUntimed(courseID: $0.courseID, on: day, in: state)
+        }
     }
     package static func untimedEvents(on day: String, in state: Snapshot) -> [ScheduleBlock] {
-        state.schedule.filter { $0.isAllDay && $0.day == day && isUntimed(courseID: $0.courseID, on: day, in: state) }
+        state.schedule.filter {
+            $0.isAllDay &&
+            $0.day == day &&
+            state.showsInOverview($0.courseID) &&
+            isUntimed(courseID: $0.courseID, on: day, in: state)
+        }
+    }
+    package static func timedBlocks(on day: String, in state: Snapshot, excluding excludedID: String? = nil) -> [ScheduleBlock] {
+        let classes = state.courses.filter { !$0.isListOnly }.flatMap { $0.classBlocks(on: day) }
+        let events = state.schedule.filter {
+            !$0.isAllDay &&
+            $0.day == day &&
+            $0.id != excludedID &&
+            state.showsInOverview($0.courseID)
+        }
+        return classes + events
     }
     package static func listedEvents(courseID: String, on day: String, in state: Snapshot) -> [ScheduleBlock] {
         state.schedule.filter { $0.courseID == courseID && $0.isAllDay && $0.day == day }
@@ -620,12 +643,11 @@ extension StudyTask {
         let remaining = pagesTotal - pagesRead
         guard remaining > 0 else { return nil }
         guard let due else { return "Set a due date to plan your daily pace" }
-        if due < today { return "Overdue · \(remaining) \(unit) left" }
+        if due < today { return "Overdue · \(remaining) left" }
         let days = max(1, (Calendar.current.dateComponents([.day], from: Day.date(today), to: Day.date(due)).day ?? 0) + 1)
         let quota = Int(ceil(Double(remaining) / Double(days)))
         let stop = min(target, max(start, current) + quota)
-        let goal = unit == "pages" ? "Read through page \(stop) today" : "Complete \(quota) \(unit) today"
-        return "\(goal) · \(quota) \(unit)/day over \(days) \(days == 1 ? "day" : "days")"
+        return "Through \(stop) today · \(quota)/day over \(days) \(days == 1 ? "day" : "days")"
     }
 }
 

@@ -35,10 +35,16 @@ final class PresentationTests: XCTestCase {
     }
 
     func testListOnlyWorkStaysOnItsListPage() {
-        let hidden = Course(name: "Personal", listOnly: true)
+        let weekday = Calendar.current.component(.weekday, from: Date())
+        let hidden = Course(
+            name: "Personal",
+            classTimes: [ClassTime(startMinute: 480, endMinute: 530, days: [weekday])],
+            listOnly: true
+        )
         var state = Snapshot(courses: [hidden], setupComplete: true)
         state.tasks = [StudyTask(courseID: hidden.id, title: "Secret", due: Day.today)]
         state.assessments = [Assessment(courseID: hidden.id, title: "Private exam", day: Day.today)]
+        state.schedule = [ScheduleBlock(courseID: hidden.id, title: "Secret event", day: Day.today, startMinute: 600, duration: 30)]
         let today = LinuxPresentation.workRows(in: state, selection: .section(.today), query: "")
         XCTAssertTrue(today.tasks.isEmpty)
         XCTAssertTrue(today.assessments.isEmpty)
@@ -52,6 +58,8 @@ final class PresentationTests: XCTestCase {
         XCTAssertEqual(list.assessments.map(\.title), ["Private exam"])
         let days = LinuxPresentation.calendarDays(in: state, period: .day, anchor: Day.today, selected: Day.today, query: "")
         XCTAssertEqual(days.first?.items.count, 0)
+        let blocks = LinuxPresentation.scheduleBlocks(in: state, days: [Day.today], query: "")
+        XCTAssertTrue(blocks.isEmpty)
     }
 
     func testCalendarScheduleAndRhythmProjection() {

@@ -69,7 +69,7 @@ struct CourseEditor: View {
                     )) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Show only on this list")
-                            Text("Hide from Today, Inbox, and Calendar.")
+                            Text("Hide from Today, Inbox, Calendar, and Schedule.")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                         }

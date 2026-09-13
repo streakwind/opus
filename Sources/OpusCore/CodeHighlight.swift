@@ -31,6 +31,16 @@ package enum CodeHighlight {
                 index = NSMaxRange(range)
                 continue
             }
+            if family == .clike, character == 35, let range = preprocessor(in: ns, from: index) {
+                tokens.append((range, .keyword))
+                index = NSMaxRange(range)
+                continue
+            }
+            if family == .clike, character == 60, let range = includedHeader(in: ns, from: index) {
+                tokens.append((range, .string))
+                index = NSMaxRange(range)
+                continue
+            }
             if family == .html, character == 60, let range = htmlTag(in: ns, from: index) {
                 tokens.append((range, .keyword))
                 index = NSMaxRange(range)
@@ -64,7 +74,7 @@ package enum CodeHighlight {
         var keywords: Set<String> {
             switch self {
             case .clike:
-                ["func", "function", "fn", "let", "var", "const", "if", "else", "for", "while", "return", "class", "struct", "enum", "protocol", "extension", "import", "from", "as", "try", "catch", "throw", "guard", "switch", "case", "break", "continue", "in", "where", "async", "await", "true", "false", "nil", "null", "undefined", "new", "this", "self", "super", "pub", "public", "private", "static", "mut", "impl", "mod", "use", "crate", "type", "typedef", "void", "int", "char", "bool", "package", "interface", "defer", "go", "chan", "map", "range", "match", "lambda", "def", "yield"]
+                ["func", "function", "fn", "let", "var", "const", "constexpr", "auto", "if", "else", "for", "while", "return", "class", "struct", "enum", "protocol", "extension", "import", "from", "as", "try", "catch", "throw", "guard", "switch", "case", "break", "continue", "in", "where", "async", "await", "true", "false", "nil", "null", "nullptr", "undefined", "new", "delete", "this", "self", "super", "pub", "public", "private", "protected", "static", "mut", "impl", "mod", "use", "using", "namespace", "template", "typename", "crate", "type", "typedef", "void", "int", "char", "bool", "package", "interface", "defer", "go", "chan", "map", "range", "match", "lambda", "def", "yield"]
             case .python:
                 ["def", "class", "if", "elif", "else", "for", "while", "return", "import", "from", "as", "try", "except", "finally", "with", "lambda", "yield", "async", "await", "True", "False", "None", "and", "or", "not", "in", "is", "pass", "break", "continue", "global", "nonlocal"]
             case .bash:
@@ -114,6 +124,24 @@ package enum CodeHighlight {
             default:
                 language.isEmpty ? .generic : .clike
             }
+        }
+    }
+
+    package static func displayName(_ language: String) -> String {
+        switch language.lowercased() {
+        case "cpp", "c++", "cc": "C++"
+        case "c", "h": "C"
+        case "js", "javascript": "JavaScript"
+        case "ts", "typescript": "TypeScript"
+        case "jsx": "JSX"
+        case "tsx": "TSX"
+        case "py", "python": "Python"
+        case "rb", "ruby": "Ruby"
+        case "rs", "rust": "Rust"
+        case "cs", "csharp": "C#"
+        case "kt", "kotlin": "Kotlin"
+        case "sh", "zsh", "shell": "Shell"
+        default: language
         }
     }
 
@@ -223,6 +251,32 @@ package enum CodeHighlight {
             }
         }
         return NSRange(location: start, length: index - start)
+    }
+
+    private static func preprocessor(in text: NSString, from start: Int) -> NSRange? {
+        var lineStart = start
+        while lineStart > 0, text.character(at: lineStart - 1) != 10 { lineStart -= 1 }
+        let prefix = text.substring(with: NSRange(location: lineStart, length: start - lineStart))
+        guard prefix.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        var index = start + 1
+        while index < text.length, isIdent(text.character(at: index)) { index += 1 }
+        guard index > start + 1 else { return nil }
+        return NSRange(location: start, length: index - start)
+    }
+
+    private static func includedHeader(in text: NSString, from start: Int) -> NSRange? {
+        var lineStart = start
+        while lineStart > 0, text.character(at: lineStart - 1) != 10 { lineStart -= 1 }
+        let prefix = text.substring(with: NSRange(location: lineStart, length: start - lineStart))
+        guard prefix.range(of: #"^\s*#\s*(?:include|import)\s*$"#, options: .regularExpression) != nil else { return nil }
+        var index = start + 1
+        while index < text.length, text.character(at: index) != 10 {
+            if text.character(at: index) == 62 {
+                return NSRange(location: start, length: index + 1 - start)
+            }
+            index += 1
+        }
+        return nil
     }
 
     private static func htmlTag(in text: NSString, from start: Int) -> NSRange? {

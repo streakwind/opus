@@ -198,9 +198,11 @@ package enum LinuxPresentation {
         var models: [ScheduleBlockModel] = []
         for day in days {
             var blocks = state.schedule.filter {
-                $0.day == day && matchesQuery(query, title: $0.title, details: $0.notes)
+                $0.day == day &&
+                state.showsInOverview($0.courseID) &&
+                matchesQuery(query, title: $0.title, details: $0.notes)
             }
-            for course in state.courses {
+            for course in state.courses where !course.isListOnly {
                 blocks += course.classBlocks(on: day).filter { matchesQuery(query, title: $0.title) }
             }
             for placement in ScheduleLayout.placements(blocks) {
