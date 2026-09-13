@@ -25,12 +25,12 @@ struct JournalView: View {
                     documentID: document.id,
                     focusRequest: focusRequest,
                     onEmbed: { option in
-                        if !store.journalTaskEmbeds(on: day).contains(where: { $0.link == option.link }) {
-                            store.save(JournalEntry(day: day, title: option.title, link: option.link))
+                        if !store.journalTaskEmbeds(on: document.day).contains(where: { $0.link == option.link }) {
+                            store.save(JournalEntry(day: document.day, title: option.title, link: option.link))
                         }
                     }
                 ) { markdown in
-                    guard var latest = store.journalDocument(on: day), latest.id == document.id else { return }
+                    guard var latest = store.journalDocument(on: document.day), latest.id == document.id else { return }
                     latest.markdown = markdown
                     store.save(latest)
                 }

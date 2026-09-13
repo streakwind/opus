@@ -15,8 +15,8 @@ package struct MathSpan: Equatable, Sendable {
 package struct CodeSpan: Equatable, Sendable {
     package var range: NSRange
     package var innerRange: NSRange
-    package var openRange: NSRange { NSRange(location: range.location, length: 1) }
-    package var closeRange: NSRange { NSRange(location: NSMaxRange(range) - 1, length: 1) }
+    package var openRange: NSRange { NSRange(location: range.location, length: innerRange.location - range.location) }
+    package var closeRange: NSRange { NSRange(location: NSMaxRange(innerRange), length: NSMaxRange(range) - NSMaxRange(innerRange)) }
 }
 
 package struct CodeBlock: Equatable, Sendable {
@@ -30,40 +30,32 @@ package struct CodeBlock: Equatable, Sendable {
 package enum JournalCode {
     package static func blocks(in text: String) -> [CodeBlock] {
         let ns = text as NSString
-        var blocks: [CodeBlock] = []
-        var index = 0
-        while index < ns.length {
-            guard isLineStart(ns, index) else {
-                index += 1
-                continue
+        // An unfinished fence is still code while the user is typing it.
+        let pattern = #"(?m)^ {0,3}(`{3,}|~{3,})([^\n]*)\n?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let fences = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        var result: [CodeBlock] = []
+        var cursor = 0
+        for fence in fences {
+            guard fence.range.location >= cursor else { continue }
+            let marker = ns.substring(with: fence.range(at: 1))
+            let info = ns.substring(with: fence.range(at: 2)).trimmingCharacters(in: .whitespacesAndNewlines)
+            if marker.first == "`", info.contains("`") { continue }
+            let closing = fences.first { candidate in
+                guard candidate.range.location >= NSMaxRange(fence.range) else { return false }
+                let value = ns.substring(with: candidate.range(at: 1))
+                return value.first == marker.first && value.count >= marker.count && ns.substring(with: candidate.range(at: 2)).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
-            let ticks = tickCount(ns, index)
-            guard ticks >= 3 else {
-                index += 1
-                continue
-            }
-            let infoStart = index + ticks
-            var infoEnd = infoStart
-            while infoEnd < ns.length, ns.character(at: infoEnd) != 10 { infoEnd += 1 }
-            guard infoEnd < ns.length else { break }
-            let language = ns.substring(with: NSRange(location: infoStart, length: infoEnd - infoStart))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased()
-            let openEnd = infoEnd + 1
-            guard let close = findFence(in: ns, from: openEnd, ticks: ticks) else {
-                index = openEnd
-                continue
-            }
-            blocks.append(CodeBlock(
-                range: NSRange(location: index, length: close.end - index),
-                language: language,
-                openRange: NSRange(location: index, length: openEnd - index),
-                closeRange: NSRange(location: close.start, length: close.end - close.start),
-                innerRange: NSRange(location: openEnd, length: close.start - openEnd)
+            let close = closing?.range ?? NSRange(location: ns.length, length: 0)
+            result.append(CodeBlock(
+                range: NSRange(location: fence.range.location, length: NSMaxRange(close) - fence.range.location),
+                language: String(info.split(whereSeparator: \.isWhitespace).first ?? "").lowercased(),
+                openRange: fence.range, closeRange: close,
+                innerRange: NSRange(location: NSMaxRange(fence.range), length: close.location - NSMaxRange(fence.range))
             ))
-            index = close.end
+            cursor = NSMaxRange(close)
         }
-        return blocks
+        return result
     }
 
     package static func spans(in text: String) -> [CodeSpan] {
@@ -81,27 +73,25 @@ package enum JournalCode {
                 continue
             }
             let ticks = tickCount(ns, index)
-            if ticks != 1 {
-                index += ticks
-                continue
-            }
-            var end = index + 1
+            var end = index + ticks
             var found = false
             while end < ns.length {
                 let character = ns.character(at: end)
                 if character == 10 { break }
                 if character == 96 {
-                    found = true
-                    break
+                    let closing = tickCount(ns, end)
+                    if closing == ticks { found = true; break }
+                    end += closing
+                    continue
                 }
                 end += 1
             }
-            if found, end > index + 1 {
+            if found, end > index + ticks {
                 spans.append(CodeSpan(
-                    range: NSRange(location: index, length: end + 1 - index),
-                    innerRange: NSRange(location: index + 1, length: end - (index + 1))
+                    range: NSRange(location: index, length: end + ticks - index),
+                    innerRange: NSRange(location: index + ticks, length: end - (index + ticks))
                 ))
-                index = end + 1
+                index = end + ticks
             } else {
                 index += 1
             }
@@ -143,14 +133,16 @@ package enum JournalMath {
         let ns = text as NSString
         let length = ns.length
         var spans: [MathSpan] = []
+        let code = JournalCode.blocks(in: text).map(\.range) + JournalCode.spans(in: text).map(\.range)
         var index = 0
         while index < length {
+            if let range = code.first(where: { NSLocationInRange(index, $0) }) { index = NSMaxRange(range); continue }
             let character = ns.character(at: index)
             if character == 96 {
                 index = skipCode(in: ns, from: index)
                 continue
             }
-            if character == 36 {
+            if character == 36, !escaped(ns, at: index) {
                 if index + 1 < length, ns.character(at: index + 1) == 36 {
                     if let end = findCloser(in: ns, from: index + 2, display: true) {
                         let inner = NSRange(location: index + 2, length: end - (index + 2))
@@ -181,6 +173,13 @@ package enum JournalMath {
         return spans
     }
 
+    private static func escaped(_ text: NSString, at index: Int) -> Bool {
+        var previous = index - 1
+        var count = 0
+        while previous >= 0, text.character(at: previous) == 92 { count += 1; previous -= 1 }
+        return count % 2 == 1
+    }
+
     private static func skipCode(in text: NSString, from start: Int) -> Int {
         let ticks = JournalCode.tickCount(text, start)
         if ticks >= 3, JournalCode.isLineStart(text, start) {
@@ -206,6 +205,7 @@ package enum JournalMath {
                 index = skipCode(in: text, from: index)
                 continue
             }
+            if escaped(text, at: index) { index += 1; continue }
             if display {
                 if character == 36, index + 1 < text.length, text.character(at: index + 1) == 36 {
                     return index

@@ -27,7 +27,6 @@ struct ListNoteEditor: View {
                 .keyboardShortcut(.defaultAction)
             }
             .padding(20)
-            Divider()
             MarkdownDocumentEditor(
                 store: store,
                 day: Day.today,

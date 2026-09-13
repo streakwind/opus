@@ -1,5 +1,6 @@
 import AppKit
 import XCTest
+import SwiftUI
 import OpusCore
 @testable import Opus
 
@@ -82,4 +83,57 @@ final class JournalTextViewTests: XCTestCase {
         XCTAssertNotNil(MathRenderer.image(latex: "E=mc^2", display: false, color: .labelColor, fontSize: 17))
         XCTAssertNotNil(MathRenderer.image(latex: #"\frac{a}{b}"#, display: true, color: .labelColor, fontSize: 20))
     }
+    @MainActor func testPreviewRendersOnceAndNeverChangesSource() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = try Store(database: Database(url: folder.appendingPathComponent("journal.sqlite")))
+        let source = "# Heading\n**Bold** and $x^2$\n```swift\nlet n = 42\n```\n"
+        let parent = JournalNativeEditor(markdown: .constant(source), store: store, day: Day.today, focusRequest: 0, pendingEmbed: .constant(nil), onTaskCommand: { _ in }, onOpen: { _ in }, preview: true)
+        let coordinator = parent.makeCoordinator()
+        let view = editor("")
+        coordinator.load(source, in: view)
+        XCTAssertEqual(view.string, "Heading\nBold and \u{fffc}\nlet n = 42\n")
+        XCTAssertFalse(view.isEditable)
+        XCTAssertTrue(JournalRichText.markdown(view.attributedString()).contains("$x^2$"))
+        XCTAssertEqual(coordinator.source, source)
+        let range = (view.string as NSString).range(of: "let")
+        XCTAssertEqual(view.textStorage?.attribute(.foregroundColor, at: range.location, effectiveRange: nil) as? NSColor, .systemPurple)
+        coordinator.parent.preview = false
+        coordinator.load(source, in: view)
+        XCTAssertEqual(JournalRichText.markdown(view.attributedString()), source)
+        XCTAssertTrue(view.isEditable)
+    }
+    @MainActor func testEmbedExamplesInsideCodeStayLiteral() async {
+        let source = "```\n![[task:example]]\n```\n`![[task:inline]]`"
+        XCTAssertEqual(JournalRichText.attributed(source).string, source)
+    }
+
+    @MainActor func testReturnContinuesListsAndCodeIndentation() async {
+        for (source, expected) in [("- [x] Done", "- [x] Done\n- [ ] "), ("2. Item", "2. Item\n3. "), ("- ", ""), ("```swift\n    let n = 1", "```swift\n    let n = 1\n    ")] {
+            let view = editor(source)
+            view.setSelectedRange(NSRange(location: source.utf16.count, length: 0))
+            view.insertNewline(nil)
+            XCTAssertEqual(view.string, expected)
+        }
+    }
+    @MainActor func testFormattingWritesPortableMarkdown() async {
+        let view = editor("word")
+        view.setSelectedRange(NSRange(location: 0, length: 4))
+        view.toggleBoldface(nil)
+        XCTAssertEqual(view.string, "**word**")
+        XCTAssertEqual(view.selectedRange(), NSRange(location: 2, length: 4))
+    }
+
+    @MainActor func testProsePreviewHandlesNestedFormattingLinksAndEscapes() async {
+        let source = #"**bold _italic_** [link](https://example.com) \*literal\* `code`"#
+        let rendered = MarkdownProse.render(NSAttributedString(string: source))
+        XCTAssertEqual(rendered.string, "bold italic link *literal* code")
+        let link = (rendered.string as NSString).range(of: "link")
+        XCTAssertEqual(rendered.attribute(.link, at: link.location, effectiveRange: nil) as? URL, URL(string: "https://example.com"))
+        let italic = (rendered.string as NSString).range(of: "italic")
+        let font = rendered.attribute(.font, at: italic.location, effectiveRange: nil) as! NSFont
+        XCTAssertTrue(NSFontManager.shared.traits(of: font).contains(.italicFontMask))
+        XCTAssertTrue(NSFontManager.shared.traits(of: font).contains(.boldFontMask))
+    }
+
 }

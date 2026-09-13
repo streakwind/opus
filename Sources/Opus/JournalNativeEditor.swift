@@ -13,10 +13,20 @@ import SwiftUI
     }
     static func attributed(_ markdown: String) -> NSAttributedString {
         let result = NSMutableAttributedString(string: "")
+        let protected = JournalCode.blocks(in: markdown).map(\.range) + JournalCode.spans(in: markdown).map(\.range)
+        var offset = 0
         for block in JournalMarkdown.blocks(from: markdown) {
             switch block {
-            case .text(let text): result.append(NSAttributedString(string: text))
+            case .text(let text):
+                result.append(NSAttributedString(string: text))
+                offset += text.utf16.count
             case .embed(let link):
+                let range = NSRange(location: offset, length: link.embedToken.utf16.count)
+                offset += range.length
+                if protected.contains(where: { NSIntersectionRange($0, range).length > 0 }) {
+                    result.append(NSAttributedString(string: link.embedToken))
+                    continue
+                }
                 let wrapper = FileWrapper(regularFileWithContents: Data(link.embedToken.utf8))
                 wrapper.preferredFilename = "Opus-embed.txt"
                 result.append(NSAttributedString(attachment: NSTextAttachment(fileWrapper: wrapper)))
@@ -24,10 +34,13 @@ import SwiftUI
         }
         return result
     }
+    static let sourceToken = NSAttributedString.Key("OpusMarkdownSource")
     static func markdown(_ text: NSAttributedString) -> String {
         var result = ""
         text.enumerateAttributes(in: NSRange(location: 0, length: text.length)) { attributes, range, _ in
-            if let link = link(in: attributes) {
+            if let token = attributes[sourceToken] as? String {
+                result += (text.string as NSString).substring(with: range).replacingOccurrences(of: "\u{fffc}", with: token)
+            } else if let link = link(in: attributes) {
                 let substring = (text.string as NSString).substring(with: range)
                 result += substring.replacingOccurrences(of: "\u{fffc}", with: link.embedToken)
             }
@@ -45,6 +58,8 @@ struct JournalNativeEditor: NSViewRepresentable {
     @Binding var pendingEmbed: JournalEmbedOption?
     var onTaskCommand: (Int) -> Void
     var onOpen: (JournalLink) -> Void
+    var preview = false
+    var active = true
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> NSScrollView {
@@ -91,7 +106,9 @@ struct JournalNativeEditor: NSViewRepresentable {
         coordinator.parent = self
         guard let editor = scroll.documentView as? JournalTextView else { return }
         editor.onOpen = onOpen
-        if markdown != coordinator.source, !editor.hasMarkedText() {
+        editor.isEditable = !preview && active
+        if !active, editor.window?.firstResponder === editor { editor.window?.makeFirstResponder(nil) }
+        if (markdown != coordinator.source || coordinator.preview != preview), !editor.hasMarkedText() {
             coordinator.load(markdown, in: editor)
             editor.undoManager?.removeAllActions()
         } else { coordinator.refreshAttachments(editor) }
@@ -107,7 +124,7 @@ struct JournalNativeEditor: NSViewRepresentable {
                 editor.window?.makeFirstResponder(editor)
             }
         }
-        if coordinator.lastFocus != focusRequest {
+        if !preview, coordinator.lastFocus != focusRequest {
             coordinator.lastFocus = focusRequest
             DispatchQueue.main.async { [weak editor] in
                 guard let editor else { return }
@@ -119,6 +136,7 @@ struct JournalNativeEditor: NSViewRepresentable {
     @MainActor final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: JournalNativeEditor
         var source = ""
+        var preview = false
         var lastFocus = 0
         var inserting = false
         var commandRange: NSRange?
@@ -126,20 +144,24 @@ struct JournalNativeEditor: NSViewRepresentable {
         init(_ parent: JournalNativeEditor) { self.parent = parent }
         func load(_ value: String, in editor: JournalTextView) {
             source = value
+            preview = parent.preview
+            editor.isEditable = !preview && parent.active
             let selection = editor.selectedRange()
             editor.textStorage?.setAttributedString(JournalRichText.attributed(value))
             editor.setSelectedRange(NSRange(location: min(selection.location, editor.string.utf16.count), length: 0))
             style(editor)
+            if preview { renderPreview(editor) }
         }
         func textDidChange(_ notification: Notification) {
-            guard !styling, let editor = notification.object as? JournalTextView, !editor.hasMarkedText(), let storage = editor.textStorage else { return }
+            guard !preview, !styling, let editor = notification.object as? JournalTextView, !editor.hasMarkedText(), let storage = editor.textStorage else { return }
             source = JournalRichText.markdown(storage)
             parent.markdown = source
             style(editor)
             let selection = editor.selectedRange()
             let range = NSRange(location: max(0, selection.location - 5), length: 5)
             if selection.length == 0, selection.location >= 5,
-               (editor.string as NSString).substring(with: range) == "/task" {
+               (editor.string as NSString).substring(with: range) == "/task",
+               !(JournalCode.blocks(in: editor.string).map(\.range) + JournalCode.spans(in: editor.string).map(\.range) + JournalMath.spans(in: editor.string).map(\.range)).contains(where: { NSIntersectionRange($0, range).length > 0 }) {
                 guard commandRange != range else { return }
                 commandRange = range
                 DispatchQueue.main.async { self.parent.onTaskCommand(range.location) }
@@ -173,6 +195,7 @@ struct JournalNativeEditor: NSViewRepresentable {
             // Keep attachment attributes and characters intact while restyling text.
             storage.removeAttribute(.backgroundColor, range: full)
             storage.removeAttribute(.underlineStyle, range: full)
+            storage.removeAttribute(.strikethroughStyle, range: full)
             storage.removeAttribute(.link, range: full)
             storage.addAttributes(base, range: full)
             let text = storage.string
@@ -180,28 +203,13 @@ struct JournalNativeEditor: NSViewRepresentable {
                 guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
                 for match in regex.matches(in: text, range: full) { apply(match) }
             }
-            let caret = editor.selectedRange()
-            func caretTouches(_ range: NSRange) -> Bool {
-                NSLocationInRange(caret.location, range) || NSIntersectionRange(caret, range).length > 0
-            }
-            func hideMarker(_ range: NSRange) {
-                guard range.length > 0, NSMaxRange(range) <= storage.length else { return }
-                let collapsed = NSMutableParagraphStyle()
-                collapsed.minimumLineHeight = 0.01
-                collapsed.maximumLineHeight = 0.01
-                collapsed.lineSpacing = 0
-                storage.addAttributes([
-                    .font: NSFont.systemFont(ofSize: 0.01),
-                    .foregroundColor: NSColor.clear,
-                    .backgroundColor: NSColor.clear,
-                    .paragraphStyle: collapsed
-                ], range: range)
-            }
             let codeBlocks = JournalCode.blocks(in: text)
+            let inlineCode = JournalCode.spans(in: text)
+            let mathRanges = JournalMath.spans(in: text)
             func insideCode(_ range: NSRange) -> Bool {
-                codeBlocks.contains { NSIntersectionRange($0.range, range).length > 0 }
+                (codeBlocks.map(\.range) + inlineCode.map(\.range) + mathRanges.map(\.range)).contains { NSIntersectionRange($0, range).length > 0 }
             }
-            matches(#"(?m)^(#{1,3})\s+(.+)$"#) { match in
+            matches(#"(?m)^(#{1,6})\s+(.+)$"#) { match in
                 guard !insideCode(match.range) else { return }
                 let level = match.range(at: 1).length
                 storage.addAttribute(.font, value: NSFont.systemFont(ofSize: level == 1 ? 26 : level == 2 ? 22 : 19, weight: .semibold), range: match.range)
@@ -211,6 +219,14 @@ struct JournalNativeEditor: NSViewRepresentable {
                 guard !insideCode(match.range) else { return }
                 storage.addAttribute(.font, value: NSFont.systemFont(ofSize: 17, weight: .bold), range: match.range(at: 1))
             }
+            matches(#"(?<!\*)\*([^*\n]+)\*(?!\*)"#) { match in
+                guard !insideCode(match.range) else { return }
+                storage.addAttribute(.font, value: NSFontManager.shared.convert(NSFont.systemFont(ofSize: 17), toHaveTrait: .italicFontMask), range: match.range(at: 1))
+            }
+            matches(#"~~([^~\n]+)~~"#) { match in
+                guard !insideCode(match.range) else { return }
+                storage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: match.range(at: 1))
+            }
             matches(#"\[([^\]\n]+)\]\((https?://[^\)\n]+)\)"#) { match in
                 guard !insideCode(match.range) else { return }
                 let url = (text as NSString).substring(with: match.range(at: 2))
@@ -219,7 +235,6 @@ struct JournalNativeEditor: NSViewRepresentable {
             let mono = NSFont.monospacedSystemFont(ofSize: 13.5, weight: .regular)
             let blockFill = NSColor.labelColor.withAlphaComponent(0.055)
             for block in codeBlocks {
-                let editing = caretTouches(block.range)
                 storage.addAttribute(.font, value: mono, range: block.range)
                 storage.addAttribute(.backgroundColor, value: blockFill, range: block.innerRange)
                 storage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: block.innerRange)
@@ -229,48 +244,16 @@ struct JournalNativeEditor: NSViewRepresentable {
                     guard NSMaxRange(absolute) <= storage.length else { continue }
                     storage.addAttribute(.foregroundColor, value: highlightColor(kind), range: absolute)
                 }
-                if editing {
-                    storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: block.openRange)
-                    storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: block.closeRange)
-                } else {
-                    hideMarker(block.openRange)
-                    hideMarker(block.closeRange)
-                }
+                storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: block.openRange)
+                storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: block.closeRange)
             }
             for span in JournalCode.spans(in: text) {
-                let editing = caretTouches(span.range)
-                storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 14.5, weight: .regular), range: span.innerRange)
-                storage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: span.innerRange)
+                storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 14.5, weight: .regular), range: span.range)
                 storage.addAttribute(.backgroundColor, value: NSColor.labelColor.withAlphaComponent(0.07), range: span.innerRange)
-                if editing {
-                    storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 14.5, weight: .regular), range: span.openRange)
-                    storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 14.5, weight: .regular), range: span.closeRange)
-                    storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: span.openRange)
-                    storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: span.closeRange)
-                } else {
-                    hideMarker(span.openRange)
-                    hideMarker(span.closeRange)
-                }
             }
             for span in JournalMath.spans(in: text) {
-                let editing = caretTouches(span.range)
-                if editing {
-                    storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 16, weight: .regular), range: span.range)
-                    storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: span.range)
-                } else {
-                    hideMarker(span.openRange)
-                    hideMarker(span.closeRange)
-                    storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 16, weight: .regular), range: span.innerRange)
-                    storage.addAttribute(.foregroundColor, value: NSColor.clear, range: span.innerRange)
-                }
-                if span.display {
-                    let paragraph = NSMutableParagraphStyle()
-                    paragraph.lineSpacing = 4
-                    if !editing, let image = MathRenderer.image(latex: span.latex, display: true, color: .labelColor, fontSize: 20) {
-                        paragraph.minimumLineHeight = max(28, image.size.height + 18)
-                    }
-                    storage.addAttribute(.paragraphStyle, value: paragraph, range: span.range)
-                }
+                storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 16, weight: .regular), range: span.range)
+                storage.addAttribute(.foregroundColor, value: NSColor.systemTeal, range: span.range)
             }
             storage.endEditing()
             editor.typingAttributes = base
@@ -278,9 +261,46 @@ struct JournalNativeEditor: NSViewRepresentable {
             refreshAttachments(editor)
             editor.needsDisplay = true
         }
+        private func renderPreview(_ editor: JournalTextView) {
+            guard let storage = editor.textStorage else { return }
+            let text = storage.string
+            let blocks = JournalCode.blocks(in: text)
+            let math = JournalMath.spans(in: text)
+            var edits: [(NSRange, NSAttributedString)] = []
+            func remove(_ range: NSRange) { edits.append((range, NSAttributedString(string: ""))) }
+            for block in blocks { remove(block.openRange); remove(block.closeRange) }
+            for span in math {
+                guard let image = MathRenderer.image(latex: span.latex, display: span.display, color: .labelColor, fontSize: span.display ? 22 : 17) else { continue }
+                let attachment = NSTextAttachment()
+                attachment.image = image
+                attachment.bounds = NSRect(origin: NSPoint(x: 0, y: -4), size: image.size)
+                let rendered = NSMutableAttributedString(attachment: attachment)
+                rendered.addAttribute(JournalRichText.sourceToken, value: (text as NSString).substring(with: span.range), range: NSRange(location: 0, length: rendered.length))
+                edits.append((span.range, rendered))
+            }
+            // Parse prose with Foundation's Markdown parser, rather than removing
+            // punctuation with regular expressions (which breaks nesting and escapes).
+            let protected = (blocks.map(\.range) + math.map(\.range)).sorted { $0.location < $1.location }
+            var start = 0
+            for range in protected + [NSRange(location: storage.length, length: 0)] {
+                if range.location > start {
+                    let prose = NSRange(location: start, length: range.location - start)
+                    edits.append((prose, MarkdownProse.render(storage.attributedSubstring(from: prose))))
+                }
+                start = max(start, NSMaxRange(range))
+            }
+            storage.beginEditing()
+            var boundary = storage.length
+            for (range, replacement) in edits.sorted(by: { $0.0.location > $1.0.location }) {
+                guard NSMaxRange(range) <= boundary else { continue }
+                storage.replaceCharacters(in: range, with: replacement)
+                boundary = range.location
+            }
+            storage.endEditing()
+            editor.setSelectedRange(NSRange(location: 0, length: 0))
+        }
         func textViewDidChangeSelection(_ notification: Notification) {
-            guard let editor = notification.object as? JournalTextView else { return }
-            style(editor)
+            // Styling depends on content, never on caret position.
         }
         private func highlightColor(_ kind: CodeTokenKind) -> NSColor {
             switch kind {
@@ -295,6 +315,69 @@ struct JournalNativeEditor: NSViewRepresentable {
     }
 }
 
+/// Native attributed prose; Markdown remains untouched in the editable document.
+@MainActor enum MarkdownProse {
+    static func render(_ source: NSAttributedString) -> NSAttributedString {
+        let result = NSMutableAttributedString(string: "")
+        var attachments: [NSTextAttachment] = []
+        source.enumerateAttribute(.attachment, in: NSRange(location: 0, length: source.length)) { value, range, _ in
+            if let attachment = value as? NSTextAttachment {
+                for _ in 0..<range.length { attachments.append(attachment) }
+            }
+        }
+        var attachmentIndex = 0
+        let lines = source.string.components(separatedBy: "\n")
+        for (index, original) in lines.enumerated() {
+            var line = original
+            var size: CGFloat = 17
+            var heading = false
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineSpacing = 4
+            if let match = line.range(of: #"^#{1,6}[ \t]+"#, options: .regularExpression) {
+                let count = line[match].prefix(while: { $0 == "#" }).count
+                size = count == 1 ? 26 : count == 2 ? 22 : 19
+                heading = true
+                line.removeSubrange(match)
+            } else if line.hasPrefix("> ") {
+                line.removeFirst(2)
+                paragraph.firstLineHeadIndent = 16
+                paragraph.headIndent = 16
+            } else if let match = line.range(of: #"^([ \t]*)[-+*] "#, options: .regularExpression) {
+                let indent = String(line[match].prefix(while: { $0 == " " || $0 == "\t" }))
+                line.replaceSubrange(match, with: indent + "• ")
+                if line.hasPrefix("• [ ] ") { line = "☐ " + line.dropFirst(6) }
+                else if line.hasPrefix("• [x] ") || line.hasPrefix("• [X] ") { line = "☑ " + line.dropFirst(6) }
+                paragraph.headIndent = 18
+            }
+            let parsed = (try? AttributedString(markdown: line, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(line)
+            for run in parsed.runs {
+                var font = NSFont.systemFont(ofSize: size, weight: heading ? .semibold : .regular)
+                let intent = run.inlinePresentationIntent ?? []
+                if intent.contains(.stronglyEmphasized) { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask) }
+                if intent.contains(.emphasized) { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
+                var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraph]
+                if intent.contains(.code) {
+                    attributes[.font] = NSFont.monospacedSystemFont(ofSize: 14.5, weight: .regular)
+                    attributes[.backgroundColor] = NSColor.labelColor.withAlphaComponent(0.07)
+                }
+                if intent.contains(.strikethrough) { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
+                if let link = run.link { attributes[.link] = link }
+                let rendered = NSMutableAttributedString(string: String(parsed[run.range].characters), attributes: attributes)
+                let text = rendered.string as NSString
+                for position in 0..<text.length where text.character(at: position) == 0xfffc {
+                    if attachmentIndex < attachments.count {
+                        rendered.addAttribute(.attachment, value: attachments[attachmentIndex], range: NSRange(location: position, length: 1))
+                        attachmentIndex += 1
+                    }
+                }
+                result.append(rendered)
+            }
+            if index < lines.count - 1 { result.append(NSAttributedString(string: "\n", attributes: [.font: NSFont.systemFont(ofSize: 17), .paragraphStyle: paragraph])) }
+        }
+        return result
+    }
+}
+
 /// One text system provides caret movement, multiline selection, and native undo
 /// across both prose and embeds. There are no nested editors or synthetic rows.
 @MainActor final class JournalTextView: NSTextView {
@@ -305,50 +388,6 @@ struct JournalNativeEditor: NSViewRepresentable {
         let changed = newSize.width != frame.width
         super.setFrameSize(newSize)
         if changed { onWidthChange?() }
-    }
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        drawRenderedMath()
-    }
-    private func drawRenderedMath() {
-        guard let storage = textStorage, let manager = layoutManager, let container = textContainer else { return }
-        let caret = selectedRange()
-        let origin = textContainerOrigin
-        for span in JournalMath.spans(in: storage.string) {
-            if NSLocationInRange(caret.location, span.range) || NSIntersectionRange(caret, span.range).length > 0 {
-                continue
-            }
-            let glyphs = manager.glyphRange(forCharacterRange: span.innerRange, actualCharacterRange: nil)
-            var rect = manager.boundingRect(forGlyphRange: glyphs, in: container)
-            rect.origin.x += origin.x
-            rect.origin.y += origin.y
-            guard let image = MathRenderer.image(
-                latex: span.latex,
-                display: span.display,
-                color: .labelColor,
-                fontSize: span.display ? 20 : 17
-            ) else { continue }
-            (NSColor.textBackgroundColor).setFill()
-            rect.fill()
-            let size = image.size
-            let box: NSRect
-            if span.display {
-                box = NSRect(
-                    x: rect.minX,
-                    y: rect.midY - size.height / 2,
-                    width: min(rect.width, size.width),
-                    height: size.height
-                )
-            } else {
-                box = NSRect(
-                    x: rect.minX,
-                    y: rect.maxY - size.height - 1,
-                    width: min(rect.width, size.width),
-                    height: size.height
-                )
-            }
-            image.draw(in: box, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-        }
     }
     func insertEmbed(_ link: JournalLink, replacing proposed: NSRange) {
         let location = min(proposed.location, string.utf16.count)
@@ -363,6 +402,49 @@ struct JournalNativeEditor: NSViewRepresentable {
         insertText(insertion, replacementRange: range)
         if after.hasPrefix("\n") { setSelectedRange(NSRange(location: selectedRange().location + 1, length: 0)) }
         scrollRangeToVisible(selectedRange())
+    }
+    override func insertNewline(_ sender: Any?) {
+        guard isEditable else { return }
+        let selected = selectedRange()
+        let ns = string as NSString
+        let line = ns.lineRange(for: NSRange(location: selected.location, length: 0))
+        let prefix = ns.substring(with: NSRange(location: line.location, length: selected.location - line.location))
+        if JournalCode.blocks(in: string).contains(where: { NSLocationInRange(selected.location, $0.innerRange) || selected.location == NSMaxRange($0.innerRange) && $0.closeRange.length == 0 }) {
+            let indent = String(prefix.prefix(while: { $0 == " " || $0 == "\t" }))
+            insertText("\n" + indent, replacementRange: selected)
+            return
+        }
+        let pattern = #"^([ \t]*)([-+*]|[0-9]+[.)]|>)([ \t]+)(\[[ xX]\] )?(.*)$"#
+        if let match = try? NSRegularExpression(pattern: pattern).firstMatch(in: prefix, range: NSRange(location: 0, length: prefix.utf16.count)) {
+            let text = prefix as NSString
+            if text.substring(with: match.range(at: 5)).isEmpty {
+                insertText("", replacementRange: NSRange(location: line.location, length: selected.location - line.location))
+                return
+            }
+            var marker = text.substring(with: match.range(at: 2))
+            if let number = Int(marker.dropLast()) { marker = "\(number + 1)" + marker.suffix(1) }
+            let checkbox = match.range(at: 4).location == NSNotFound ? "" : "[ ] "
+            insertText("\n" + text.substring(with: match.range(at: 1)) + marker + " " + checkbox, replacementRange: selected)
+            return
+        }
+        super.insertNewline(sender)
+    }
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if isEditable, window?.firstResponder === self,
+           event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command {
+            if event.charactersIgnoringModifiers == "b" { wrapSelection("**"); return true }
+            if event.charactersIgnoringModifiers == "i" { wrapSelection("*"); return true }
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+    @objc func toggleBoldface(_ sender: Any?) { wrapSelection("**") }
+    @objc func toggleItalics(_ sender: Any?) { wrapSelection("*") }
+    private func wrapSelection(_ marker: String) {
+        guard isEditable else { return }
+        let selected = selectedRange()
+        let content = (string as NSString).substring(with: selected)
+        insertText(marker + content + marker, replacementRange: selected)
+        setSelectedRange(NSRange(location: selected.location + marker.utf16.count, length: selected.length))
     }
     override func paste(_ sender: Any?) {
         if let text = NSPasteboard.general.string(forType: .string) {
@@ -412,8 +494,10 @@ struct JournalNativeEditor: NSViewRepresentable {
         let menu = NSMenu()
         let open = menu.addItem(withTitle: "Open linked item", action: #selector(openSelectedEmbed), keyEquivalent: "")
         open.target = self
-        let remove = menu.addItem(withTitle: "Remove embed from this day", action: #selector(removeSelectedEmbed), keyEquivalent: "")
-        remove.target = self
+        if isEditable {
+            let remove = menu.addItem(withTitle: "Remove embed", action: #selector(removeSelectedEmbed), keyEquivalent: "")
+            remove.target = self
+        }
         return menu
     }
     @objc private func openSelectedEmbed() {
@@ -422,6 +506,7 @@ struct JournalNativeEditor: NSViewRepresentable {
         onOpen?(link)
     }
     @objc private func removeSelectedEmbed() {
+        guard isEditable else { return }
         insertText("", replacementRange: selectedRange())
     }
 }

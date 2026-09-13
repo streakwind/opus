@@ -591,7 +591,7 @@ final class RedesignTests: XCTestCase {
         XCTAssertTrue(JournalMath.spans(in: "almost $open").isEmpty)
         XCTAssertTrue(JournalMath.spans(in: "`$x$`").isEmpty)
         let code = JournalCode.spans(in: "use `let x` and ```not a block```")
-        XCTAssertEqual(code.map { ($0.innerRange.location, $0.innerRange.length) }.count, 1)
+        XCTAssertEqual(code.map { ($0.innerRange.location, $0.innerRange.length) }.count, 2)
         XCTAssertEqual(( "use `let x` and ```not a block```" as NSString).substring(with: code[0].innerRange), "let x")
         let source = "intro\n```swift\nlet value = 1\n```\n$x$"
         let blocks = JournalCode.blocks(in: source)

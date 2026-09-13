@@ -45,7 +45,7 @@ package enum CodeHighlight {
             if isIdentStart(character) {
                 let end = identEnd(in: ns, from: index)
                 let word = ns.substring(with: NSRange(location: index, length: end - index))
-                if family.keywords.contains(word) {
+                if family.keywords.contains(family == .sql ? word.lowercased() : word) {
                     tokens.append((NSRange(location: index, length: end - index), .keyword))
                 } else if family.types.contains(word) || (word.first?.isUppercase == true && family == .clike) {
                     tokens.append((NSRange(location: index, length: end - index), .type))
@@ -192,9 +192,6 @@ package enum CodeHighlight {
             return NSRange(location: start, length: text.length - start)
         }
         if character == 34 || character == 39 {
-            if family == .clike, character == 39, start + 1 < text.length, isIdentStart(text.character(at: start + 1)) {
-                return nil
-            }
             var index = start + 1
             while index < text.length {
                 let next = text.character(at: index)
