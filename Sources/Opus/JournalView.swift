@@ -1,6 +1,7 @@
 import AppKit
 import OpusCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct JournalView: View {
     var store: Store
@@ -10,45 +11,39 @@ struct JournalView: View {
     @State private var choosingDate = false
     @State private var choosingTask = false
     @State private var focusRequest = 0
+    @State private var pendingEmbed: JournalEmbedOption?
 
     private var day: String { Day.string(anchor) }
     private var document: JournalEntry? { store.journalDocument(on: day) }
-    private var embeds: [JournalEntry] { store.journalTaskEmbeds(on: day) }
 
     var body: some View {
         VStack(spacing: 0) {
             heading
             if let document {
-                VStack(alignment: .leading, spacing: 12) {
-                    if !embeds.isEmpty {
-                        VStack(spacing: 8) {
-                            ForEach(embeds) { entry in
-                                JournalTaskEmbedCard(store: store, entry: entry)
-                            }
-                        }
-                        .padding(.horizontal, 28)
+                JournalDocumentEditor(
+                    store: store,
+                    document: document,
+                    focusRequest: focusRequest,
+                    pendingEmbed: $pendingEmbed,
+                    onTaskCommand: { _ in
+                        choosingTask = true
                     }
-                    JournalDocumentEditor(
-                        store: store,
-                        document: document,
-                        focusRequest: focusRequest,
-                        onTaskCommand: { choosingTask = true }
-                    )
-                    .id(document.id)
-                    .popover(isPresented: $choosingTask, arrowEdge: .top) {
-                        JournalEmbedPicker(store: store, day: day) { option in
-                            store.save(JournalEntry(day: day, title: option.title, link: option.link))
-                            choosingTask = false
-                            focusRequest += 1
-                        }
+                )
+                .id(document.id)
+                .popover(isPresented: $choosingTask, arrowEdge: .top) {
+                    JournalEmbedPicker(store: store, day: day) { option in
+                        store.save(JournalEntry(day: day, title: option.title, link: option.link))
+                        pendingEmbed = option
+                        choosingTask = false
+                        focusRequest += 1
                     }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color(nsColor: .textBackgroundColor))
-        .onAppear { ensureDocument() }
-        .onChange(of: day) { _, _ in ensureDocument() }
+        .onAppear { store.ensureJournalDocument(on: day) }
+        .onChange(of: day) { _, day in store.ensureJournalDocument(on: day) }
         .onChange(of: newEntryRequest) { _, _ in focusRequest += 1 }
     }
 
@@ -85,10 +80,6 @@ struct JournalView: View {
         .padding(.horizontal, 20).padding(.vertical, 14)
     }
 
-    private func ensureDocument() {
-        guard store.journalDocument(on: day) == nil else { return }
-        store.save(JournalEntry(day: day, title: "Journal"))
-    }
     private func move(_ amount: Int) {
         anchor = Calendar.current.date(byAdding: .day, value: amount, to: anchor) ?? anchor
     }
@@ -99,6 +90,7 @@ private struct JournalEmbedPicker: View {
     var day: String
     var onPick: (JournalEmbedOption) -> Void
     @State private var query = ""
+    @State private var selected = 0
     @FocusState private var searchFocused: Bool
 
     private var options: [JournalEmbedOption] {
@@ -116,63 +108,180 @@ private struct JournalEmbedPicker: View {
             TextField("Search tasks, assessments, or lists", text: $query)
                 .textFieldStyle(.roundedBorder)
                 .focused($searchFocused)
+                .onKeyPress(.upArrow) { move(-1); return .handled }
+                .onKeyPress(.downArrow) { move(1); return .handled }
+                .onKeyPress(.return) { confirm(); return .handled }
             if options.isEmpty {
                 ContentUnavailableView("No matches", systemImage: "magnifyingglass", description: Text("Try another title or list."))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(options) { option in
-                            Button { onPick(option) } label: {
-                                HStack(spacing: 10) {
-                                    Image(systemName: option.icon)
-                                        .foregroundStyle(store.course(option.courseID)?.tint ?? .teal)
-                                        .frame(width: 18)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(option.title).lineLimit(2)
-                                        Text(option.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                ScrollViewReader { reader in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 2) {
+                            ForEach(Array(options.enumerated()), id: \.element.id) { index, option in
+                                Button { onPick(option) } label: {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: option.icon)
+                                            .foregroundStyle(store.course(option.courseID)?.tint ?? .teal)
+                                            .frame(width: 18)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(option.title).lineLimit(2)
+                                            Text(option.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                        }
+                                        Spacer(minLength: 0)
                                     }
-                                    Spacer(minLength: 0)
+                                    .contentShape(Rectangle())
+                                    .padding(.vertical, 6).padding(.horizontal, 8)
+                                    .background(index == selected ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 6))
                                 }
-                                .contentShape(Rectangle())
-                                .padding(.vertical, 6)
+                                .buttonStyle(.plain)
+                                .id(option.id)
                             }
-                            .buttonStyle(.plain)
                         }
+                    }
+                    .onChange(of: selected) { _, id in
+                        if options.indices.contains(id) { reader.scrollTo(options[id].id, anchor: .center) }
                     }
                 }
             }
         }
         .padding(16)
         .frame(width: 440, height: 520)
-        .onAppear { searchFocused = true }
+        .onAppear {
+            searchFocused = true
+            selected = 0
+        }
+        .onChange(of: query) { _, _ in selected = 0 }
+        .onChange(of: options.map(\.id)) { _, ids in
+            if selected >= ids.count { selected = max(0, ids.count - 1) }
+        }
+    }
+
+    private func move(_ amount: Int) {
+        guard !options.isEmpty else { return }
+        selected = min(options.count - 1, max(0, selected + amount))
+    }
+    private func confirm() {
+        guard options.indices.contains(selected) else { return }
+        onPick(options[selected])
     }
 }
 
 private struct JournalDocumentEditor: View {
     var store: Store
-    @State private var document: JournalEntry
+    var document: JournalEntry
+    @State private var draft: JournalEntry
     var focusRequest: Int
-    var onTaskCommand: () -> Void
+    @Binding var pendingEmbed: JournalEmbedOption?
+    var onTaskCommand: (Int) -> Void
     @State private var pendingSave: Task<Void, Never>?
+    @State private var dragging: String?
+    @State private var insertCaret: Int?
 
-    init(store: Store, document: JournalEntry, focusRequest: Int, onTaskCommand: @escaping () -> Void) {
+    init(store: Store, document: JournalEntry, focusRequest: Int, pendingEmbed: Binding<JournalEmbedOption?>, onTaskCommand: @escaping (Int) -> Void) {
         self.store = store
-        _document = State(initialValue: document)
+        self.document = document
+        _draft = State(initialValue: document)
         self.focusRequest = focusRequest
+        _pendingEmbed = pendingEmbed
         self.onTaskCommand = onTaskCommand
     }
+
+    private var blocks: [JournalBlock] { JournalMarkdown.blocks(from: draft.markdown) }
+
     var body: some View {
-        LiveMarkdownEditor(text: $document.markdown, focusRequest: focusRequest, onTaskCommand: onTaskCommand)
-            .onChange(of: document.markdown) { _, _ in scheduleSave() }
-            .onDisappear {
-                pendingSave?.cancel()
-                store.save(document)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                    switch block {
+                    case .text(let text):
+                        LiveMarkdownEditor(
+                            text: binding(for: index, text: text),
+                            focusRequest: index == lastTextIndex ? focusRequest : 0,
+                            onTaskCommand: { caret in
+                                insertCaret = caretOffset(of: index, plus: caret)
+                                onTaskCommand(insertCaret ?? caret)
+                            }
+                        )
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(minHeight: 28)
+                        .onDrop(of: [UTType.plainText], isTargeted: nil) { _ in
+                            drop(before: index)
+                        }
+                    case .embed(let link):
+                        embedCard(for: link)
+                            .onDrag {
+                                dragging = link.embedToken
+                                return NSItemProvider(object: link.embedToken as NSString)
+                            }
+                            .onDrop(of: [UTType.plainText], isTargeted: nil) { _ in
+                                drop(before: index)
+                            }
+                    }
+                }
             }
+            .padding(.horizontal, 28)
+            .padding(.bottom, 48)
+        }
+        .onChange(of: document.markdown) { _, markdown in
+            if markdown != draft.markdown { draft.markdown = markdown }
+        }
+        .onChange(of: draft.markdown) { _, _ in scheduleSave() }
+        .onChange(of: pendingEmbed) { _, option in
+            guard let option else { return }
+            if !draft.markdown.contains(option.link.embedToken) {
+                draft.markdown = JournalMarkdown.inserting(option.link.embedToken, into: draft.markdown, at: insertCaret ?? 0)
+            }
+            insertCaret = nil
+            pendingEmbed = nil
+        }
+        .onDisappear {
+            pendingSave?.cancel()
+            store.save(draft)
+        }
+    }
+
+    private var lastTextIndex: Int {
+        blocks.lastIndex { if case .text = $0 { true } else { false } } ?? 0
+    }
+    private func binding(for index: Int, text: String) -> Binding<String> {
+        Binding(
+            get: { text },
+            set: { newValue in
+                var next = blocks
+                guard next.indices.contains(index), case .text = next[index] else { return }
+                next[index] = .text(newValue)
+                draft.markdown = JournalMarkdown.markdown(from: next)
+            }
+        )
+    }
+    private func caretOffset(of index: Int, plus caret: Int) -> Int {
+        let prefix = JournalMarkdown.markdown(from: Array(blocks.prefix(index)))
+        let separator = prefix.isEmpty ? 0 : 1
+        return prefix.utf16.count + separator + caret
+    }
+    @ViewBuilder private func embedCard(for link: JournalLink) -> some View {
+        if let entry = store.journalTaskEmbeds(on: draft.day).first(where: { $0.link == link }) {
+            JournalTaskEmbedCard(store: store, entry: entry)
+        } else {
+            JournalTaskEmbedCard(store: store, entry: JournalEntry(day: draft.day, title: "Embed", link: link))
+        }
+    }
+    private func drop(before index: Int) -> Bool {
+        guard let token = dragging, let link = JournalLink.fromEmbedToken(token) else { return false }
+        var next = blocks.filter {
+            if case .embed(let existing) = $0 { return existing != link }
+            return true
+        }
+        let destination = min(index, next.count)
+        next.insert(.embed(link), at: destination)
+        draft.markdown = JournalMarkdown.markdown(from: next)
+        dragging = nil
+        return true
     }
     private func scheduleSave() {
         pendingSave?.cancel()
-        let value = document
+        let value = draft
         pendingSave = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard !Task.isCancelled else { return }
@@ -204,12 +313,16 @@ private struct JournalTaskEmbedCard: View {
         guard case .rhythm(let id) = entry.link else { return nil }
         return store.rule(id)
     }
+    private var commentHeight: CGFloat {
+        let lines = entry.markdown.isEmpty ? 1 : min(5, max(1, entry.markdown.components(separatedBy: "\n").count))
+        return CGFloat(lines) * 20
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
             leadingControl
-                .frame(width: 18, height: 20, alignment: .top)
-            VStack(alignment: .leading, spacing: 3) {
+                .frame(width: 18, height: 18, alignment: .top)
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(headingTitle).font(.system(size: 14, weight: .semibold))
                         .strikethrough(task.map { $0.kind != .progress && $0.completed } ?? false)
@@ -225,11 +338,11 @@ private struct JournalTaskEmbedCard: View {
                 }
                 Text(headingDetail).font(.caption).foregroundStyle(.secondary)
                 JournalCommentField(text: $entry.markdown)
-                    .frame(minHeight: 54, alignment: .topLeading)
+                    .frame(height: commentHeight, alignment: .topLeading)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(.horizontal, 10).padding(.vertical, 8)
         .background(Color.accentColor.opacity(0.055), in: RoundedRectangle(cornerRadius: 10))
         .contextMenu {
             Button("Remove embed", role: .destructive, action: remove)
@@ -304,7 +417,14 @@ private struct JournalCommentField: NSViewRepresentable {
     @Binding var text: String
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
-    func makeNSView(context: Context) -> NSTextView {
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSScrollView()
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+        scroll.hasVerticalScroller = false
+        scroll.hasHorizontalScroller = false
+        scroll.autohidesScrollers = true
+
         let editor = NSTextView()
         editor.delegate = context.coordinator
         editor.isRichText = false
@@ -315,20 +435,24 @@ private struct JournalCommentField: NSViewRepresentable {
         editor.allowsUndo = true
         editor.font = .systemFont(ofSize: 14)
         editor.textColor = .labelColor
-        editor.textContainerInset = NSSize(width: 0, height: 2)
+        editor.textContainerInset = .zero
         editor.textContainer?.lineFragmentPadding = 0
         editor.textContainer?.widthTracksTextView = true
         editor.isHorizontallyResizable = false
         editor.isVerticallyResizable = true
-        editor.minSize = NSSize(width: 0, height: 54)
+        editor.minSize = NSSize(width: 0, height: 20)
         editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         editor.string = text
         editor.setAccessibilityPlaceholderValue("Add a journal comment…")
-        return editor
+        scroll.documentView = editor
+        return scroll
     }
-    func updateNSView(_ editor: NSTextView, context: Context) {
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.parent = self
+        guard let editor = scroll.documentView as? NSTextView else { return }
         if editor.string != text { editor.string = text }
+        let lines = text.isEmpty ? 1 : min(5, max(1, text.components(separatedBy: "\n").count))
+        scroll.hasVerticalScroller = lines >= 5
     }
 
     @MainActor final class Coordinator: NSObject, NSTextViewDelegate {
@@ -344,16 +468,11 @@ private struct JournalCommentField: NSViewRepresentable {
 private struct LiveMarkdownEditor: NSViewRepresentable {
     @Binding var text: String
     var focusRequest: Int
-    var onTaskCommand: () -> Void
+    var onTaskCommand: (Int) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
-    func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSScrollView()
-        scroll.hasVerticalScroller = true
-        scroll.drawsBackground = false
-        scroll.borderType = .noBorder
-
-        let editor = NSTextView()
+    func makeNSView(context: Context) -> HeightReportingTextView {
+        let editor = HeightReportingTextView()
         editor.delegate = context.coordinator
         editor.isRichText = true
         editor.importsGraphics = false
@@ -361,16 +480,19 @@ private struct LiveMarkdownEditor: NSViewRepresentable {
         editor.isAutomaticDashSubstitutionEnabled = false
         editor.drawsBackground = false
         editor.allowsUndo = true
-        editor.textContainerInset = NSSize(width: 28, height: 18)
+        editor.textContainerInset = NSSize(width: 0, height: 4)
         editor.textContainer?.widthTracksTextView = true
+        editor.textContainer?.lineFragmentPadding = 0
+        editor.isHorizontallyResizable = false
+        editor.isVerticallyResizable = true
+        editor.minSize = NSSize(width: 0, height: 28)
+        editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         editor.string = text
-        scroll.documentView = editor
         context.coordinator.applyStyles(to: editor)
-        return scroll
+        return editor
     }
-    func updateNSView(_ scroll: NSScrollView, context: Context) {
+    func updateNSView(_ editor: HeightReportingTextView, context: Context) {
         context.coordinator.parent = self
-        guard let editor = scroll.documentView as? NSTextView else { return }
         if editor.string != text {
             editor.string = text
             context.coordinator.applyStyles(to: editor)
@@ -390,7 +512,7 @@ private struct LiveMarkdownEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard !applying, let editor = notification.object as? NSTextView else { return }
             if consumeTaskCommand(in: editor) { return }
-            parent.text = editor.string
+            parent.text = markdown(from: editor)
             applyStyles(to: editor)
         }
         func textViewDidChangeSelection(_ notification: Notification) {
@@ -407,11 +529,13 @@ private struct LiveMarkdownEditor: NSViewRepresentable {
             editor.textStorage?.replaceCharacters(in: range, with: "")
             editor.setSelectedRange(NSRange(location: range.location, length: 0))
             applying = false
-            parent.text = editor.string
+            parent.text = markdown(from: editor)
             applyStyles(to: editor)
-            DispatchQueue.main.async { self.parent.onTaskCommand() }
+            let caret = range.location
+            DispatchQueue.main.async { self.parent.onTaskCommand(caret) }
             return true
         }
+        private func markdown(from editor: NSTextView) -> String { editor.string }
 
         func applyStyles(to editor: NSTextView) {
             guard !applying, let storage = editor.textStorage else { return }
@@ -484,5 +608,20 @@ private struct LiveMarkdownEditor: NSViewRepresentable {
             let caretIsInside = selection.location >= range.location && selection.location <= NSMaxRange(range)
             return caretIsInside || NSIntersectionRange(range, selection).length > 0
         }
+    }
+}
+
+private final class HeightReportingTextView: NSTextView {
+    override var intrinsicContentSize: NSSize {
+        guard let container = textContainer, let layout = layoutManager else {
+            return NSSize(width: NSView.noIntrinsicMetric, height: 28)
+        }
+        layout.ensureLayout(for: container)
+        let used = layout.usedRect(for: container)
+        return NSSize(width: NSView.noIntrinsicMetric, height: max(28, ceil(used.height) + textContainerInset.height * 2))
+    }
+    override func didChangeText() {
+        super.didChangeText()
+        invalidateIntrinsicContentSize()
     }
 }

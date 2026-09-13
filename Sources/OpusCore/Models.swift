@@ -292,6 +292,79 @@ package enum JournalLink: Codable, Equatable, Hashable {
         default: return nil
         }
     }
+    package var embedToken: String { "![[" + token + "]]" }
+    package static func fromEmbedToken(_ string: String) -> JournalLink? {
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("![["), trimmed.hasSuffix("]]") else { return nil }
+        return from(token: String(trimmed.dropFirst(3).dropLast(2)))
+    }
+}
+
+package enum JournalBlock: Equatable {
+    case text(String)
+    case embed(JournalLink)
+}
+
+package enum JournalMarkdown {
+    private static let tokenPattern = #"!\[\[(task|assessment|rhythm):([^\]]+)\]\]"#
+
+    package static func blocks(from markdown: String) -> [JournalBlock] {
+        guard let expression = try? NSRegularExpression(pattern: tokenPattern) else {
+            return [.text(markdown)]
+        }
+        let source = markdown as NSString
+        let full = NSRange(location: 0, length: source.length)
+        var blocks: [JournalBlock] = []
+        var cursor = 0
+        for match in expression.matches(in: markdown, range: full) {
+            if match.range.location > cursor {
+                let text = source.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
+                if !text.isEmpty { blocks.append(.text(text)) }
+            }
+            if let link = JournalLink.fromEmbedToken(source.substring(with: match.range)) {
+                blocks.append(.embed(link))
+            }
+            cursor = NSMaxRange(match.range)
+        }
+        if cursor < source.length {
+            let text = source.substring(from: cursor)
+            if !text.isEmpty { blocks.append(.text(text)) }
+        }
+        if case .embed? = blocks.last { blocks.append(.text("")) }
+        if blocks.isEmpty { blocks.append(.text("")) }
+        return blocks
+    }
+    package static func markdown(from blocks: [JournalBlock]) -> String {
+        var parts: [String] = []
+        for block in blocks {
+            switch block {
+            case .text(let text):
+                if !text.isEmpty { parts.append(text) }
+            case .embed(let link):
+                parts.append(link.embedToken)
+            }
+        }
+        return parts.joined(separator: "\n")
+    }
+    package static func placingCarriedEmbeds(in markdown: String, links: [JournalLink]) -> String {
+        let missing = links.filter { !markdown.contains($0.embedToken) }
+        guard !missing.isEmpty else { return markdown }
+        let prefix = missing.map(\.embedToken).joined(separator: "\n")
+        let trimmed = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? prefix : prefix + "\n\n" + markdown
+    }
+    package static func removing(_ token: String, from markdown: String) -> String {
+        markdown.replacingOccurrences(of: token, with: "").replacingOccurrences(of: "\n\n\n", with: "\n\n")
+    }
+    package static func inserting(_ token: String, into markdown: String, at caret: Int) -> String {
+        let source = markdown as NSString
+        let location = max(0, min(caret, source.length))
+        let before = source.substring(to: location)
+        let after = source.substring(from: location)
+        let prefix = before.isEmpty || before.hasSuffix("\n") ? "" : "\n"
+        let suffix = after.isEmpty || after.hasPrefix("\n") ? "" : "\n"
+        return before + prefix + token + suffix + after
+    }
 }
 package struct JournalEntry: Identifiable, Codable, Equatable {
     package var id = UUID().uuidString

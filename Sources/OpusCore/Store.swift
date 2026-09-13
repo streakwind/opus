@@ -98,6 +98,14 @@ package final class Store {
     package func journalDocument(on day: String) -> JournalEntry? {
         state.journal.first { $0.link == nil && $0.day == day }
     }
+    package func ensureJournalDocument(on day: String) {
+        let links = journalTaskEmbeds(on: day).compactMap(\.link)
+        var document = journalDocument(on: day) ?? JournalEntry(day: day, title: "Journal")
+        let markdown = JournalMarkdown.placingCarriedEmbeds(in: document.markdown, links: links)
+        guard journalDocument(on: day) == nil || markdown != document.markdown else { return }
+        document.markdown = markdown
+        save(document)
+    }
     package func journalTaskEmbeds(on day: String) -> [JournalEntry] {
         state.journal.filter {
             switch $0.link {
@@ -113,7 +121,14 @@ package final class Store {
         }
     }
     package func deleteJournalEntry(_ id: String) {
-        change { $0.journal.removeAll { $0.id == id } }
+        change { state in
+            let token = state.journal.first { $0.id == id }.flatMap(\.link)?.embedToken
+            state.journal.removeAll { $0.id == id }
+            guard let token else { return }
+            for index in state.journal.indices where state.journal[index].link == nil {
+                state.journal[index].markdown = JournalMarkdown.removing(token, from: state.journal[index].markdown)
+            }
+        }
     }
     private static func normalizedJournal(_ entries: [JournalEntry]) -> [JournalEntry] {
         var documents: [String: JournalEntry] = [:]

@@ -311,6 +311,20 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(options.map(\.title), ["Review", "Essay", "Quiz", "Lab"])
         XCTAssertEqual(options.first { $0.title == "Quiz" }?.link, .assessment(state.assessments[0].id))
     }
+    func testJournalMarkdownPlacesCarriedEmbedsAndKeepsCommentsSeparate() {
+        let task = JournalLink.task("essay")
+        let placed = JournalMarkdown.placingCarriedEmbeds(in: "Morning notes", links: [task])
+        XCTAssertTrue(placed.hasPrefix(task.embedToken))
+        XCTAssertTrue(placed.contains("Morning notes"))
+        XCTAssertEqual(JournalMarkdown.placingCarriedEmbeds(in: placed, links: [task]), placed)
+
+        let inserted = JournalMarkdown.inserting(task.embedToken, into: "Before after", at: 6)
+        XCTAssertEqual(JournalMarkdown.blocks(from: inserted).compactMap { block -> String? in
+            if case .embed(let link) = block { return link.token }
+            return nil
+        }, [task.token])
+        XCTAssertEqual(JournalMarkdown.removing(task.embedToken, from: placed).contains(task.embedToken), false)
+    }
     func testCourseWorkSeparatesProgressAndCollapsesRhythms() {
         let course = Course(name: "Example list")
         let rule = "weekly"
