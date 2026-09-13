@@ -149,6 +149,32 @@ final class StorageTests: XCTestCase {
         XCTAssertEqual(linked.throughDay, Day.adding(5))
         XCTAssertEqual(try Database(url: database.url).load().journal, [linked])
     }
+    @MainActor func testJournalMigrationBuildsOneDailyDocumentAndKeepsTaskEmbeds() async throws {
+        let database = try database()
+        let task = StudyTask(title: "Essay", due: Day.adding(2))
+        var state = Snapshot()
+        state.tasks = [task]
+        state.journal = [
+            JournalEntry(day: Day.today, title: "Morning", markdown: "First thought"),
+            JournalEntry(day: Day.today, title: "Evening", markdown: "Second thought"),
+            JournalEntry(day: Day.today, title: "Essay notes", markdown: "Use the primary source", link: .task(task.id)),
+            JournalEntry(day: Day.today, title: "Old event note", markdown: "Preserve this", link: .schedule("missing"))
+        ]
+        try database.save(state)
+
+        let store = try Store(database: database)
+
+        let document = try XCTUnwrap(store.journalDocument(on: Day.today))
+        XCTAssertTrue(document.markdown.contains("## Morning"))
+        XCTAssertTrue(document.markdown.contains("First thought"))
+        XCTAssertTrue(document.markdown.contains("## Evening"))
+        XCTAssertTrue(document.markdown.contains("Second thought"))
+        XCTAssertTrue(document.markdown.contains("## Old event note"))
+        XCTAssertTrue(document.markdown.contains("Preserve this"))
+        XCTAssertEqual(store.journalTaskEmbeds(on: Day.today).count, 1)
+        XCTAssertEqual(store.state.journal.count, 2)
+        XCTAssertEqual(try Database(url: database.url).load().journal, store.state.journal)
+    }
     @MainActor func testLegacyNotesAreDiscardedOnOpen() async throws {
         let database = try database()
         var state = Snapshot()

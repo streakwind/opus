@@ -37,7 +37,11 @@ struct ScheduleView: View {
                 query: query,
                 editEvent: { editing = $0 },
                 editWork: { editingWork = $0 },
-                add: {
+                addTask: {
+                    let day = days.contains(Day.today) ? Day.today : Day.string(anchor)
+                    editingWork = .new(day: day, courseID: nil, title: "", kind: .task)
+                },
+                addEvent: {
                     let day = days.contains(Day.today) ? Day.today : Day.string(anchor)
                     editing = ScheduleBlock(day: day, allDay: true)
                 }
@@ -84,7 +88,7 @@ struct ScheduleView: View {
                     WorkItemEditor(
                         store: store,
                         source: draft,
-                        onDateChange: { day in if !days.contains(day) { anchor = Day.date(day) } },
+                        onDateChange: { day in anchor = Day.date(day) },
                         onEditRhythm: { rule in editingWork = nil; editRhythm(rule) },
                         onDismiss: { editingWork = nil }
                     )
@@ -188,22 +192,53 @@ private struct ScheduleAllDayRow: View {
     var query: String
     var editEvent: (ScheduleBlock) -> Void
     var editWork: (WorkDraft) -> Void
-    var add: () -> Void
+    var addTask: () -> Void
+    var addEvent: () -> Void
+    @State private var choosingAdd = false
     private func matches(_ title: String, courseID: String?) -> Bool {
         query.isEmpty ||
         title.localizedCaseInsensitiveContains(query) ||
         (store.course(courseID)?.name.localizedCaseInsensitiveContains(query) ?? false)
     }
+    private var height: CGFloat {
+        let most = days.map { day in
+            ScheduleWork.untimedEvents(on: day, in: store.state).count +
+            ScheduleWork.untimedTasks(on: day, in: store.state).count
+        }.max() ?? 0
+        return max(40, CGFloat(min(4, most)) * 23 + 6)
+    }
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-            Button(action: add) {
+            Button {
+                choosingAdd = true
+            } label: {
                 Image(systemName: "plus").font(.system(size: 15, weight: .medium))
                     .frame(width: 32, height: 32)
             }
             .buttonStyle(.plain)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .overlay { RoundedRectangle(cornerRadius: 9).strokeBorder(Color.primary.opacity(0.12)) }
-            .help("Add all-day event")
+            .help("Add dated work or an event")
+            .popover(isPresented: $choosingAdd, arrowEdge: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Button {
+                        choosingAdd = false
+                        addTask()
+                    } label: {
+                        Label("Task", systemImage: "checkmark.circle")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    Button {
+                        choosingAdd = false
+                        addEvent()
+                    } label: {
+                        Label("Event", systemImage: "calendar.badge.clock")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(12).frame(width: 150)
+            }
             .padding(.horizontal, 12)
 
             ForEach(days, id: \.self) { day in
@@ -213,24 +248,18 @@ private struct ScheduleAllDayRow: View {
                     .overlay(alignment: .trailing) { Rectangle().fill(Color.primary.opacity(0.1)).frame(width: 0.5) }
             }
         }
-        .frame(minHeight: 40, maxHeight: 100, alignment: .top)
+        .frame(height: height, alignment: .top)
         .padding(.bottom, 8)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.13)).frame(height: 0.5) }
     }
     @ViewBuilder private func dayItems(_ day: String) -> some View {
-        let events = ScheduleWork.inboxEvents(on: day, in: store.state).filter { matches($0.title, courseID: nil) }
-        let assessments = ScheduleWork.inboxAssessments(on: day, in: store.state).filter { matches($0.title, courseID: nil) }
-        let tasks = ScheduleWork.inboxTasks(on: day, in: store.state).filter { matches($0.title, courseID: nil) }
+        let events = ScheduleWork.untimedEvents(on: day, in: store.state).filter { matches($0.title, courseID: $0.courseID) }
+        let tasks = ScheduleWork.untimedTasks(on: day, in: store.state).filter { matches($0.title, courseID: $0.courseID) }
         ScrollView {
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(events) { event in
                     allDayButton(event.title, icon: "calendar.badge.clock", tint: store.course(event.courseID)?.tint ?? .teal) {
                         editEvent(event)
-                    }
-                }
-                ForEach(assessments) { item in
-                    allDayButton(item.title, icon: "calendar", tint: store.course(item.courseID)?.tint ?? .teal, repeating: item.ruleID != nil) {
-                        editWork(.assessment(item))
                     }
                 }
                 ForEach(tasks) { task in

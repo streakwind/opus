@@ -37,13 +37,15 @@ final class RedesignTests: XCTestCase {
         XCTAssertTrue(StudyTask(title: "Due in a week", due: "2026-09-16").isInToday(on: today))
         XCTAssertFalse(StudyTask(title: "Due later", due: "2026-09-17").isInToday(on: today))
         XCTAssertTrue(StudyTask(title: "Overdue", due: "2026-09-08").isInToday(on: today))
-        XCTAssertFalse(StudyTask(title: "Planned only", planned: "2026-09-10").isInToday(on: today))
+        XCTAssertTrue(StudyTask(title: "No deadline").isInToday(on: today))
+        XCTAssertTrue(StudyTask(title: "Planned only", planned: "2026-09-10").isInToday(on: today))
         XCTAssertFalse(StudyTask(title: "Completed", due: "2026-09-10", completed: true).isInToday(on: today))
         XCTAssertFalse(StudyTask(title: "Past repeat", due: "2026-09-08", ruleID: "r").isInToday(on: today))
         XCTAssertTrue(StudyTask(title: "Next repeat", due: "2026-09-16", ruleID: "r").isInToday(on: today))
         XCTAssertFalse(StudyTask(title: "Later repeat", due: "2026-09-17", ruleID: "r").isInToday(on: today))
         XCTAssertTrue(StudyTask(title: "Book", kind: .progress, due: "2027-01-01", start: 1, target: 30, current: 10).isInToday(on: today))
         XCTAssertTrue(StudyTask(title: "Undated book", kind: .progress, start: 1, target: 30, current: 10).isInToday(on: today))
+        XCTAssertTrue(StudyTask(title: "Undated rhythm book", kind: .progress, start: 1, target: 30, current: 10, ruleID: "r").isInToday(on: today))
         XCTAssertFalse(StudyTask(title: "Finished book", kind: .progress, start: 1, target: 30, current: 30).isInToday(on: today))
     }
     @MainActor func testGenerationRetainsYesterdayTaskButNotPastCalendarEvents() async {
@@ -262,28 +264,33 @@ final class RedesignTests: XCTestCase {
         )
         XCTAssertFalse(legacy.isAllDay)
     }
-    func testScheduleAllDayRowContainsOnlyInboxWork() {
+    func testScheduleTopRowContainsWorkWithoutAClassThatDay() {
         let day = "2026-09-12"
-        let course = Course(name: "Physics")
+        let timed = Course(name: "Physics", classTimes: [ClassTime(startMinute: 540, endMinute: 600, days: [7])])
+        let untimed = Course(name: "Independent study")
         var state = Snapshot()
+        state.courses = [timed, untimed]
         state.tasks = [
             StudyTask(title: "Inbox task", due: day),
-            StudyTask(courseID: course.id, title: "Listed task", due: day)
+            StudyTask(courseID: timed.id, title: "Class task", due: day),
+            StudyTask(courseID: untimed.id, title: "Untimed task", due: day)
         ]
         state.assessments = [
             Assessment(title: "Inbox quiz", day: day),
-            Assessment(courseID: course.id, title: "Listed quiz", day: day)
+            Assessment(courseID: timed.id, title: "Class quiz", day: day),
+            Assessment(courseID: untimed.id, title: "Untimed quiz", day: day)
         ]
         state.schedule = [
             ScheduleBlock(title: "Inbox event", day: day, allDay: true),
-            ScheduleBlock(courseID: course.id, title: "Listed event", day: day, allDay: true),
+            ScheduleBlock(courseID: timed.id, title: "Class event", day: day, allDay: true),
+            ScheduleBlock(courseID: untimed.id, title: "Untimed event", day: day, allDay: true),
             ScheduleBlock(title: "Timed event", day: day)
         ]
 
-        XCTAssertEqual(ScheduleWork.inboxTasks(on: day, in: state).map(\.title), ["Inbox task"])
-        XCTAssertEqual(ScheduleWork.inboxAssessments(on: day, in: state).map(\.title), ["Inbox quiz"])
-        XCTAssertEqual(ScheduleWork.inboxEvents(on: day, in: state).map(\.title), ["Inbox event"])
-        XCTAssertEqual(ScheduleWork.listedEvents(courseID: course.id, on: day, in: state).map(\.title), ["Listed event"])
+        XCTAssertEqual(ScheduleWork.untimedTasks(on: day, in: state).map(\.title), ["Inbox task", "Untimed task"])
+        XCTAssertEqual(ScheduleWork.untimedAssessments(on: day, in: state).map(\.title), ["Inbox quiz", "Untimed quiz"])
+        XCTAssertEqual(ScheduleWork.untimedEvents(on: day, in: state).map(\.title), ["Inbox event", "Untimed event"])
+        XCTAssertEqual(ScheduleWork.listedEvents(courseID: timed.id, on: day, in: state).map(\.title), ["Class event"])
     }
     func testCourseWorkSeparatesProgressAndCollapsesRhythms() {
         let course = Course(name: "Example list")

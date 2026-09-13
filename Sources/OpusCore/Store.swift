@@ -60,6 +60,11 @@ package final class Store {
             state.schedule[index].notes = ""
             needsSave = true
         }
+        let normalizedJournal = Self.normalizedJournal(state.journal)
+        if normalizedJournal != state.journal {
+            state.journal = normalizedJournal
+            needsSave = true
+        }
         Self.syncJournalLinks(in: &state)
         if needsSave { try database.save(state) }
         refreshOccurrences()
@@ -90,6 +95,15 @@ package final class Store {
             return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
         }
     }
+    package func journalDocument(on day: String) -> JournalEntry? {
+        state.journal.first { $0.link == nil && $0.day == day }
+    }
+    package func journalTaskEmbeds(on day: String) -> [JournalEntry] {
+        state.journal.filter {
+            guard case .task? = $0.link else { return false }
+            return $0.appears(on: day)
+        }
+    }
     package func save(_ entry: JournalEntry) {
         change { state in
             if let index = state.journal.firstIndex(where: { $0.id == entry.id }) { state.journal[index] = entry }
@@ -98,6 +112,30 @@ package final class Store {
     }
     package func deleteJournalEntry(_ id: String) {
         change { $0.journal.removeAll { $0.id == id } }
+    }
+    private static func normalizedJournal(_ entries: [JournalEntry]) -> [JournalEntry] {
+        var documents: [String: JournalEntry] = [:]
+        var dayOrder: [String] = []
+        var embeds: [JournalEntry] = []
+        for entry in entries {
+            if case .task? = entry.link {
+                embeds.append(entry)
+                continue
+            }
+            if documents[entry.day] == nil {
+                documents[entry.day] = JournalEntry(id: entry.id, day: entry.day, title: "Journal")
+                dayOrder.append(entry.day)
+            }
+            var fragment = entry.markdown
+            let meaningfulTitle = !entry.title.isEmpty && entry.title != "Untitled" && entry.title != "Journal"
+            if meaningfulTitle {
+                fragment = "## \(entry.title)\n\n" + fragment
+            }
+            guard !fragment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            if documents[entry.day]?.markdown.isEmpty == false { documents[entry.day]?.markdown += "\n\n" }
+            documents[entry.day]?.markdown += fragment
+        }
+        return dayOrder.compactMap { documents[$0] } + embeds
     }
     private static func syncJournalLinks(in state: inout Snapshot) {
         for index in state.journal.indices {

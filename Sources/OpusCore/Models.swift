@@ -377,14 +377,18 @@ package enum CourseWork {
 }
 
 package enum ScheduleWork {
-    package static func inboxTasks(on day: String, in state: Snapshot) -> [StudyTask] {
-        state.tasks.filter { $0.courseID == nil && $0.calendarDay == day }
+    package static func isUntimed(courseID: String?, on day: String, in state: Snapshot) -> Bool {
+        guard let courseID else { return true }
+        return state.courses.first { $0.id == courseID }?.classBlocks(on: day).isEmpty != false
     }
-    package static func inboxAssessments(on day: String, in state: Snapshot) -> [Assessment] {
-        state.assessments.filter { $0.courseID == nil && $0.day == day }
+    package static func untimedTasks(on day: String, in state: Snapshot) -> [StudyTask] {
+        state.tasks.filter { $0.calendarDay == day && isUntimed(courseID: $0.courseID, on: day, in: state) }
     }
-    package static func inboxEvents(on day: String, in state: Snapshot) -> [ScheduleBlock] {
-        state.schedule.filter { $0.courseID == nil && $0.isAllDay && $0.day == day }
+    package static func untimedAssessments(on day: String, in state: Snapshot) -> [Assessment] {
+        state.assessments.filter { $0.day == day && isUntimed(courseID: $0.courseID, on: day, in: state) }
+    }
+    package static func untimedEvents(on day: String, in state: Snapshot) -> [ScheduleBlock] {
+        state.schedule.filter { $0.isAllDay && $0.day == day && isUntimed(courseID: $0.courseID, on: day, in: state) }
     }
     package static func listedEvents(courseID: String, on day: String, in state: Snapshot) -> [ScheduleBlock] {
         state.schedule.filter { $0.courseID == courseID && $0.isAllDay && $0.day == day }
@@ -466,9 +470,11 @@ extension StudyTask {
         if kind == .progress {
             guard current < target else { return false }
             guard ruleID != nil else { return true }
-            return (due ?? planned).map { $0 >= today } == true
+            guard let date = due ?? planned else { return true }
+            return date >= today
         }
-        guard !completed, let due else { return false }
+        guard !completed else { return false }
+        guard let due else { return true }
         if ruleID != nil { return due >= today && due <= week }
         return due <= week
     }

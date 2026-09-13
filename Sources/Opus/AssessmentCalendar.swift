@@ -8,10 +8,29 @@ struct CalendarHeading: View {
     @Binding var anchor: Date
     @Binding var period: CalendarPeriod
     var schedule = false
+    @State private var choosingDate = false
     var body: some View {
         HStack(spacing: 12) {
-            Text(period == .day ? anchor.formatted(.dateTime.month(.abbreviated).day().year()) : anchor.formatted(.dateTime.month(.wide).year()))
-                .font(.system(size: 22, weight: .semibold)).lineLimit(1).layoutPriority(1)
+            Button {
+                choosingDate = true
+            } label: {
+                HStack(spacing: 6) {
+                    Text(period == .day ? anchor.formatted(.dateTime.month(.abbreviated).day().year()) : anchor.formatted(.dateTime.month(.wide).year()))
+                    Image(systemName: "chevron.down").font(.caption2).foregroundStyle(.secondary)
+                }
+                .font(.system(size: 22, weight: .semibold)).lineLimit(1)
+            }
+            .buttonStyle(.plain).layoutPriority(1)
+            .popover(isPresented: $choosingDate) {
+                CompactDatePicker(
+                    value: Binding(
+                        get: { Day.string(anchor) },
+                        set: { if let day = $0 { anchor = Day.date(day) } }
+                    ),
+                    allowsClear: false,
+                    close: { choosingDate = false }
+                )
+            }
             Spacer(minLength: 8)
             HStack(spacing: 2) {
                 ForEach((schedule ? [CalendarPeriod.day, .week] : [.week, .month]), id: \.self) { option in
@@ -92,7 +111,7 @@ struct AssessmentCalendar: View {
                         source: draft,
                         onDateChange: { day in
                             selectedDay = day
-                            if !days.contains(day) { anchor = Day.date(day) }
+                            anchor = Day.date(day)
                         },
                         onEditRhythm: { rule in editing = nil; editRhythm(rule) },
                         onDismiss: { editing = nil }
@@ -108,7 +127,7 @@ struct AssessmentCalendar: View {
                         onChange: { updated in
                             editingEvent = updated
                             selectedDay = updated.day
-                            if !days.contains(updated.day) { anchor = Day.date(updated.day) }
+                            anchor = Day.date(updated.day)
                         },
                         onDismiss: { editingEvent = nil }
                     )

@@ -204,7 +204,6 @@ struct RuleEditor: View {
                 PropertyRow("Rhythm ends") { DateMenu(title: "No end date", value: $rule.endDate) }
                 PropertyRow("Active") { Toggle("Active", isOn: $rule.enabled).labelsHidden().toggleStyle(.switch).controlSize(.small) }
             }
-            Text("Changes apply to future untouched occurrences. Deleting keeps today and past history, and removes later occurrences.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack {
                 if store.state.rules.contains(where: { $0.id == rule.id }) { Button("Delete", role: .destructive) { store.deleteRule(rule.id); onDismiss() } }
                 Spacer()

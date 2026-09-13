@@ -277,7 +277,7 @@ struct ContentView: View {
                 if !assessments.isEmpty {
                     listHeading("Assessments")
                     ForEach(assessments) { item in
-                        Button { workDetail = .assessment(item) } label: {
+                        Button { openWork(.assessment(item)) } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: "calendar")
                                     .foregroundStyle(store.course(item.courseID)?.tint ?? .teal).frame(width: 18)
@@ -296,7 +296,11 @@ struct ContentView: View {
                         .listRowSeparator(.hidden)
                         .accessibilityIdentifier("assessment-row-\(item.id)")
                         .contextMenu {
-                            Button("Details") { workDetail = .assessment(item) }
+                            if let rule = store.rule(item.ruleID) {
+                                Button("Edit rhythm") { ruleDetail = rule }
+                            } else {
+                                Button("Details") { workDetail = .assessment(item) }
+                            }
                             Button("Delete", role: .destructive) { store.deleteAssessment(item.id) }
                         }
                     }
@@ -304,11 +308,15 @@ struct ContentView: View {
                 if !progressItems.isEmpty {
                     listHeading("Progress")
                     ForEach(progressItems) { item in
-                        ProgressLine(store: store, task: item) { workDetail = .task(item) }
+                        ProgressLine(store: store, task: item) { openWork(.task(item)) }
                             .listRowSeparator(.hidden)
                             .listRowBackground(workDetail?.id == "task:" + item.id ? Color.accentColor.opacity(0.065) : Color.clear)
                             .contextMenu {
-                                Button("Details") { workDetail = .task(item) }
+                                if let rule = store.rule(item.ruleID) {
+                                    Button("Edit rhythm") { ruleDetail = rule }
+                                } else {
+                                    Button("Details") { workDetail = .task(item) }
+                                }
                                 Menu("Move to list") {
                                     Button("Inbox") { var copy = item; copy.courseID = nil; store.save(copy) }
                                     ForEach(store.state.courses) { list in Button(list.name) { var copy = item; copy.courseID = list.id; store.save(copy) } }
@@ -320,13 +328,17 @@ struct ContentView: View {
                 if !tasks.isEmpty && (!assessments.isEmpty || !progressItems.isEmpty) { listHeading("Tasks") }
                 ForEach(tasks) { task in
                     TaskLine(store: store, task: task, selected: workDetail?.id == "task:" + task.id, markNext: task.ruleID != nil) {
-                        workDetail = .task(task)
+                        openWork(.task(task))
                     }
                     .listRowSeparator(.hidden)
                     .listRowBackground(workDetail?.id == "task:" + task.id ? Color.accentColor.opacity(0.065) : Color.clear)
                     .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
                     .contextMenu {
-                        Button("Details") { workDetail = .task(task) }
+                        if let rule = store.rule(task.ruleID) {
+                            Button("Edit rhythm") { ruleDetail = rule }
+                        } else {
+                            Button("Details") { workDetail = .task(task) }
+                        }
                         Menu("Move to list") {
                             Button("Inbox") { var copy = task; copy.courseID = nil; store.save(copy) }
                             ForEach(store.state.courses) { list in Button(list.name) { var copy = task; copy.courseID = list.id; store.save(copy) } }
@@ -402,14 +414,24 @@ struct ContentView: View {
                 ForEach(store.state.rules.filter { matchesQuery(title: $0.title, courseID: $0.courseID) }) { rule in
                     Button { ruleDetail = rule } label: {
                         HStack(spacing: 12) {
-                        Image(systemName: rule.kind == .task ? "checkmark.circle" : rule.kind == .assessment ? "calendar" : "clock").foregroundStyle(store.course(rule.courseID)?.tint ?? .teal)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(rule.title).font(.system(size: 14, weight: .medium))
-                            Text(rule.summary + (rule.enabled ? "" : " · Paused")).font(.caption).foregroundStyle(.secondary)
-                        }.frame(maxWidth: .infinity, alignment: .leading)
-                        Text(store.course(rule.courseID)?.shortName ?? rule.kind.rawValue).font(.caption).foregroundStyle(.secondary)
-                        Image(systemName: "pencil").foregroundStyle(.secondary)
-                    }
+                            Image(systemName: rule.kind == .task ? "checkmark.circle" : rule.kind == .assessment ? "calendar" : "clock")
+                                .foregroundStyle(store.course(rule.courseID)?.tint ?? .teal).frame(width: 18)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(rule.title).font(.system(size: 14, weight: .medium)).lineLimit(2)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                HStack(spacing: 5) {
+                                    if let course = store.course(rule.courseID) {
+                                        Circle().fill(course.tint).frame(width: 5, height: 5)
+                                        Text(course.shortName)
+                                    } else {
+                                        Text("Inbox")
+                                    }
+                                    Text("· " + rule.compactPattern)
+                                    if !rule.enabled { Text("· Paused") }
+                                }
+                                .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }
                     }.buttonStyle(.plain).padding(.vertical, 6).listRowSeparator(.hidden).contextMenu {
                         Button("Edit") { ruleDetail = rule }
                         Button(rule.enabled ? "Pause" : "Resume") { var copy = rule; copy.enabled.toggle(); store.saveRule(copy) }
@@ -467,6 +489,16 @@ struct ContentView: View {
         else if selection == "journal" { journalNewEntryRequest += 1 }
         else if selection == "routines" { ruleDetail = QuizRule(itemKind: .task, startDate: Day.today) }
         else { quickFocused = true }
+    }
+    private func openWork(_ draft: WorkDraft) {
+        let rule: QuizRule?
+        switch draft {
+        case .task(let task): rule = store.rule(task.ruleID)
+        case .assessment(let item): rule = store.rule(item.ruleID)
+        case .new: rule = nil
+        }
+        if let rule { ruleDetail = rule }
+        else { workDetail = draft }
     }
     private func exportData() {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = "Opus-\(Day.today).json"

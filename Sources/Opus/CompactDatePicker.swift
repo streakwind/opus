@@ -5,9 +5,10 @@ struct CompactDatePicker: View {
     @Binding var value: String?
     var close: () -> Void
     var clearLabel = "No date"
+    var allowsClear = true
     @State private var month: Date
-    init(value: Binding<String?>, clearLabel: String = "No date", close: @escaping () -> Void) {
-        _value = value; self.clearLabel = clearLabel; self.close = close
+    init(value: Binding<String?>, clearLabel: String = "No date", allowsClear: Bool = true, close: @escaping () -> Void) {
+        _value = value; self.clearLabel = clearLabel; self.allowsClear = allowsClear; self.close = close
         _month = State(initialValue: Day.date(value.wrappedValue ?? Day.today))
     }
     private var days: [String] { CalendarLayout.days(containing: month, week: false) }
@@ -41,7 +42,7 @@ struct CompactDatePicker: View {
             HStack {
                 Button("Today") { value = Day.today; close() }
                 Spacer()
-                if value != nil { Button(clearLabel) { value = nil; close() } }
+                if allowsClear, value != nil { Button(clearLabel) { value = nil; close() } }
             }.buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
         }.padding(16).frame(width: 266)
     }
