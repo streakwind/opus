@@ -101,7 +101,7 @@ package final class Store {
     package func ensureJournalDocument(on day: String) {
         let links = journalTaskEmbeds(on: day).compactMap(\.link)
         var document = journalDocument(on: day) ?? JournalEntry(day: day, title: "Journal")
-        let markdown = JournalMarkdown.placingCarriedEmbeds(in: document.markdown, links: links)
+        let markdown = JournalMarkdown.placingCarriedEmbeds(in: document.markdown, links: links.filter { !(document.omittedEmbeds ?? []).contains($0) })
         guard journalDocument(on: day) == nil || markdown != document.markdown else { return }
         document.markdown = markdown
         save(document)
@@ -115,6 +115,14 @@ package final class Store {
         }
     }
     package func save(_ entry: JournalEntry) {
+        var entry = entry
+        if entry.link == nil, let previous = state.journal.first(where: { $0.id == entry.id }) {
+            let before = JournalMarkdown.links(in: previous.markdown)
+            let after = JournalMarkdown.links(in: entry.markdown)
+            let omitted = Set(previous.omittedEmbeds ?? []).union(before.subtracting(after)).subtracting(after)
+            entry.omittedEmbeds = omitted.isEmpty ? nil : omitted.sorted { $0.token < $1.token }
+        }
+        guard state.journal.first(where: { $0.id == entry.id }) != entry else { return }
         change { state in
             if let index = state.journal.firstIndex(where: { $0.id == entry.id }) { state.journal[index] = entry }
             else { state.journal.append(entry) }
@@ -143,7 +151,12 @@ package final class Store {
                 break
             }
             if documents[entry.day] == nil {
-                documents[entry.day] = JournalEntry(id: entry.id, day: entry.day, title: "Journal")
+                var document = entry
+                document.title = "Journal"
+                document.markdown = ""
+                document.link = nil
+                document.throughDay = nil
+                documents[entry.day] = document
                 dayOrder.append(entry.day)
             }
             var fragment = entry.markdown

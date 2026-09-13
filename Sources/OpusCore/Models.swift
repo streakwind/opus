@@ -306,7 +306,7 @@ package enum JournalBlock: Equatable {
 }
 
 package enum JournalMarkdown {
-    private static let tokenPattern = #"!\[\[(task|assessment|rhythm):([^\]]+)\]\]"#
+    private static let tokenPattern = #"!\[\[(task|assessment|rhythm|schedule):([^\]]+)\]\]"#
 
     package static func blocks(from markdown: String) -> [JournalBlock] {
         guard let expression = try? NSRegularExpression(pattern: tokenPattern) else {
@@ -317,34 +317,28 @@ package enum JournalMarkdown {
         var blocks: [JournalBlock] = []
         var cursor = 0
         for match in expression.matches(in: markdown, range: full) {
-            if match.range.location > cursor {
-                let text = source.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
-                if !text.isEmpty { blocks.append(.text(text)) }
-            }
+            let text = source.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
+            blocks.append(.text(text))
             if let link = JournalLink.fromEmbedToken(source.substring(with: match.range)) {
                 blocks.append(.embed(link))
             }
             cursor = NSMaxRange(match.range)
         }
-        if cursor < source.length {
-            let text = source.substring(from: cursor)
-            if !text.isEmpty { blocks.append(.text(text)) }
-        }
-        if case .embed? = blocks.last { blocks.append(.text("")) }
+        let tail = cursor < source.length ? source.substring(from: cursor) : ""
+        blocks.append(.text(tail))
         if blocks.isEmpty { blocks.append(.text("")) }
         return blocks
     }
     package static func markdown(from blocks: [JournalBlock]) -> String {
-        var parts: [String] = []
-        for block in blocks {
+        blocks.map { block in
             switch block {
-            case .text(let text):
-                if !text.isEmpty { parts.append(text) }
-            case .embed(let link):
-                parts.append(link.embedToken)
+            case .text(let text): text
+            case .embed(let link): link.embedToken
             }
-        }
-        return parts.joined(separator: "\n")
+        }.joined()
+    }
+    package static func links(in markdown: String) -> Set<JournalLink> {
+        Set(blocks(from: markdown).compactMap { if case .embed(let link) = $0 { link } else { nil } })
     }
     package static func placingCarriedEmbeds(in markdown: String, links: [JournalLink]) -> String {
         let missing = links.filter { !markdown.contains($0.embedToken) }
@@ -375,6 +369,8 @@ package struct JournalEntry: Identifiable, Codable, Equatable {
     package var link: JournalLink?
     /// Last day a linked note appears. Ordinary entries use their own day.
     package var throughDay: String?
+    /// Embeds explicitly removed from this day, so carrying work cannot reinsert them.
+    package var omittedEmbeds: [JournalLink]?
 
     package init(id: String = UUID().uuidString, day: String = Day.today, title: String = "Untitled", markdown: String = "", link: JournalLink? = nil, throughDay: String? = nil) {
         self.id = id
