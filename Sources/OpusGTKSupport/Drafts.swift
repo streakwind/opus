@@ -85,22 +85,25 @@ package struct CourseDraftModel: Equatable, Sendable {
     package var name = ""
     package var color = "blue"
     package var classTimes: [ClassTime] = []
+    package var listOnly = false
     package var isNew: Bool { id.isEmpty }
 
     package init(
         id: String = "",
         name: String = "",
         color: String = "blue",
-        classTimes: [ClassTime] = []
+        classTimes: [ClassTime] = [],
+        listOnly: Bool = false
     ) {
         self.id = id
         self.name = name
         self.color = color
         self.classTimes = classTimes
+        self.listOnly = listOnly
     }
 
     package static func from(_ course: Course) -> CourseDraftModel {
-        CourseDraftModel(id: course.id, name: course.name, color: course.color, classTimes: course.resolvedClassTimes)
+        CourseDraftModel(id: course.id, name: course.name, color: course.color, classTimes: course.resolvedClassTimes, listOnly: course.isListOnly)
     }
     package var validationError: String? {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "Enter a list name." }

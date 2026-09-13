@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var isSearching = false
     @State private var showSettings = false
     @State private var showTutorial = false
+    @State private var updater = AppUpdater()
     @AppStorage("appearance") private var appearance = "system"
     @FocusState private var quickFocused: Bool
     @Environment(\.scenePhase) private var scenePhase
@@ -44,9 +45,9 @@ struct ContentView: View {
         store.state.tasks.filter { task in
             let matches: Bool
             switch selection {
-            case "all": matches = true
+            case "all": matches = store.state.showsInOverview(task.courseID)
             case "inbox": matches = task.courseID == nil
-            case "today": matches = task.isInToday(on: Day.today)
+            case "today": matches = task.isInToday(on: Day.today) && store.state.showsInOverview(task.courseID)
             default: matches = task.courseID == selection
             }
             let visible = task.kind == .progress ? task.current < task.target : !task.completed
@@ -74,7 +75,9 @@ struct ContentView: View {
         var seenRules = Set<String>()
         return store.state.assessments
             .filter {
-                (courseID == nil || $0.courseID == courseID) && $0.day >= Day.today &&
+                (courseID == nil || $0.courseID == courseID) &&
+                (courseID != nil || store.state.showsInOverview($0.courseID)) &&
+                $0.day >= Day.today &&
                 matchesQuery(title: $0.title, courseID: $0.courseID)
             }
             .sorted { $0.day == $1.day ? $0.title < $1.title : $0.day < $1.day }
@@ -263,6 +266,11 @@ struct ContentView: View {
                 Label("Quick start tutorial", systemImage: "questionmark.circle")
             }.padding(.vertical, 20).accessibilityIdentifier("settings-tutorial")
 
+            Text("Updates").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                .padding(.bottom, 8)
+            updateSettings
+                .padding(.bottom, 20)
+
             Text("Data").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 .padding(.bottom, 8)
             VStack(spacing: 8) {
@@ -282,8 +290,45 @@ struct ContentView: View {
         .padding(24)
         .frame(width: 440)
         .sheet(isPresented: $showTutorial) { QuickStartView() }
+        .task { await updater.check() }
         .fixedSize(horizontal: false, vertical: true)
         .roundedControls()
+    }
+    private var updateSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Opus \(updater.currentVersion)")
+                .font(.callout.weight(.medium))
+            Text(updateMessage)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                switch updater.status {
+                case .checking, .working:
+                    ProgressView().controlSize(.small)
+                case .available(let offer):
+                    Button("Install \(offer.version) and restart") {
+                        Task { await updater.install(offer) }
+                    }
+                    .accessibilityIdentifier("install-update")
+                default:
+                    Button("Check for updates") {
+                        Task { await updater.check() }
+                    }
+                    .accessibilityIdentifier("check-for-updates")
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private var updateMessage: String {
+        switch updater.status {
+        case .idle, .checking: "Checking GitHub for a newer build…"
+        case .current: "You're up to date."
+        case .available(let offer): "Version \(offer.version) is ready. Your lists stay put."
+        case .working(let text): text
+        case .failed(let text): text
+        }
     }
     private var taskContent: some View {
         VStack(spacing: 0) {
@@ -342,7 +387,7 @@ struct ContentView: View {
                 }
                 if !tasks.isEmpty && (!assessments.isEmpty || !progressItems.isEmpty) { listHeading("Tasks") }
                 ForEach(tasks) { task in
-                    TaskLine(store: store, task: task, selected: workDetail?.id == "task:" + task.id, markNext: task.ruleID != nil) {
+                    TaskLine(store: store, task: task, selected: workDetail?.id == "task:" + task.id) {
                         openWork(.task(task))
                     }
                     .listRowSeparator(.hidden)

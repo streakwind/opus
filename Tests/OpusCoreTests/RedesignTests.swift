@@ -71,6 +71,7 @@ final class RedesignTests: XCTestCase {
     func testClassTimesDecodeLegacyAndFollowWeekdays() throws {
         let legacy = try JSONDecoder().decode(Course.self, from: Data(#"{"id":"c","name":"Example list","color":"blue"}"#.utf8))
         XCTAssertNil(legacy.classBlock(on: "2026-09-09"))
+        XCTAssertFalse(legacy.isListOnly)
         var course = legacy
         course.classStart = 465; course.classDuration = 50; course.classDays = [2,3,4,5,6]
         let copy = try JSONDecoder().decode(Course.self, from: JSONEncoder().encode(course))
@@ -94,6 +95,31 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(course.classDuration, 50)
         let copy = try JSONDecoder().decode(Course.self, from: JSONEncoder().encode(course))
         XCTAssertEqual(copy.resolvedClassTimes, course.classTimes)
+    }
+    func testListOnlyCoursesStayOffTodayInboxAndCalendar() throws {
+        let hidden = Course(name: "Personal", listOnly: true)
+        let listed = Course(name: "Bio")
+        XCTAssertTrue(hidden.isListOnly)
+        XCTAssertFalse(listed.isListOnly)
+        XCTAssertNil(try JSONDecoder().decode(
+            Course.self,
+            from: Data(#"{"id":"c","name":"Example list","color":"blue"}"#.utf8)
+        ).listOnly)
+        let encoded = try JSONDecoder().decode(Course.self, from: JSONEncoder().encode(hidden))
+        XCTAssertTrue(encoded.isListOnly)
+        var state = Snapshot(courses: [hidden, listed])
+        state.tasks = [
+            StudyTask(courseID: hidden.id, title: "Secret", due: Day.today),
+            StudyTask(courseID: listed.id, title: "Essay", due: Day.today),
+            StudyTask(title: "Loose", due: Day.today)
+        ]
+        state.assessments = [
+            Assessment(courseID: hidden.id, title: "Private exam", day: Day.today),
+            Assessment(courseID: listed.id, title: "Quiz", day: Day.today)
+        ]
+        XCTAssertFalse(state.showsInOverview(hidden.id))
+        XCTAssertTrue(state.showsInOverview(listed.id))
+        XCTAssertTrue(state.showsInOverview(nil))
     }
     @MainActor func testFreshInstallAndSetupNeverSeedUserData() async throws {
         let database = try db()
@@ -425,11 +451,12 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(edited.planned, "2026-09-09")
         XCTAssertEqual(edited.id, store.state.tasks.first { $0.title == "Edited" }?.id)
     }
-    func testRhythmCaptionMarksNextRepeatAndDeadline() {
+    func testRhythmCaptionShowsDueDayWithoutRepeatPattern() {
         let rule = QuizRule(title: "Review", weekdays: [3], itemKind: .task, startDate: "2026-09-01", endDate: "2026-10-20")
         let task = StudyTask(title: "Review", due: "2026-09-14", ruleID: rule.id, occurrence: "2026-09-14")
-        XCTAssertEqual(task.rhythmCaption(rule: rule, markNext: true), "Next · Due \(Day.label("2026-09-14")) · Repeats \(Calendar.current.shortWeekdaySymbols[2]) · ends \(Day.label("2026-10-20"))")
-        XCTAssertEqual(task.rhythmCaption(rule: rule, markNext: false), "Due \(Day.label("2026-09-14")) · Repeats \(Calendar.current.shortWeekdaySymbols[2]) · ends \(Day.label("2026-10-20"))")
+        XCTAssertEqual(task.rhythmCaption(), "Due \(Day.label("2026-09-14"))")
+        XCTAssertEqual(StudyTask(title: "Review", planned: "2026-09-15", ruleID: rule.id).rhythmCaption(), Day.label("2026-09-15"))
+        XCTAssertNil(StudyTask(title: "One-off", due: "2026-09-14").rhythmCaption())
     }
     func testArchiveKeepsDistinctRhythmOccurrences() {
         let rule = "weekly"

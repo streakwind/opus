@@ -38,10 +38,10 @@ package enum LinuxPresentation {
         state.tasks.filter { task in
             let matches: Bool
             switch selection {
-            case .section(.all): matches = true
+            case .section(.all): matches = state.showsInOverview(task.courseID)
             case .section(.inbox): matches = task.courseID == nil
             case .section(.archive): matches = task.kind != .progress && task.completed
-            case .section(.today): matches = task.isInToday(on: today)
+            case .section(.today): matches = task.isInToday(on: today) && state.showsInOverview(task.courseID)
             case .list(let id): matches = task.courseID == id
             case .section(.calendar), .section(.schedule), .section(.rhythm): matches = false
             }
@@ -82,6 +82,7 @@ package enum LinuxPresentation {
         let matching = state.assessments.filter { item in
             let courseName = state.courses.first { course in course.id == item.courseID }?.name
             return (courseID == nil || item.courseID == courseID) &&
+                (courseID != nil || state.showsInOverview(item.courseID)) &&
                 item.day >= today &&
                 matchesQuery(query, title: item.title, details: item.topics, courseName: courseName)
         }
@@ -105,10 +106,9 @@ package enum LinuxPresentation {
 
     package static func row(for task: StudyTask, in state: Snapshot, markNext: Bool) -> WorkRow {
         let course = state.courses.first { $0.id == task.courseID }
-        let rule = state.rules.first { $0.id == task.ruleID }
         var detail: [String] = []
         if let name = course?.name { detail.append(name) }
-        if let caption = task.rhythmCaption(rule: rule, markNext: markNext && task.ruleID != nil) {
+        if let caption = task.rhythmCaption() {
             detail.append(caption)
         } else if let day = task.calendarDay {
             detail.append(task.kind == .progress ? "Goal " + Day.label(day) : "Due " + Day.label(day))
@@ -169,11 +169,16 @@ package enum LinuxPresentation {
         let month = Calendar.current.component(.month, from: date)
         return days.map { day in
             let assessments = state.assessments
-                .filter { $0.day == day && matchesQuery(query, title: $0.title, details: $0.topics) }
+                .filter {
+                    $0.day == day &&
+                    state.showsInOverview($0.courseID) &&
+                    matchesQuery(query, title: $0.title, details: $0.topics)
+                }
                 .map { row(for: $0, in: state) }
             let tasks = state.tasks
                 .filter {
                     $0.due == day &&
+                    state.showsInOverview($0.courseID) &&
                     ($0.kind == .progress || !$0.completed) &&
                     matchesQuery(query, title: $0.title, details: $0.notes)
                 }

@@ -43,7 +43,7 @@ void opus_rhythm_row(const char *id, const char *title, const char *detail, int 
 
 void opus_work_editor_open(const char *id, const char *title, const char *day, const char *course, int kind, int confirmed, const char *notes, int start, int end, int page);
 void opus_work_editor_list(const char *id, const char *name, int selected);
-void opus_course_editor_open(const char *id, const char *name, const char *color);
+void opus_course_editor_open(const char *id, const char *name, const char *color, int list_only);
 void opus_course_editor_time(const char *id, int start, int end, const char *days_csv);
 void opus_rule_editor_open(const char *id, const char *title, const char *course, int work_kind, const char *days_csv, int interval, const char *start_day, const char *end_day, int enabled, int confirmed, const char *notes, int start, int target, int start_minute, int duration, int schedule);
 void opus_rule_editor_list(const char *id, const char *name, int selected);

@@ -173,16 +173,18 @@ private struct CalendarDayCell: View {
         (store.course(courseID)?.name.localizedCaseInsensitiveContains(query) ?? false)
     }
     private var assessments: [Assessment] {
-        store.state.assessments.filter { $0.day == day && matches($0.title, courseID: $0.courseID) }.sorted { $0.title < $1.title }
+        store.state.assessments.filter {
+            $0.day == day && store.state.showsInOverview($0.courseID) && matches($0.title, courseID: $0.courseID)
+        }.sorted { $0.title < $1.title }
     }
     private var tasks: [StudyTask] {
         store.state.tasks.filter {
-            $0.due == day && matches($0.title, courseID: $0.courseID)
+            $0.due == day && store.state.showsInOverview($0.courseID) && matches($0.title, courseID: $0.courseID)
         }.sorted { !$0.completed && $1.completed }
     }
     private var allDayEvents: [ScheduleBlock] {
         store.state.schedule.filter {
-            $0.isAllDay && $0.day == day && matches($0.title, courseID: $0.courseID)
+            $0.isAllDay && $0.day == day && store.state.showsInOverview($0.courseID) && matches($0.title, courseID: $0.courseID)
         }.sorted { $0.title < $1.title }
     }
     private var count: Int { allDayEvents.count + assessments.count + tasks.count }

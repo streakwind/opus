@@ -342,6 +342,7 @@ static void clear_editor_state(void) {
     opus_ui.editor_progress_box = NULL;
     opus_ui.editor_name = NULL;
     opus_ui.editor_color = NULL;
+    opus_ui.editor_list_only = NULL;
     opus_ui.editor_times_box = NULL;
     opus_ui.editor_weekday_box = NULL;
     opus_ui.editor_interval = NULL;

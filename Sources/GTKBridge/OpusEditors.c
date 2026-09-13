@@ -181,7 +181,9 @@ static void save_course(GtkButton *button, gpointer unused) {
         .id = opus_ui.editor_id ? opus_ui.editor_id : "",
         .text = gtk_editable_get_text(GTK_EDITABLE(opus_ui.editor_name)),
         .day = opus_color_dropdown_name(opus_ui.editor_color),
-        .payload = payload
+        .payload = payload,
+        .flags = opus_ui.editor_list_only &&
+            gtk_check_button_get_active(GTK_CHECK_BUTTON(opus_ui.editor_list_only)) ? 1 : 0
     };
     opus_send(&event);
     g_free(payload);
@@ -490,7 +492,7 @@ void opus_work_editor_list(const char *id, const char *name, int selected) {
 }
 
 void opus_course_editor_open(const char *id, const char *name,
-                             const char *color) {
+                             const char *color, int list_only) {
     opus_editor_window_begin(id && *id ? "Edit list" : "New list", 2);
     g_free(opus_ui.editor_id);
     opus_ui.editor_id = g_strdup(id ? id : "");
@@ -505,6 +507,14 @@ void opus_course_editor_open(const char *id, const char *name,
     opus_field(opus_ui.editor_body, "NAME", opus_ui.editor_name);
     opus_ui.editor_color = opus_color_dropdown(color);
     opus_field(opus_ui.editor_body, "COLOR", opus_ui.editor_color);
+    opus_ui.editor_list_only = gtk_check_button_new_with_label(
+        "Show only on this list");
+    gtk_check_button_set_active(GTK_CHECK_BUTTON(opus_ui.editor_list_only),
+                                list_only);
+    gtk_widget_set_tooltip_text(
+        opus_ui.editor_list_only,
+        "Hide from Today, Inbox, and Calendar.");
+    opus_field(opus_ui.editor_body, "VISIBILITY", opus_ui.editor_list_only);
     opus_ui.editor_times_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     opus_field(opus_ui.editor_body, "CLASS TIMES", opus_ui.editor_times_box);
     GtkWidget *add = gtk_button_new_with_label("Add class time");

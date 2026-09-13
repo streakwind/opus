@@ -32,6 +32,26 @@ final class PresentationTests: XCTestCase {
         XCTAssertTrue(LinuxPresentation.matchesQuery("bio", title: "Essay", courseName: "Bio"))
     }
 
+    func testListOnlyWorkStaysOnItsListPage() {
+        let hidden = Course(name: "Personal", listOnly: true)
+        var state = Snapshot(courses: [hidden], setupComplete: true)
+        state.tasks = [StudyTask(courseID: hidden.id, title: "Secret", due: Day.today)]
+        state.assessments = [Assessment(courseID: hidden.id, title: "Private exam", day: Day.today)]
+        let today = LinuxPresentation.workRows(in: state, selection: .section(.today), query: "")
+        XCTAssertTrue(today.tasks.isEmpty)
+        XCTAssertTrue(today.assessments.isEmpty)
+        let all = LinuxPresentation.workRows(in: state, selection: .section(.all), query: "")
+        XCTAssertTrue(all.tasks.isEmpty)
+        XCTAssertTrue(all.assessments.isEmpty)
+        let inbox = LinuxPresentation.workRows(in: state, selection: .section(.inbox), query: "")
+        XCTAssertTrue(inbox.tasks.isEmpty)
+        let list = LinuxPresentation.workRows(in: state, selection: .list(hidden.id), query: "")
+        XCTAssertEqual(list.tasks.map(\.title), ["Secret"])
+        XCTAssertEqual(list.assessments.map(\.title), ["Private exam"])
+        let days = LinuxPresentation.calendarDays(in: state, period: .day, anchor: Day.today, selected: Day.today, query: "")
+        XCTAssertEqual(days.first?.items.count, 0)
+    }
+
     func testCalendarScheduleAndRhythmProjection() {
         let course = Course(name: "Calc", color: "blue", classTimes: [ClassTime(startMinute: 480, endMinute: 530, days: [Calendar.current.component(.weekday, from: Date())])])
         var state = Snapshot(courses: [course], setupComplete: true)
@@ -149,13 +169,15 @@ final class SessionTests: XCTestCase {
             classTimes: [
                 ClassTime(id: "morning", startMinute: 540, endMinute: 600, days: [2, 4, 6]),
                 ClassTime(id: "id:with:colons", startMinute: 780, endMinute: 850, days: [3])
-            ]
+            ],
+            listOnly: true
         )
         let commands = app.handle(.saveCourse(draft))
         XCTAssertTrue(commands.contains(.closeEditor))
         XCTAssertEqual(app.store.state.courses.count, 1)
         let course = app.store.state.courses[0]
         XCTAssertEqual(course.name, "Physics")
+        XCTAssertTrue(course.isListOnly)
         XCTAssertEqual(course.resolvedClassTimes.count, 2)
         XCTAssertEqual(course.resolvedClassTimes[0].days, [2, 4, 6])
         XCTAssertEqual(course.resolvedClassTimes[1].id, "id:with:colons")

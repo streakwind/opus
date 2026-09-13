@@ -63,6 +63,19 @@ struct CourseEditor: View {
                         .fixedSize()
                     }
 
+                    Toggle(isOn: Binding(
+                        get: { course.isListOnly },
+                        set: { course.listOnly = $0 ? true : nil }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Show only on this list")
+                            Text("Hide from Today, Inbox, and Calendar.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(.switch)
+
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Text("CLASS TIMES").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)

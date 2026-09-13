@@ -79,7 +79,7 @@ struct ProgressLine: View {
                     HStack(spacing: 5) {
                         if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
                         else { Text("Inbox") }
-                        if let caption = task.rhythmCaption(rule: store.rule(task.ruleID), markNext: true) {
+                        if let caption = task.rhythmCaption() {
                             Text("· " + caption).foregroundStyle(task.due.map { $0 < Day.today ? Color.red : .secondary } ?? .secondary)
                         } else if let due = task.due {
                             Text("· Goal " + Day.label(due)).foregroundStyle(due < Day.today ? Color.red : .secondary)
@@ -100,12 +100,10 @@ struct TaskLine: View {
     var store: Store
     var task: StudyTask
     var selected: Bool
-    var markNext = false
     var openDetails: () -> Void
     @State private var pendingComplete = false
     @State private var pendingWork: Task<Void, Never>?
     private var struck: Bool { task.completed || pendingComplete }
-    private var rhythm: QuizRule? { store.rule(task.ruleID) }
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Button(action: toggleComplete) {
@@ -123,7 +121,7 @@ struct TaskLine: View {
                     HStack(spacing: 5) {
                         if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
                         else { Text("Inbox") }
-                        if let caption = task.rhythmCaption(rule: rhythm, markNext: markNext) {
+                        if let caption = task.rhythmCaption() {
                             Text("· " + caption)
                                 .foregroundStyle(task.due.map { $0 < Day.today && !struck ? Color.red : .secondary } ?? .secondary)
                         } else {

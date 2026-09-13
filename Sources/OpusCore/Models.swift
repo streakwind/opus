@@ -22,6 +22,8 @@ package struct Course: Identifiable, Codable, Hashable {
     package var classStart: Int?
     package var classDuration: Int?
     package var classDays: [Int]?
+    package var listOnly: Bool?
+    package var isListOnly: Bool { listOnly == true }
     package var resolvedClassTimes: [ClassTime] {
         if let classTimes { return classTimes }
         guard let classStart else { return [] }
@@ -46,7 +48,7 @@ package struct Course: Identifiable, Codable, Hashable {
             classDays = nil
         }
     }
-    package init(id: String = UUID().uuidString, name: String, color: String = "blue", classTimes: [ClassTime]? = nil, classStart: Int? = nil, classDuration: Int? = nil, classDays: [Int]? = nil) {
+    package init(id: String = UUID().uuidString, name: String, color: String = "blue", classTimes: [ClassTime]? = nil, classStart: Int? = nil, classDuration: Int? = nil, classDays: [Int]? = nil, listOnly: Bool = false) {
         self.id = id
         self.name = name
         self.color = color
@@ -54,6 +56,7 @@ package struct Course: Identifiable, Codable, Hashable {
         self.classStart = classStart
         self.classDuration = classDuration
         self.classDays = classDays
+        self.listOnly = listOnly ? true : nil
     }
 }
 
@@ -407,6 +410,10 @@ package struct Snapshot: Codable {
         self.generated = generated
         self.setupComplete = setupComplete
     }
+    package func showsInOverview(_ courseID: String?) -> Bool {
+        guard let courseID else { return true }
+        return courses.first { $0.id == courseID }?.isListOnly != true
+    }
 }
 
 package enum CourseWork {
@@ -601,17 +608,11 @@ extension StudyTask {
         if ruleID != nil { return due >= today && due <= week }
         return due <= week
     }
-    package func rhythmCaption(rule: QuizRule?, markNext: Bool) -> String? {
+    package func rhythmCaption() -> String? {
         guard ruleID != nil else { return nil }
-        var parts: [String] = []
-        if markNext && !completed { parts.append("Next") }
-        if let due { parts.append("Due " + Day.label(due)) }
-        else if let planned { parts.append(Day.label(planned)) }
-        if let rule {
-            parts.append(rule.repeatsLabel)
-            if let end = rule.endDate { parts.append("ends " + Day.label(end)) }
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        if let due { return "Due " + Day.label(due) }
+        if let planned { return Day.label(planned) }
+        return nil
     }
 }
 
