@@ -100,8 +100,10 @@ package final class Store {
     }
     package func journalTaskEmbeds(on day: String) -> [JournalEntry] {
         state.journal.filter {
-            guard case .task? = $0.link else { return false }
-            return $0.appears(on: day)
+            switch $0.link {
+            case .task, .assessment, .rhythm: return $0.appears(on: day)
+            default: return false
+            }
         }
     }
     package func save(_ entry: JournalEntry) {
@@ -118,9 +120,12 @@ package final class Store {
         var dayOrder: [String] = []
         var embeds: [JournalEntry] = []
         for entry in entries {
-            if case .task? = entry.link {
+            switch entry.link {
+            case .task, .assessment, .rhythm:
                 embeds.append(entry)
                 continue
+            default:
+                break
             }
             if documents[entry.day] == nil {
                 documents[entry.day] = JournalEntry(id: entry.id, day: entry.day, title: "Journal")

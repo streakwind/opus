@@ -292,6 +292,25 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(ScheduleWork.untimedEvents(on: day, in: state).map(\.title), ["Inbox event", "Untimed event"])
         XCTAssertEqual(ScheduleWork.listedEvents(courseID: timed.id, on: day, in: state).map(\.title), ["Class event"])
     }
+    func testJournalEmbedOptionsKeepOnlyTheNextRhythmOccurrence() {
+        let rule = "weekly"
+        var state = Snapshot()
+        state.tasks = [
+            StudyTask(title: "Review", due: "2026-09-10", ruleID: rule, occurrence: "2026-09-10"),
+            StudyTask(title: "Review", due: "2026-09-17", ruleID: rule, occurrence: "2026-09-17"),
+            StudyTask(title: "Essay", due: "2026-09-12")
+        ]
+        state.assessments = [
+            Assessment(title: "Quiz", day: "2026-09-11", ruleID: rule, occurrence: "2026-09-11"),
+            Assessment(title: "Quiz", day: "2026-09-18", ruleID: rule, occurrence: "2026-09-18"),
+            Assessment(title: "Lab", day: "2026-09-14")
+        ]
+        let options = JournalWork.embedOptions(in: state, from: "2026-09-09")
+        XCTAssertEqual(options.filter { $0.title == "Review" }.count, 1)
+        XCTAssertEqual(options.filter { $0.title == "Quiz" }.count, 1)
+        XCTAssertEqual(options.map(\.title), ["Review", "Essay", "Quiz", "Lab"])
+        XCTAssertEqual(options.first { $0.title == "Quiz" }?.link, .assessment(state.assessments[0].id))
+    }
     func testCourseWorkSeparatesProgressAndCollapsesRhythms() {
         let course = Course(name: "Example list")
         let rule = "weekly"

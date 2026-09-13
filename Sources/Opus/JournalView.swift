@@ -36,7 +36,11 @@ struct JournalView: View {
                     )
                     .id(document.id)
                     .popover(isPresented: $choosingTask, arrowEdge: .top) {
-                        taskPicker
+                        JournalEmbedPicker(store: store, day: day) { option in
+                            store.save(JournalEntry(day: day, title: option.title, link: option.link))
+                            choosingTask = false
+                            focusRequest += 1
+                        }
                     }
                 }
             }
@@ -81,49 +85,67 @@ struct JournalView: View {
         .padding(.horizontal, 20).padding(.vertical, 14)
     }
 
-    private var taskPicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Embed a task").font(.headline)
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    ForEach(availableTasks) { task in
-                        Button {
-                            store.save(JournalEntry(day: day, title: task.title, link: .task(task.id)))
-                            choosingTask = false
-                            focusRequest += 1
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: task.kind == .progress ? "chart.bar.fill" : "circle")
-                                    .foregroundStyle(store.course(task.courseID)?.tint ?? .teal)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(task.title).lineLimit(1)
-                                    Text(store.course(task.courseID)?.name ?? "Inbox")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                            }
-                            .contentShape(Rectangle()).padding(.vertical, 5)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-        }
-        .padding(14).frame(width: 300, height: 320)
-    }
-
-    private var availableTasks: [StudyTask] {
-        store.state.tasks.filter {
-            ($0.kind == .progress ? $0.current < $0.target : !$0.completed) &&
-            (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query))
-        }
-    }
     private func ensureDocument() {
         guard store.journalDocument(on: day) == nil else { return }
         store.save(JournalEntry(day: day, title: "Journal"))
     }
     private func move(_ amount: Int) {
         anchor = Calendar.current.date(byAdding: .day, value: amount, to: anchor) ?? anchor
+    }
+}
+
+private struct JournalEmbedPicker: View {
+    var store: Store
+    var day: String
+    var onPick: (JournalEmbedOption) -> Void
+    @State private var query = ""
+    @FocusState private var searchFocused: Bool
+
+    private var options: [JournalEmbedOption] {
+        JournalWork.embedOptions(in: store.state, from: day).filter {
+            query.isEmpty ||
+            $0.title.localizedCaseInsensitiveContains(query) ||
+            $0.detail.localizedCaseInsensitiveContains(query) ||
+            (store.course($0.courseID)?.name.localizedCaseInsensitiveContains(query) ?? false)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Embed").font(.headline)
+            TextField("Search tasks, assessments, or lists", text: $query)
+                .textFieldStyle(.roundedBorder)
+                .focused($searchFocused)
+            if options.isEmpty {
+                ContentUnavailableView("No matches", systemImage: "magnifyingglass", description: Text("Try another title or list."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(options) { option in
+                            Button { onPick(option) } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: option.icon)
+                                        .foregroundStyle(store.course(option.courseID)?.tint ?? .teal)
+                                        .frame(width: 18)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(option.title).lineLimit(2)
+                                        Text(option.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                                .contentShape(Rectangle())
+                                .padding(.vertical, 6)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .frame(width: 440, height: 520)
+        .onAppear { searchFocused = true }
     }
 }
 
@@ -170,13 +192,17 @@ private struct JournalTaskEmbedCard: View {
         _entry = State(initialValue: entry)
     }
 
-    private var taskID: String? {
-        guard case .task(let id)? = entry.link else { return nil }
-        return id
-    }
     private var task: StudyTask? {
-        guard let taskID else { return nil }
-        return store.state.tasks.first { $0.id == taskID }
+        guard case .task(let id) = entry.link else { return nil }
+        return store.state.tasks.first { $0.id == id }
+    }
+    private var assessment: Assessment? {
+        guard case .assessment(let id) = entry.link else { return nil }
+        return store.state.assessments.first { $0.id == id }
+    }
+    private var rhythm: QuizRule? {
+        guard case .rhythm(let id) = entry.link else { return nil }
+        return store.rule(id)
     }
 
     var body: some View {
@@ -185,12 +211,8 @@ private struct JournalTaskEmbedCard: View {
                 .frame(width: 18, height: 20, alignment: .top)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    if let task {
-                        Text(task.title).font(.system(size: 14, weight: .semibold))
-                            .strikethrough(task.kind != .progress && task.completed)
-                    } else {
-                        Text(entry.title).font(.system(size: 14, weight: .semibold))
-                    }
+                    Text(headingTitle).font(.system(size: 14, weight: .semibold))
+                        .strikethrough(task.map { $0.kind != .progress && $0.completed } ?? false)
                     Spacer()
                     Button(action: remove) {
                         Image(systemName: "xmark")
@@ -201,21 +223,9 @@ private struct JournalTaskEmbedCard: View {
                     .foregroundStyle(.secondary)
                     .help("Remove from journal")
                 }
-                if let task {
-                    HStack(spacing: 5) {
-                        Text(store.course(task.courseID)?.name ?? "Inbox")
-                        if let due = task.due { Text("· Due \(Day.label(due))") }
-                        if task.kind == .progress { Text("· \(task.progressLabel)") }
-                    }
-                    .font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text("Deleted task").font(.caption).foregroundStyle(.secondary)
-                }
-                TextField("Add a journal comment…", text: $entry.markdown, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 14))
-                    .lineLimit(2...4)
-                    .frame(minHeight: 42, alignment: .topLeading)
+                Text(headingDetail).font(.caption).foregroundStyle(.secondary)
+                JournalCommentField(text: $entry.markdown)
+                    .frame(minHeight: 54, alignment: .topLeading)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -231,6 +241,24 @@ private struct JournalTaskEmbedCard: View {
         }
     }
 
+    private var headingTitle: String {
+        task?.title ?? assessment?.title ?? rhythm?.title ?? entry.title
+    }
+    private var headingDetail: String {
+        if let task {
+            var parts = [store.course(task.courseID)?.name ?? "Inbox"]
+            if let due = task.due { parts.append("Due \(Day.label(due))") }
+            if task.kind == .progress { parts.append(task.progressLabel) }
+            return parts.joined(separator: " · ")
+        }
+        if let assessment {
+            return [store.course(assessment.courseID)?.name ?? "Inbox", Day.label(assessment.day)].joined(separator: " · ")
+        }
+        if let rhythm {
+            return [store.course(rhythm.courseID)?.name ?? "Inbox", rhythm.repeatsLabel].joined(separator: " · ")
+        }
+        return "Deleted item"
+    }
     @ViewBuilder private var leadingControl: some View {
         if let task {
             if task.kind == .progress {
@@ -247,6 +275,10 @@ private struct JournalTaskEmbedCard: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(task.completed ? .secondary : store.course(task.courseID)?.tint ?? .teal)
             }
+        } else if assessment != nil {
+            Image(systemName: "calendar").foregroundStyle(store.course(assessment?.courseID)?.tint ?? .teal)
+        } else if rhythm != nil {
+            Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(store.course(rhythm?.courseID)?.tint ?? .teal)
         } else {
             Image(systemName: "link.badge.plus").foregroundStyle(.secondary)
         }
@@ -265,6 +297,47 @@ private struct JournalTaskEmbedCard: View {
         removed = true
         pendingSave?.cancel()
         store.deleteJournalEntry(entry.id)
+    }
+}
+
+private struct JournalCommentField: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+    func makeNSView(context: Context) -> NSTextView {
+        let editor = NSTextView()
+        editor.delegate = context.coordinator
+        editor.isRichText = false
+        editor.importsGraphics = false
+        editor.isAutomaticQuoteSubstitutionEnabled = false
+        editor.isAutomaticDashSubstitutionEnabled = false
+        editor.drawsBackground = false
+        editor.allowsUndo = true
+        editor.font = .systemFont(ofSize: 14)
+        editor.textColor = .labelColor
+        editor.textContainerInset = NSSize(width: 0, height: 2)
+        editor.textContainer?.lineFragmentPadding = 0
+        editor.textContainer?.widthTracksTextView = true
+        editor.isHorizontallyResizable = false
+        editor.isVerticallyResizable = true
+        editor.minSize = NSSize(width: 0, height: 54)
+        editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        editor.string = text
+        editor.setAccessibilityPlaceholderValue("Add a journal comment…")
+        return editor
+    }
+    func updateNSView(_ editor: NSTextView, context: Context) {
+        context.coordinator.parent = self
+        if editor.string != text { editor.string = text }
+    }
+
+    @MainActor final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: JournalCommentField
+        init(parent: JournalCommentField) { self.parent = parent }
+        func textDidChange(_ notification: Notification) {
+            guard let editor = notification.object as? NSTextView else { return }
+            parent.text = editor.string
+        }
     }
 }
 

@@ -376,6 +376,60 @@ package enum CourseWork {
     }
 }
 
+package struct JournalEmbedOption: Identifiable, Equatable {
+    package var title: String
+    package var detail: String
+    package var icon: String
+    package var courseID: String?
+    package var link: JournalLink
+    package var id: String { link.token }
+}
+
+package enum JournalWork {
+    package static func embedOptions(in state: Snapshot, from day: String = Day.today) -> [JournalEmbedOption] {
+        var options: [JournalEmbedOption] = []
+        var seenTaskRules = Set<String>()
+        let tasks = state.tasks
+            .filter { $0.kind == .progress ? $0.current < $0.target : !$0.completed }
+            .sorted {
+                let left = $0.calendarDay ?? "9999"
+                let right = $1.calendarDay ?? "9999"
+                return left == right ? $0.title < $1.title : left < right
+            }
+        for task in tasks {
+            if let ruleID = task.ruleID, !seenTaskRules.insert(ruleID).inserted { continue }
+            var parts = [state.courses.first { $0.id == task.courseID }?.name ?? "Inbox"]
+            if let due = task.due { parts.append("Due " + Day.label(due)) }
+            if task.kind == .progress { parts.append(task.progressLabel) }
+            if task.ruleID != nil { parts.append("Rhythm") }
+            options.append(JournalEmbedOption(
+                title: task.title,
+                detail: parts.joined(separator: " · "),
+                icon: task.kind == .progress ? "chart.bar.fill" : "circle",
+                courseID: task.courseID,
+                link: .task(task.id)
+            ))
+        }
+        var seenAssessmentRules = Set<String>()
+        let assessments = state.assessments
+            .filter { $0.day >= day }
+            .sorted { $0.day == $1.day ? $0.title < $1.title : $0.day < $1.day }
+        for item in assessments {
+            if let ruleID = item.ruleID, !seenAssessmentRules.insert(ruleID).inserted { continue }
+            var parts = [state.courses.first { $0.id == item.courseID }?.name ?? "Inbox", Day.label(item.day)]
+            if item.ruleID != nil { parts.append("Rhythm") }
+            options.append(JournalEmbedOption(
+                title: item.title,
+                detail: parts.joined(separator: " · "),
+                icon: "calendar",
+                courseID: item.courseID,
+                link: .assessment(item.id)
+            ))
+        }
+        return options
+    }
+}
+
 package enum ScheduleWork {
     package static func isUntimed(courseID: String?, on day: String, in state: Snapshot) -> Bool {
         guard let courseID else { return true }
