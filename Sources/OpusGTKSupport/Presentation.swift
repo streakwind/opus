@@ -47,7 +47,7 @@ package enum LinuxPresentation {
             }
             let visible: Bool
             if case .section(.archive) = selection { visible = true }
-            else { visible = task.kind == .progress || !task.completed }
+            else { visible = task.kind == .progress ? !task.isProgressComplete : !task.completed }
             let courseName = state.courses.first { $0.id == task.courseID }?.name
             return matches && visible && matchesQuery(query, title: task.title, details: task.notes, courseName: courseName)
         }
@@ -179,7 +179,7 @@ package enum LinuxPresentation {
                 .filter {
                     $0.due == day &&
                     state.showsInOverview($0.courseID) &&
-                    ($0.kind == .progress || !$0.completed) &&
+                    ($0.kind == .progress ? !$0.isProgressComplete : !$0.completed) &&
                     matchesQuery(query, title: $0.title, details: $0.notes)
                 }
                 .map { row(for: $0, in: state, markNext: false) }

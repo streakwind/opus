@@ -50,7 +50,7 @@ struct ContentView: View {
             case "today": matches = task.isInToday(on: Day.today) && store.state.showsInOverview(task.courseID)
             default: matches = task.courseID == selection
             }
-            let visible = task.kind == .progress ? task.current < task.target : !task.completed
+            let visible = task.kind == .progress ? !task.isProgressComplete : !task.completed
             return matches && visible && matchesQuery(title: task.title, courseID: task.courseID)
         }
     }
@@ -532,14 +532,14 @@ struct ContentView: View {
             }
             return
         }
-        guard quickKind != .progress || (quickStart > 0 && quickEnd >= quickStart && quickEnd <= 1_000_000) else { return }
+        guard quickKind != .progress || (quickStart >= 0 && quickEnd >= quickStart && quickEnd <= 1_000_000) else { return }
         let planned = selection == "today" && quickDue == nil ? Day.today : nil
         let kind: TaskKind = quickKind == .progress ? .progress : .checkbox
         let task = StudyTask(
             courseID: quickCourse, title: title, kind: kind, planned: planned, due: quickDue,
             start: kind == .progress ? quickStart : 1,
             target: kind == .progress ? quickEnd : 30,
-            current: kind == .progress ? quickStart - 1 : 0
+            current: kind == .progress ? quickStart : 0
         )
         store.save(task)
         if store.error == nil { quickTitle = ""; quickDue = Day.adding(1); quickFocused = true }

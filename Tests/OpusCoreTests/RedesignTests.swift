@@ -12,6 +12,42 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(task.pacing(on: "2026-09-09"), "Set a due date to plan your daily pace")
         task.current = 49
         XCTAssertNil(task.pacing(on: "2026-09-09"))
+        task.current = 50
+        XCTAssertNil(task.pacing(on: "2026-09-09"))
+    }
+    func testProgressStartsUnreadAndCompletesPastLastPage() {
+        let zero = StudyTask(title: "PDF", kind: .progress, start: 0, target: 100)
+        XCTAssertEqual(zero.current, 0)
+        XCTAssertEqual(zero.pagesRead, 0)
+        XCTAssertEqual(zero.pagesTotal, 101)
+        XCTAssertEqual(zero.progressLabel, "0 of 101 pages")
+        XCTAssertFalse(zero.isProgressComplete)
+        XCTAssertEqual(zero.clampedProgress(-1), 0)
+        XCTAssertEqual(zero.clampedProgress(10), 10)
+        XCTAssertEqual(zero.clampedProgress(101), 101)
+
+        var book = StudyTask(title: "Book", kind: .progress, start: 1, target: 30)
+        XCTAssertEqual(book.current, 1)
+        XCTAssertEqual(book.pagesRead, 0)
+        XCTAssertEqual(book.progressLabel, "0 of 30 pages")
+        XCTAssertEqual(book.clampedProgress(0), 1)
+        book.current = 30
+        XCTAssertEqual(book.progressLabel, "30 of 30 pages")
+        XCTAssertFalse(book.isProgressComplete)
+        book.current = 31
+        XCTAssertEqual(book.progressLabel, "30 of 30 pages")
+        XCTAssertTrue(book.isProgressComplete)
+        XCTAssertEqual(book.clampedProgress(99), 31)
+
+        let mid = StudyTask(title: "Notes", kind: .progress, start: 3, target: 30)
+        XCTAssertEqual(mid.current, 3)
+        XCTAssertEqual(mid.pagesRead, 0)
+        XCTAssertEqual(mid.clampedProgress(1), 3)
+
+        var progressed = zero
+        progressed.current = 10
+        XCTAssertEqual(progressed.pagesRead, 11)
+        XCTAssertEqual(StudyTask(title: "Notes", kind: .progress, start: 17, target: 49, current: 25).pagesRead, 9)
     }
     func testScheduleClickUsesQuarterHourAndLateNight() {
         XCTAssertEqual(ScheduleLayout.minute(at: 630), 630)
@@ -46,7 +82,8 @@ final class RedesignTests: XCTestCase {
         XCTAssertTrue(StudyTask(title: "Book", kind: .progress, due: "2027-01-01", start: 1, target: 30, current: 10).isInToday(on: today))
         XCTAssertTrue(StudyTask(title: "Undated book", kind: .progress, start: 1, target: 30, current: 10).isInToday(on: today))
         XCTAssertTrue(StudyTask(title: "Undated rhythm book", kind: .progress, start: 1, target: 30, current: 10, ruleID: "r").isInToday(on: today))
-        XCTAssertFalse(StudyTask(title: "Finished book", kind: .progress, start: 1, target: 30, current: 30).isInToday(on: today))
+        XCTAssertTrue(StudyTask(title: "Last page", kind: .progress, start: 1, target: 30, current: 30).isInToday(on: today))
+        XCTAssertFalse(StudyTask(title: "Finished book", kind: .progress, start: 1, target: 30, current: 31).isInToday(on: today))
     }
     @MainActor func testGenerationRetainsYesterdayTaskButNotPastCalendarEvents() async {
         let today = "2026-09-09"
@@ -192,8 +229,14 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(state.tasks[0].kind, .progress)
         XCTAssertEqual(state.tasks[0].start, 17)
         XCTAssertEqual(state.tasks[0].target, 49)
-        XCTAssertEqual(state.tasks[0].current, 16)
+        XCTAssertEqual(state.tasks[0].current, 17)
         XCTAssertEqual(state.tasks[0].notes, "")
+        var zero = Snapshot()
+        zero.rules = [QuizRule(title: "Zero", weekdays: Array(1...7), itemKind: .task, startDate: "2026-09-07", endDate: "2026-09-07", taskKind: .progress, startCount: 0, targetCount: 20)]
+        Store.generate(in: &zero, today: "2026-09-07")
+        XCTAssertEqual(zero.tasks[0].start, 0)
+        XCTAssertEqual(zero.tasks[0].current, 0)
+        XCTAssertEqual(zero.tasks[0].pagesRead, 0)
     }
     @MainActor func testCustomDaysGenerateTasksAndRespectEndDate() async {
         var state = Snapshot()
@@ -407,11 +450,23 @@ final class RedesignTests: XCTestCase {
         store.updateProgress(task.id, to: 26)
         XCTAssertEqual(store.state.activities.count, 1)
         store.updateProgress(task.id, to: 999)
-        XCTAssertEqual(store.state.tasks[0].current, 49)
+        XCTAssertEqual(store.state.tasks[0].current, 50)
+        XCTAssertTrue(store.state.tasks[0].isProgressComplete)
         XCTAssertFalse(store.state.tasks[0].completed)
         store.updateProgress(task.id, to: 0)
-        XCTAssertEqual(store.state.tasks[0].current, 16)
+        XCTAssertEqual(store.state.tasks[0].current, 17)
         XCTAssertFalse(store.state.tasks[0].completed)
+    }
+    @MainActor func testStoreRaisesProgressBelowRangeStart() async throws {
+        let database = try db()
+        var snapshot = Snapshot()
+        snapshot.setupComplete = true
+        var task = StudyTask(title: "Notes", kind: .progress, start: 17, target: 49, current: 25)
+        task.current = 16
+        snapshot.tasks = [task]
+        try database.save(snapshot)
+        let store = try Store(database: database)
+        XCTAssertEqual(store.state.tasks[0].current, 17)
     }
     @MainActor func testPracticeTasksAndRulesNormalizeToCheckbox() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("OpusPractice-" + UUID().uuidString).appendingPathComponent("test.sqlite")

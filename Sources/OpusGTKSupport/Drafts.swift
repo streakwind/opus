@@ -63,7 +63,7 @@ package struct WorkDraftModel: Equatable, Sendable {
         )
     }
     package static func blank(courseID: String?, day: String?, kind: WorkKind = .task) -> WorkDraftModel {
-        WorkDraftModel(courseID: courseID, day: day, kind: kind, current: kind == .progress ? 0 : 0)
+        WorkDraftModel(courseID: courseID, day: day, kind: kind, current: kind == .progress ? 1 : 0)
     }
     package var validationError: String? {
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -72,7 +72,7 @@ package struct WorkDraftModel: Equatable, Sendable {
             return "Use a valid date in YYYY-MM-DD format."
         }
         if kind == .progress {
-            guard start > 0, target >= start, target <= 1_000_000, current >= start - 1, current <= target else {
+            guard start >= 0, target >= start, target <= 1_000_000, current >= start, current <= target + 1 else {
                 return "Check the page range and last page read."
             }
         }
@@ -194,7 +194,7 @@ package struct RuleDraftModel: Equatable, Sendable {
         guard !weekdays.isEmpty else { return "Choose at least one day." }
         if let endDate, let startDate, endDate < startDate { return "Rhythm end must be on or after the start date." }
         if workKind == .progress {
-            guard startCount > 0, targetCount >= startCount else { return "Check the page range." }
+            guard startCount >= 0, targetCount >= startCount else { return "Check the page range." }
         }
         if schedule, startMinute + duration > 1440 { return "Choose a duration that ends before midnight." }
         return nil

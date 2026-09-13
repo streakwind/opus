@@ -163,7 +163,7 @@ struct RuleEditor: View {
         return !rule.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
             !days.isEmpty &&
             (rule.endDate == nil || rule.endDate! >= (rule.startDate ?? Day.today)) &&
-            (rule.workKind != .progress || (start > 0 && target >= start && target <= 1_000_000)) &&
+            (rule.workKind != .progress || (start >= 0 && target >= start && target <= 1_000_000)) &&
             (rule.kind != .schedule || rule.allDay == true || (rule.startMinute ?? 540) + (rule.duration ?? 60) <= 1440)
     }
     var body: some View {
@@ -183,9 +183,9 @@ struct RuleEditor: View {
                 if rule.workKind == .progress {
                     PropertyRow("Range") {
                         HStack {
-                            TextField("Start", value: Binding(get: { rule.startCount ?? 1 }, set: { rule.startCount = max(1, $0) }), format: .number.grouping(.never)).frame(width: 55)
+                            TextField("Start", value: Binding(get: { rule.startCount ?? 1 }, set: { rule.startCount = max(0, $0) }), format: .number.grouping(.never)).frame(width: 55)
                             Text("to").foregroundStyle(.secondary)
-                            TextField("End", value: Binding(get: { rule.targetCount ?? 30 }, set: { rule.targetCount = max(rule.startCount ?? 1, $0) }), format: .number.grouping(.never)).frame(width: 55)
+                            TextField("End", value: Binding(get: { rule.targetCount ?? 30 }, set: { rule.targetCount = max(rule.startCount ?? 0, $0) }), format: .number.grouping(.never)).frame(width: 55)
                         }.textFieldStyle(.roundedBorder)
                     }
                 }

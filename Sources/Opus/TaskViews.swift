@@ -43,7 +43,7 @@ struct InlineProgress: View {
         }.help("Log the last page you read · " + task.progressLabel)
     }
     private func apply(_ updated: Int) {
-        let bounded = min(task.target, max(task.start - 1, updated))
+        let bounded = task.clampedProgress(updated)
         store.updateProgress(task.id, to: bounded)
         number = bounded
     }

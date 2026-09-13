@@ -70,7 +70,7 @@ struct WorkItemEditor: View {
             _kind = State(initialValue: kind)
             _start = State(initialValue: 1)
             _target = State(initialValue: 30)
-            _current = State(initialValue: 0)
+            _current = State(initialValue: 1)
         case .task(let task):
             _title = State(initialValue: task.title)
             _course = State(initialValue: task.courseID)
@@ -100,7 +100,7 @@ struct WorkItemEditor: View {
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return false }
         if kind == .progress {
-            return start > 0 && target >= start && target <= 1_000_000 && current >= start - 1 && current <= target
+            return start >= 0 && target >= start && target <= 1_000_000 && current >= start && current <= target + 1
         }
         return true
     }
@@ -184,9 +184,9 @@ struct WorkItemEditor: View {
         .roundedControls()
         .onAppear { titleFocused = true }
         .onChange(of: day) { _, day in if let day { onDateChange(day) } }
-        .onChange(of: start) { old, new in if current == old - 1 { current = new - 1 } }
+        .onChange(of: start) { old, new in if current == old || current < new { current = new } }
         .onChange(of: kind) { _, new in
-            if new == .progress, current < start - 1 { current = start - 1 }
+            if new == .progress, current < start { current = start }
         }
     }
 
@@ -226,7 +226,7 @@ struct WorkItemEditor: View {
             case .progress:
                 store.save(StudyTask(
                     courseID: course, title: name, kind: .progress, due: on,
-                    start: start, target: target, current: min(target, max(start - 1, current))
+                    start: start, target: target, current: min(target + 1, max(start, current))
                 ))
             case .assessment:
                 store.save(Assessment(courseID: course, title: name, day: on))
@@ -243,7 +243,7 @@ struct WorkItemEditor: View {
                 currentTask.target = target
                 currentTask.moveCalendarDay(to: on)
                 store.save(currentTask)
-                let bounded = min(target, max(start - 1, current))
+                let bounded = min(target + 1, max(start, current))
                 if bounded != previousCurrent {
                     store.updateProgress(currentTask.id, to: bounded)
                 }

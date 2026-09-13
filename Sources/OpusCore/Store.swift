@@ -68,6 +68,17 @@ package final class Store {
         if Self.migrateEmbedComments(in: &state) {
             needsSave = true
         }
+        for index in state.tasks.indices where state.tasks[index].kind == .progress {
+            let floor = state.tasks[index].start
+            let ceiling = state.tasks[index].progressCompleteAt
+            if state.tasks[index].current < floor {
+                state.tasks[index].current = floor
+                needsSave = true
+            } else if state.tasks[index].current > ceiling {
+                state.tasks[index].current = ceiling
+                needsSave = true
+            }
+        }
         Self.syncJournalLinks(in: &state)
         if needsSave { try database.save(state) }
         refreshOccurrences()
@@ -308,7 +319,7 @@ package final class Store {
                     state.assessments.append(Assessment(courseID: rule.courseID, title: rule.title, day: day, confirmed: true, ruleID: rule.id, occurrence: day))
                 case .task:
                     let kind = (rule.taskKind == .progress) ? TaskKind.progress : .checkbox
-                    let start = kind == .progress ? max(1, rule.startCount ?? 1) : 1
+                    let start = kind == .progress ? max(0, rule.startCount ?? 1) : 1
                     state.tasks.append(StudyTask(
                         courseID: rule.courseID,
                         title: rule.title,
@@ -316,7 +327,7 @@ package final class Store {
                         due: day,
                         start: start,
                         target: max(start, rule.targetCount ?? 30),
-                        current: kind == .progress ? start - 1 : 0,
+                        current: kind == .progress ? start : 0,
                         ruleID: rule.id,
                         occurrence: day
                     ))
@@ -337,9 +348,9 @@ package final class Store {
         state.tasks.removeAll { item in
             guard item.ruleID == rule.id, !item.completed, !worked.contains(item.id), item.courseID == rule.courseID else { return false }
             let kind: TaskKind = rule.taskKind == .progress ? .progress : .checkbox
-            let start = kind == .progress ? max(1, rule.startCount ?? 1) : 1
+            let start = kind == .progress ? max(0, rule.startCount ?? 1) : 1
             let target = max(start, rule.targetCount ?? 30)
-            let current = kind == .progress ? start - 1 : 0
+            let current = kind == .progress ? start : 0
             guard item.title == rule.title, item.current == current, item.start == start, item.target == target, item.kind == kind else { return false }
             let remove: Bool
             if item.kind == .progress {
@@ -447,7 +458,7 @@ package final class Store {
     }
     package func updateProgress(_ id: String, to value: Int) {
         guard let task = state.tasks.first(where: { $0.id == id }), task.kind == .progress else { return }
-        let bounded = min(task.target, max(task.start - 1, value))
+        let bounded = task.clampedProgress(value)
         guard task.current != bounded else { return }
         record(task, value: bounded, note: "Finished through \(bounded) \(task.unit)")
     }

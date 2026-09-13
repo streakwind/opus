@@ -313,10 +313,8 @@ struct JournalNativeEditor: NSViewRepresentable {
             var parts = [store.course(task.courseID)?.name ?? "Inbox"]
             if let due = task.due { parts.append(Day.label(due)) }
             if task.kind == .progress {
-                let total = max(1, task.target - task.start + 1)
-                let read = min(total, max(0, task.current - task.start + 1))
-                parts.append("\(read) of \(total) \(task.unit)")
-                parts.append("\(total - read) left")
+                parts.append("\(task.pagesRead) of \(task.pagesTotal) \(task.unit)")
+                parts.append("\(task.pagesTotal - task.pagesRead) left")
             }
             detail = parts.joined(separator: " · ")
         case .assessment(let id):

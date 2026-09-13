@@ -132,6 +132,16 @@ final class SessionTests: XCTestCase {
         var work = WorkDraftModel(); work.title = ""; XCTAssertNotNil(work.validationError)
         work.title = "Ok"; work.kind = .progress; work.start = 10; work.target = 5; work.current = 9
         XCTAssertNotNil(work.validationError)
+        work.start = 5; work.target = 100; work.current = 4
+        XCTAssertNotNil(work.validationError)
+        work.current = 5
+        XCTAssertNil(work.validationError)
+        work.start = 0; work.target = 100; work.current = 0
+        XCTAssertNil(work.validationError)
+        work.current = 101
+        XCTAssertNil(work.validationError)
+        work.current = 102
+        XCTAssertNotNil(work.validationError)
         var rule = RuleDraftModel(); rule.title = "X"; rule.weekdays = []
         XCTAssertNotNil(rule.validationError)
         var course = CourseDraftModel(name: "Calc", classTimes: [

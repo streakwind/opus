@@ -241,13 +241,19 @@ package final class LinuxSession {
                 var task = store.state.tasks.first { $0.id == draft.id } ?? StudyTask()
                 if !draft.isNew { task.id = draft.id }
                 let previous = task.current
+                let isNew = draft.isNew || store.state.tasks.contains(where: { $0.id == task.id }) == false
                 task.title = name; task.notes = draft.notes; task.courseID = draft.courseID
                 task.kind = .progress; task.completed = false
                 task.start = draft.start; task.target = draft.target
                 if let on { task.moveCalendarDay(to: on) } else { task.due = nil; task.planned = nil }
-                store.save(task)
-                let bounded = min(draft.target, max(draft.start - 1, draft.current))
-                if bounded != previous { store.updateProgress(task.id, to: bounded) }
+                let bounded = min(draft.target + 1, max(draft.start, draft.current))
+                if isNew {
+                    task.current = bounded
+                    store.save(task)
+                } else {
+                    store.save(task)
+                    if bounded != previous { store.updateProgress(task.id, to: bounded) }
+                }
             case .task:
                 var task = store.state.tasks.first { $0.id == draft.id } ?? StudyTask()
                 if !draft.isNew { task.id = draft.id }

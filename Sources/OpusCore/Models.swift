@@ -79,8 +79,17 @@ package struct StudyTask: Identifiable, Codable, Equatable {
     package var unit = "pages"
     package var ruleID: String?
     package var occurrence: String?
-    package var fraction: Double { min(1, max(0, Double(current - start + 1) / Double(max(1, target - start + 1)))) }
-    package var progressLabel: String { "\(max(0, current - start + 1)) of \(target - start + 1) \(unit)" }
+    package var pagesTotal: Int { max(1, target - start + 1) }
+    /// Unread at the start page (1–30 on 1 is 0 of 30). Full at the last page (30 of 30). Done at target + 1.
+    package var pagesRead: Int {
+        guard current > start else { return 0 }
+        return min(pagesTotal, current - start + 1)
+    }
+    package var fraction: Double { min(1, max(0, Double(pagesRead) / Double(pagesTotal))) }
+    package var progressLabel: String { "\(pagesRead) of \(pagesTotal) \(unit)" }
+    package var progressCompleteAt: Int { target + 1 }
+    package var isProgressComplete: Bool { current > target }
+    package func clampedProgress(_ value: Int) -> Int { min(progressCompleteAt, max(start, value)) }
     package init(id: String = UUID().uuidString, courseID: String? = nil, title: String = "", notes: String = "", kind: TaskKind = .checkbox, planned: String? = nil, due: String? = nil, completed: Bool = false, start: Int = 1, target: Int = 30, current: Int = 0, unit: String = "pages", ruleID: String? = nil, occurrence: String? = nil) {
         self.id = id
         self.courseID = courseID
@@ -92,7 +101,7 @@ package struct StudyTask: Identifiable, Codable, Equatable {
         self.completed = completed
         self.start = start
         self.target = target
-        self.current = current
+        self.current = kind == .progress ? min(target + 1, max(start, current)) : current
         self.unit = unit
         self.ruleID = ruleID
         self.occurrence = occurrence
@@ -466,7 +475,7 @@ package enum JournalWork {
         var options: [JournalEmbedOption] = []
         var seenTaskRules = Set<String>()
         let tasks = state.tasks
-            .filter { $0.kind == .progress ? $0.current < $0.target : !$0.completed }
+            .filter { $0.kind == .progress ? !$0.isProgressComplete : !$0.completed }
             .sorted {
                 let left = $0.calendarDay ?? "9999"
                 let right = $1.calendarDay ?? "9999"
@@ -581,13 +590,14 @@ extension StudyTask {
 extension StudyTask {
     /// Recalculate a realistic daily quota from the actual stopping point.
     package func pacing(on today: String) -> String? {
-        guard kind == .progress, current < target else { return nil }
+        guard kind == .progress, !isProgressComplete else { return nil }
+        let remaining = pagesTotal - pagesRead
+        guard remaining > 0 else { return nil }
         guard let due else { return "Set a due date to plan your daily pace" }
-        let remaining = target - max(start - 1, current)
         if due < today { return "Overdue · \(remaining) \(unit) left" }
         let days = max(1, (Calendar.current.dateComponents([.day], from: Day.date(today), to: Day.date(due)).day ?? 0) + 1)
         let quota = Int(ceil(Double(remaining) / Double(days)))
-        let stop = min(target, max(start - 1, current) + quota)
+        let stop = min(target, max(start, current) + quota)
         let goal = unit == "pages" ? "Read through page \(stop) today" : "Complete \(quota) \(unit) today"
         return "\(goal) · \(quota) \(unit)/day over \(days) \(days == 1 ? "day" : "days")"
     }
@@ -598,7 +608,7 @@ extension StudyTask {
     package func isInToday(on today: String) -> Bool {
         let week = Day.adding(7, to: today)
         if kind == .progress {
-            guard current < target else { return false }
+            guard !isProgressComplete else { return false }
             guard ruleID != nil else { return true }
             guard let date = due ?? planned else { return true }
             return date >= today

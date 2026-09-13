@@ -66,12 +66,34 @@ static char *weekday_csv_from_box(GtkWidget *box) {
     return g_string_free(csv, FALSE);
 }
 
+static void lift_current_to_start(void) {
+    if (!opus_ui.editor_start || !opus_ui.editor_current) {
+        return;
+    }
+    int start = (int)gtk_spin_button_get_value(
+        GTK_SPIN_BUTTON(opus_ui.editor_start));
+    int current = (int)gtk_spin_button_get_value(
+        GTK_SPIN_BUTTON(opus_ui.editor_current));
+    if (current < start) {
+        gtk_spin_button_set_value(GTK_SPIN_BUTTON(opus_ui.editor_current), start);
+    }
+}
+
+static void start_page_changed(GtkSpinButton *spin, gpointer unused) {
+    (void)spin;
+    (void)unused;
+    lift_current_to_start();
+}
+
 static void kind_changed(GtkDropDown *dropdown, GParamSpec *spec, gpointer data) {
     (void)spec;
     (void)data;
     guint selected = gtk_drop_down_get_selected(dropdown);
     if (opus_ui.editor_progress_box) {
         gtk_widget_set_visible(opus_ui.editor_progress_box, selected == 1);
+    }
+    if (selected == 1) {
+        lift_current_to_start();
     }
 }
 
@@ -467,9 +489,11 @@ void opus_work_editor_open(const char *id, const char *title, const char *day,
     opus_field(opus_ui.editor_body, "Notes", opus_ui.editor_notes);
 
     opus_ui.editor_progress_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
-    opus_ui.editor_start = opus_spin_int(start, 1, 1000000);
+    opus_ui.editor_start = opus_spin_int(start, 0, 1000000);
     opus_ui.editor_target = opus_spin_int(end, 1, 1000000);
     opus_ui.editor_current = opus_spin_int(page, 0, 1000000);
+    g_signal_connect(opus_ui.editor_start, "value-changed",
+                     G_CALLBACK(start_page_changed), NULL);
     opus_field(opus_ui.editor_progress_box, "Start page", opus_ui.editor_start);
     opus_field(opus_ui.editor_progress_box, "Target page", opus_ui.editor_target);
     opus_field(opus_ui.editor_progress_box, "Current page", opus_ui.editor_current);
@@ -577,7 +601,7 @@ void opus_rule_editor_open(const char *id, const char *title, const char *course
     opus_field(opus_ui.editor_body, "Notes", opus_ui.editor_notes);
 
     opus_ui.editor_rule_progress_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
-    opus_ui.editor_start = opus_spin_int(start, 1, 1000000);
+    opus_ui.editor_start = opus_spin_int(start, 0, 1000000);
     opus_ui.editor_target = opus_spin_int(target, 1, 1000000);
     opus_field(opus_ui.editor_rule_progress_box, "Start page", opus_ui.editor_start);
     opus_field(opus_ui.editor_rule_progress_box, "Target page", opus_ui.editor_target);
