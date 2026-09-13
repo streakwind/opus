@@ -62,6 +62,13 @@ package enum AppUpdateError: Error, Equatable {
     case badResponse
 }
 
+package enum AppUpdateCompletion {
+    package static func didInstall(_ installed: String, current: String) -> Bool {
+        guard let remote = AppVersion(installed), let local = AppVersion(current) else { return false }
+        return local >= remote
+    }
+}
+
 private struct GitHubRelease: Decodable {
     var tagName: String
     var htmlUrl: String

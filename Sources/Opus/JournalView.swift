@@ -9,9 +9,7 @@ struct JournalView: View {
     var newEntryRequest: Int
     @State private var anchor = Date()
     @State private var choosingDate = false
-    @State private var choosingTask = false
     @State private var focusRequest = 0
-    @State private var pendingEmbed: JournalEmbedOption?
 
     private var day: String { Day.string(anchor) }
     private var document: JournalEntry? { store.journalDocument(on: day) }
@@ -20,26 +18,23 @@ struct JournalView: View {
         VStack(spacing: 0) {
             heading
             if let document {
-                JournalDocumentEditor(
+                MarkdownDocumentEditor(
                     store: store,
-                    document: document,
+                    day: day,
+                    markdown: document.markdown,
+                    documentID: document.id,
                     focusRequest: focusRequest,
-                    pendingEmbed: $pendingEmbed,
-                    onTaskCommand: { _ in
-                        choosingTask = true
-                    }
-                )
-                .id(document.id)
-                .popover(isPresented: $choosingTask, arrowEdge: .top) {
-                    JournalEmbedPicker(store: store, day: day) { option in
+                    onEmbed: { option in
                         if !store.journalTaskEmbeds(on: day).contains(where: { $0.link == option.link }) {
                             store.save(JournalEntry(day: day, title: option.title, link: option.link))
                         }
-                        pendingEmbed = option
-                        choosingTask = false
-                        focusRequest += 1
                     }
+                ) { markdown in
+                    guard var latest = store.journalDocument(on: day), latest.id == document.id else { return }
+                    latest.markdown = markdown
+                    store.save(latest)
                 }
+                .id(document.id)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -93,9 +88,10 @@ struct JournalView: View {
     }
 }
 
-private struct JournalEmbedPicker: View {
+struct JournalEmbedPicker: View {
     var store: Store
     var day: String
+    var courseID: String? = nil
     var onPick: (JournalEmbedOption) -> Void
     @State private var query = ""
     @State private var selected = 0
@@ -103,10 +99,11 @@ private struct JournalEmbedPicker: View {
 
     private var options: [JournalEmbedOption] {
         JournalWork.embedOptions(in: store.state, from: day).filter {
-            query.isEmpty ||
+            (courseID == nil || $0.courseID == courseID) &&
+            (query.isEmpty ||
             $0.title.localizedCaseInsensitiveContains(query) ||
             $0.detail.localizedCaseInsensitiveContains(query) ||
-            (store.course($0.courseID)?.name.localizedCaseInsensitiveContains(query) ?? false)
+            (store.course($0.courseID)?.name.localizedCaseInsensitiveContains(query) ?? false))
         }
     }
 
@@ -175,66 +172,7 @@ private struct JournalEmbedPicker: View {
     }
 }
 
-private struct JournalDocumentEditor: View {
-    var store: Store
-    var document: JournalEntry
-    var focusRequest: Int
-    @Binding var pendingEmbed: JournalEmbedOption?
-    var onTaskCommand: (Int) -> Void
-    @State private var markdown: String
-    @State private var savedMarkdown: String
-    @State private var pendingSave: Task<Void, Never>?
-    @State private var editing: EmbedSelection?
-
-    private struct EmbedSelection: Identifiable {
-        var link: JournalLink
-        var id: String { link.token }
-    }
-    init(store: Store, document: JournalEntry, focusRequest: Int, pendingEmbed: Binding<JournalEmbedOption?>, onTaskCommand: @escaping (Int) -> Void) {
-        self.store = store; self.document = document; self.focusRequest = focusRequest
-        _pendingEmbed = pendingEmbed; self.onTaskCommand = onTaskCommand
-        _markdown = State(initialValue: document.markdown)
-        _savedMarkdown = State(initialValue: document.markdown)
-    }
-    var body: some View {
-        JournalNativeEditor(markdown: $markdown, store: store, day: document.day,
-                            focusRequest: focusRequest, pendingEmbed: $pendingEmbed,
-                            onTaskCommand: onTaskCommand, onOpen: { editing = EmbedSelection(link: $0) })
-            .onChange(of: markdown) { _, _ in scheduleSave() }
-            .onChange(of: document.markdown) { _, value in
-                if value == markdown { savedMarkdown = value }
-                else if pendingSave == nil { savedMarkdown = value; markdown = value }
-            }
-            .onDisappear { pendingSave?.cancel(); flush() }
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification)) { _ in
-                pendingSave?.cancel(); pendingSave = nil; flush()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
-                pendingSave?.cancel(); pendingSave = nil; flush()
-            }
-            .sheet(item: $editing) { target in
-                JournalEmbedDetails(store: store, link: target.link, day: document.day, close: { editing = nil })
-            }
-    }
-    private func scheduleSave() {
-        pendingSave?.cancel()
-        guard markdown != savedMarkdown else { pendingSave = nil; return }
-        pendingSave = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled else { return }
-            pendingSave = nil
-            flush()
-        }
-    }
-    private func flush() {
-        guard markdown != savedMarkdown, var latest = store.journalDocument(on: document.day), latest.id == document.id else { return }
-        latest.markdown = markdown
-        store.save(latest)
-        if store.error == nil { savedMarkdown = markdown }
-    }
-}
-
-private struct JournalEmbedDetails: View {
+struct JournalEmbedDetails: View {
     var store: Store
     var link: JournalLink
     var day: String

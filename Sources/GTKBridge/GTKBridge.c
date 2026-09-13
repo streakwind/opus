@@ -143,6 +143,9 @@ static const char *nav_icon(const char *id) {
     if (g_strcmp0(id, "inbox") == 0) {
         return "mail-mailbox-symbolic";
     }
+    if (g_strcmp0(id, "notes") == 0) {
+        return "accessories-text-editor-symbolic";
+    }
     if (g_strcmp0(id, "archive") == 0) {
         return "folder-symbolic";
     }
@@ -289,6 +292,7 @@ static void activate(GtkApplication *application, gpointer unused) {
     add_view(GTK_STACK(opus_ui.stack), 1, "calendar");
     add_view(GTK_STACK(opus_ui.stack), 2, "schedule");
     add_view(GTK_STACK(opus_ui.stack), 3, "rhythm");
+    add_view(GTK_STACK(opus_ui.stack), 4, "notes");
     gtk_box_append(GTK_BOX(content), opus_ui.stack);
 
     gtk_box_append(GTK_BOX(layout), rail);
@@ -316,7 +320,7 @@ void opus_shell_begin(const char *title, const char *placeholder, int can_undo,
     if (!opus_ui.window) {
         return;
     }
-    view = CLAMP(view, 0, 3);
+    view = CLAMP(view, 0, 4);
     opus_ui.active_view = view;
     opus_clear_box(opus_ui.sidebar);
     opus_views_reset(view);
@@ -331,7 +335,7 @@ void opus_shell_begin(const char *title, const char *placeholder, int can_undo,
         gtk_entry_set_placeholder_text(GTK_ENTRY(opus_ui.quick_entry),
                                        placeholder);
     }
-    static const char *names[] = {"tasks", "calendar", "schedule", "rhythm"};
+    static const char *names[] = {"tasks", "calendar", "schedule", "rhythm", "notes"};
     gtk_stack_set_visible_child_name(GTK_STACK(opus_ui.stack), names[view]);
     opus_error("");
 }

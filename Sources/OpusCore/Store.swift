@@ -60,6 +60,13 @@ package final class Store {
             state.schedule[index].notes = ""
             needsSave = true
         }
+        for index in state.courses.indices {
+            if state.courses[index].notes == nil, let markdown = state.courses[index].notesMarkdown, !markdown.isEmpty {
+                state.courses[index].notes = [ListNote(id: "legacy-list-note", markdown: markdown)]
+                state.courses[index].notesMarkdown = nil
+                needsSave = true
+            }
+        }
         let normalizedJournal = Self.normalizedJournal(state.journal)
         if normalizedJournal != state.journal {
             state.journal = normalizedJournal
@@ -265,6 +272,32 @@ package final class Store {
             if let index = state.courses.firstIndex(where: { $0.id == course.id }) { state.courses[index] = course }
             else { state.courses.append(course) }
         }
+    }
+    package func saveListNote(_ courseID: String, _ note: ListNote) {
+        guard var course = course(courseID) else { return }
+        var notes = course.listNotes
+        if let index = notes.firstIndex(where: { $0.id == note.id }) {
+            guard notes[index] != note else { return }
+            notes[index] = note
+        } else {
+            notes.append(note)
+        }
+        course.notes = notes
+        course.notesMarkdown = nil
+        save(course)
+    }
+    package func addListNote(_ courseID: String) -> ListNote? {
+        let note = ListNote()
+        saveListNote(courseID, note)
+        return course(courseID)?.listNotes.last { $0.id == note.id }
+    }
+    package func deleteListNote(_ courseID: String, noteID: String) {
+        guard var course = course(courseID) else { return }
+        let notes = course.listNotes.filter { $0.id != noteID }
+        guard notes.count != course.listNotes.count else { return }
+        course.notes = notes
+        course.notesMarkdown = nil
+        save(course)
     }
     package func deleteCourse(_ id: String) {
         change { state in

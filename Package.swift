@@ -26,11 +26,15 @@ targets += [
     ),
     .executableTarget(name: "OpusGTK", dependencies: ["OpusCore", "OpusGTKSupport", "GTKBridge"])
 ]
+let packageDependencies: [Package.Dependency] = []
 #else
 products.append(.executable(name: "Opus", targets: ["Opus"]))
 targets += [
-    .executableTarget(name: "Opus", dependencies: ["OpusCore"]),
+    .executableTarget(name: "Opus", dependencies: ["OpusCore", .product(name: "SwiftMath", package: "SwiftMath")]),
     .testTarget(name: "OpusTests", dependencies: ["Opus", "OpusCore"])
 ]
+let packageDependencies: [Package.Dependency] = [
+    .package(url: "https://github.com/mgriebling/SwiftMath.git", from: "1.7.3")
+]
 #endif
-let package = Package(name: "Opus", platforms: [.macOS(.v14)], products: products, targets: targets)
+let package = Package(name: "Opus", platforms: [.macOS(.v14)], products: products, dependencies: packageDependencies, targets: targets)

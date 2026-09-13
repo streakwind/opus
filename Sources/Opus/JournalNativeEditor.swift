@@ -76,7 +76,7 @@ struct JournalNativeEditor: NSViewRepresentable {
         editor.autoresizingMask = [.width]
         editor.setAccessibilityIdentifier("journal-editor")
         editor.setAccessibilityLabel("Journal entry")
-        editor.setAccessibilityHelp("Write anywhere. Type /task to embed work. Use arrow keys to move around embeds; double-click or Command-Return to edit one.")
+        editor.setAccessibilityHelp("Write markdown and LaTeX. Wrap math in $inline$ or $$display$$. Type /task to embed work. Use arrow keys to move around embeds; double-click or Command-Return to edit one.")
         editor.onOpen = onOpen
         editor.onToggle = { [weak coordinator = context.coordinator] link in coordinator?.toggle(link) }
         editor.onWidthChange = { [weak coordinator = context.coordinator, weak editor] in
@@ -180,26 +180,117 @@ struct JournalNativeEditor: NSViewRepresentable {
                 guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
                 for match in regex.matches(in: text, range: full) { apply(match) }
             }
+            let caret = editor.selectedRange()
+            func caretTouches(_ range: NSRange) -> Bool {
+                NSLocationInRange(caret.location, range) || NSIntersectionRange(caret, range).length > 0
+            }
+            func hideMarker(_ range: NSRange) {
+                guard range.length > 0, NSMaxRange(range) <= storage.length else { return }
+                let collapsed = NSMutableParagraphStyle()
+                collapsed.minimumLineHeight = 0.01
+                collapsed.maximumLineHeight = 0.01
+                collapsed.lineSpacing = 0
+                storage.addAttributes([
+                    .font: NSFont.systemFont(ofSize: 0.01),
+                    .foregroundColor: NSColor.clear,
+                    .backgroundColor: NSColor.clear,
+                    .paragraphStyle: collapsed
+                ], range: range)
+            }
+            let codeBlocks = JournalCode.blocks(in: text)
+            func insideCode(_ range: NSRange) -> Bool {
+                codeBlocks.contains { NSIntersectionRange($0.range, range).length > 0 }
+            }
             matches(#"(?m)^(#{1,3})\s+(.+)$"#) { match in
+                guard !insideCode(match.range) else { return }
                 let level = match.range(at: 1).length
                 storage.addAttribute(.font, value: NSFont.systemFont(ofSize: level == 1 ? 26 : level == 2 ? 22 : 19, weight: .semibold), range: match.range)
                 storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: match.range(at: 1))
             }
             matches(#"\*\*([^\n]+?)\*\*"#) { match in
+                guard !insideCode(match.range) else { return }
                 storage.addAttribute(.font, value: NSFont.systemFont(ofSize: 17, weight: .bold), range: match.range(at: 1))
             }
-            matches(#"`([^`\n]+)`"#) { match in
-                storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 16, weight: .regular), range: match.range(at: 1))
-                storage.addAttribute(.backgroundColor, value: NSColor.quaternaryLabelColor, range: match.range(at: 1))
-            }
             matches(#"\[([^\]\n]+)\]\((https?://[^\)\n]+)\)"#) { match in
+                guard !insideCode(match.range) else { return }
                 let url = (text as NSString).substring(with: match.range(at: 2))
                 storage.addAttribute(.link, value: url, range: match.range(at: 1))
+            }
+            let mono = NSFont.monospacedSystemFont(ofSize: 13.5, weight: .regular)
+            let blockFill = NSColor.labelColor.withAlphaComponent(0.055)
+            for block in codeBlocks {
+                let editing = caretTouches(block.range)
+                storage.addAttribute(.font, value: mono, range: block.range)
+                storage.addAttribute(.backgroundColor, value: blockFill, range: block.innerRange)
+                storage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: block.innerRange)
+                let body = (text as NSString).substring(with: block.innerRange)
+                for (range, kind) in CodeHighlight.tokens(in: body, language: block.language) {
+                    let absolute = NSRange(location: block.innerRange.location + range.location, length: range.length)
+                    guard NSMaxRange(absolute) <= storage.length else { continue }
+                    storage.addAttribute(.foregroundColor, value: highlightColor(kind), range: absolute)
+                }
+                if editing {
+                    storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: block.openRange)
+                    storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: block.closeRange)
+                } else {
+                    hideMarker(block.openRange)
+                    hideMarker(block.closeRange)
+                }
+            }
+            for span in JournalCode.spans(in: text) {
+                let editing = caretTouches(span.range)
+                storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 14.5, weight: .regular), range: span.innerRange)
+                storage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: span.innerRange)
+                storage.addAttribute(.backgroundColor, value: NSColor.labelColor.withAlphaComponent(0.07), range: span.innerRange)
+                if editing {
+                    storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 14.5, weight: .regular), range: span.openRange)
+                    storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 14.5, weight: .regular), range: span.closeRange)
+                    storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: span.openRange)
+                    storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: span.closeRange)
+                } else {
+                    hideMarker(span.openRange)
+                    hideMarker(span.closeRange)
+                }
+            }
+            for span in JournalMath.spans(in: text) {
+                let editing = caretTouches(span.range)
+                if editing {
+                    storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 16, weight: .regular), range: span.range)
+                    storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: span.range)
+                } else {
+                    hideMarker(span.openRange)
+                    hideMarker(span.closeRange)
+                    storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 16, weight: .regular), range: span.innerRange)
+                    storage.addAttribute(.foregroundColor, value: NSColor.clear, range: span.innerRange)
+                }
+                if span.display {
+                    let paragraph = NSMutableParagraphStyle()
+                    paragraph.lineSpacing = 4
+                    if !editing, let image = MathRenderer.image(latex: span.latex, display: true, color: .labelColor, fontSize: 20) {
+                        paragraph.minimumLineHeight = max(28, image.size.height + 18)
+                    }
+                    storage.addAttribute(.paragraphStyle, value: paragraph, range: span.range)
+                }
             }
             storage.endEditing()
             editor.typingAttributes = base
             styling = false
             refreshAttachments(editor)
+            editor.needsDisplay = true
+        }
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard let editor = notification.object as? JournalTextView else { return }
+            style(editor)
+        }
+        private func highlightColor(_ kind: CodeTokenKind) -> NSColor {
+            switch kind {
+            case .comment: .tertiaryLabelColor
+            case .string: .systemOrange
+            case .number: .systemBlue
+            case .keyword: .systemPurple
+            case .type: .systemTeal
+            case .attribute: .systemPink
+            }
         }
     }
 }
@@ -214,6 +305,50 @@ struct JournalNativeEditor: NSViewRepresentable {
         let changed = newSize.width != frame.width
         super.setFrameSize(newSize)
         if changed { onWidthChange?() }
+    }
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        drawRenderedMath()
+    }
+    private func drawRenderedMath() {
+        guard let storage = textStorage, let manager = layoutManager, let container = textContainer else { return }
+        let caret = selectedRange()
+        let origin = textContainerOrigin
+        for span in JournalMath.spans(in: storage.string) {
+            if NSLocationInRange(caret.location, span.range) || NSIntersectionRange(caret, span.range).length > 0 {
+                continue
+            }
+            let glyphs = manager.glyphRange(forCharacterRange: span.innerRange, actualCharacterRange: nil)
+            var rect = manager.boundingRect(forGlyphRange: glyphs, in: container)
+            rect.origin.x += origin.x
+            rect.origin.y += origin.y
+            guard let image = MathRenderer.image(
+                latex: span.latex,
+                display: span.display,
+                color: .labelColor,
+                fontSize: span.display ? 20 : 17
+            ) else { continue }
+            (NSColor.textBackgroundColor).setFill()
+            rect.fill()
+            let size = image.size
+            let box: NSRect
+            if span.display {
+                box = NSRect(
+                    x: rect.minX,
+                    y: rect.midY - size.height / 2,
+                    width: min(rect.width, size.width),
+                    height: size.height
+                )
+            } else {
+                box = NSRect(
+                    x: rect.minX,
+                    y: rect.maxY - size.height - 1,
+                    width: min(rect.width, size.width),
+                    height: size.height
+                )
+            }
+            image.draw(in: box, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        }
     }
     func insertEmbed(_ link: JournalLink, replacing proposed: NSRange) {
         let location = min(proposed.location, string.utf16.count)

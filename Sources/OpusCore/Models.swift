@@ -24,6 +24,16 @@ package struct Course: Identifiable, Codable, Hashable {
     package var classDays: [Int]?
     package var listOnly: Bool?
     package var isListOnly: Bool { listOnly == true }
+    /// Legacy single-document notes. Migrated into `notes` on open.
+    package var notesMarkdown: String?
+    package var notes: [ListNote]?
+    package var listNotes: [ListNote] {
+        if let notes { return notes }
+        if let notesMarkdown, !notesMarkdown.isEmpty {
+            return [ListNote(id: "legacy-list-note", markdown: notesMarkdown)]
+        }
+        return []
+    }
     package var resolvedClassTimes: [ClassTime] {
         if let classTimes { return classTimes }
         guard let classStart else { return [] }
@@ -48,7 +58,7 @@ package struct Course: Identifiable, Codable, Hashable {
             classDays = nil
         }
     }
-    package init(id: String = UUID().uuidString, name: String, color: String = "blue", classTimes: [ClassTime]? = nil, classStart: Int? = nil, classDuration: Int? = nil, classDays: [Int]? = nil, listOnly: Bool = false) {
+    package init(id: String = UUID().uuidString, name: String, color: String = "blue", classTimes: [ClassTime]? = nil, classStart: Int? = nil, classDuration: Int? = nil, classDays: [Int]? = nil, listOnly: Bool = false, notesMarkdown: String? = nil, notes: [ListNote]? = nil) {
         self.id = id
         self.name = name
         self.color = color
@@ -57,6 +67,23 @@ package struct Course: Identifiable, Codable, Hashable {
         self.classDuration = classDuration
         self.classDays = classDays
         self.listOnly = listOnly ? true : nil
+        self.notesMarkdown = notesMarkdown
+        self.notes = notes
+    }
+}
+
+package struct ListNote: Identifiable, Codable, Hashable, Sendable {
+    package var id: String
+    package var title: String
+    package var markdown: String
+    package init(id: String = UUID().uuidString, title: String = "", markdown: String = "") {
+        self.id = id
+        self.title = title
+        self.markdown = markdown
+    }
+    package var displayTitle: String {
+        let named = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return named.isEmpty ? "Untitled note" : named
     }
 }
 

@@ -11,6 +11,7 @@ final class AppUpdater {
         case current
         case available(AppUpdateOffer)
         case working(String)
+        case updated(String)
         case failed(String)
     }
 
@@ -18,13 +19,27 @@ final class AppUpdater {
     let currentVersion: String
     private let channel: AppChannel
     private var inFlight = false
+    private let markerURL: URL
 
     init(
         currentVersion: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0",
-        channel: AppChannel = .macOS
+        channel: AppChannel = .macOS,
+        markerURL: URL? = nil
     ) {
         self.currentVersion = currentVersion
         self.channel = channel
+        if let markerURL {
+            self.markerURL = markerURL
+        } else {
+            let root = (try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true))
+                ?? FileManager.default.temporaryDirectory
+            self.markerURL = root.appendingPathComponent("Opus/update-complete", isDirectory: false)
+        }
+        if let installed = Self.readMarker(at: self.markerURL),
+           AppUpdateCompletion.didInstall(installed, current: currentVersion) {
+            try? FileManager.default.removeItem(at: self.markerURL)
+            status = .updated(installed)
+        }
     }
 
     func check() async {
@@ -89,8 +104,12 @@ final class AppUpdater {
                 return
             }
             status = .working("Installing Opus \(offer.version)…")
-            try launchReplacer(from: app, replacing: dest)
+            try launchReplacer(from: app, replacing: dest, version: offer.version)
+            status = .working("Restarting to finish the update…")
             NSApplication.shared.terminate(nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                exit(0)
+            }
         } catch {
             status = .failed("Couldn't install the update.")
         }
@@ -138,7 +157,7 @@ final class AppUpdater {
         }
     }
 
-    private func launchReplacer(from source: URL, replacing destination: URL) throws {
+    private func launchReplacer(from source: URL, replacing destination: URL, version: String) throws {
         let script = FileManager.default.temporaryDirectory.appendingPathComponent("opus-replace-\(UUID().uuidString).sh")
         let body = """
         #!/bin/bash
@@ -146,11 +165,15 @@ final class AppUpdater {
         pid="$1"
         src="$2"
         dest="$3"
+        version="$4"
+        marker="$5"
         while /bin/kill -0 "$pid" 2>/dev/null; do /bin/sleep 0.2; done
         /bin/sleep 0.4
         /bin/rm -rf "$dest"
         /usr/bin/ditto "$src" "$dest"
         /usr/bin/xattr -cr "$dest" || true
+        /bin/mkdir -p "$(/usr/bin/dirname "$marker")"
+        /bin/printf '%s' "$version" > "$marker"
         /usr/bin/open "$dest"
         """
         try body.write(to: script, atomically: true, encoding: .utf8)
@@ -159,15 +182,23 @@ final class AppUpdater {
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = [
             "-c",
-            "trap '' HUP; nohup /bin/bash \"$1\" \"$2\" \"$3\" \"$4\" >/dev/null 2>&1 &",
+            "trap '' HUP; nohup /bin/bash \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" >/dev/null 2>&1 &",
             "--",
             script.path,
             String(ProcessInfo.processInfo.processIdentifier),
             source.path,
-            destination.path
+            destination.path,
+            version,
+            markerURL.path
         ]
         try process.run()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else { throw AppUpdateError.badResponse }
+    }
+
+    private static func readMarker(at url: URL) -> String? {
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let version = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return version.isEmpty ? nil : version
     }
 }

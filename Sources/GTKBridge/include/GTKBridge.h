@@ -40,6 +40,8 @@ void opus_schedule_day(const char *day, const char *label);
 void opus_schedule_block(const char *id, const char *title, const char *detail, const char *day, int start, int duration, int column, int columns, const char *color, int is_class);
 
 void opus_rhythm_row(const char *id, const char *title, const char *detail, int enabled, const char *color);
+void opus_list_note(const char *course_id, const char *note_id, const char *title, const char *markdown);
+void opus_add_note(const char *course_id);
 
 void opus_work_editor_open(const char *id, const char *title, const char *day, const char *course, int kind, int confirmed, const char *notes, int start, int end, int page);
 void opus_work_editor_list(const char *id, const char *name, int selected);

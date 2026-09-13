@@ -7,6 +7,7 @@ struct OpusApp: App {
     @State private var store: Store?
     @State private var startupError: String?
     init() {
+        MathRenderer.prepareFonts()
         do {
             let root: URL
             if let custom = ProcessInfo.processInfo.environment["OPUS_DATA_DIR"] { root = URL(fileURLWithPath: custom) }

@@ -124,7 +124,16 @@ final class LinuxApp {
         }
         rows.tasks.forEach(emit)
         if rows.assessments.isEmpty && rows.progress.isEmpty && rows.tasks.isEmpty {
-            opus_empty(session.emptyMessage())
+            if session.selection.courseID == nil || (session.store.course(session.selection.courseID ?? "")?.listNotes.isEmpty ?? true) {
+                opus_empty(session.emptyMessage())
+            }
+        }
+        if let courseID = session.selection.courseID, let course = session.store.course(courseID) {
+            opus_section("Notes")
+            for note in course.listNotes {
+                opus_list_note(course.id, note.id, note.title, note.markdown)
+            }
+            opus_add_note(course.id)
         }
     }
 
@@ -174,6 +183,7 @@ final class LinuxApp {
         }
         if rows.isEmpty { opus_empty(session.emptyMessage()) }
     }
+
 
     private func openWork(_ draft: WorkDraftModel) {
         opus_work_editor_open(
@@ -256,6 +266,10 @@ final class LinuxApp {
             guard let number = Int(text) else { opus_error("Enter a page number, then press Enter."); return }
             mapped = .updatePage(id, number)
         case "undo": mapped = .undo
+        case "save-notes": mapped = .saveListNote(courseID: course, noteID: id, markdown: text)
+        case "save-note-title": mapped = .saveListNoteTitle(courseID: course, noteID: id, title: text)
+        case "add-note": mapped = .addListNote(id)
+        case "delete-note": mapped = .deleteListNote(courseID: course, noteID: id)
         case "save-work":
             mapped = .saveWork(WorkDraftModel(
                 id: id, title: text, courseID: course.isEmpty ? nil : course, day: day.isEmpty ? nil : day,

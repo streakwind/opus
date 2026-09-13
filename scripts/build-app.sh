@@ -33,6 +33,15 @@ rm -rf dist/Opus.app
 mkdir -p dist/Opus.app/Contents/MacOS dist/Opus.app/Contents/Resources
 cp Assets/Opus.icns dist/Opus.app/Contents/Resources/OpusStack.icns
 cp /tmp/opus-release/release/Opus dist/Opus.app/Contents/MacOS/Opus
+math_bundle=""
+if [[ -d /tmp/opus-release/release/SwiftMath_SwiftMath.bundle ]]; then
+  math_bundle=/tmp/opus-release/release/SwiftMath_SwiftMath.bundle
+elif [[ -d /tmp/opus-release/arm64-apple-macosx/release/SwiftMath_SwiftMath.bundle ]]; then
+  math_bundle=/tmp/opus-release/arm64-apple-macosx/release/SwiftMath_SwiftMath.bundle
+fi
+if [[ -n "$math_bundle" ]]; then
+  cp -R "$math_bundle" dist/Opus.app/Contents/Resources/SwiftMath_SwiftMath.bundle
+fi
 cat > dist/Opus.app/Contents/Info.plist <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

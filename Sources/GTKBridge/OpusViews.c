@@ -61,17 +61,19 @@ void opus_views_reset(int view) {
     opus_ui.quick_entry = NULL;
 
     opus_clear_box(opus_ui.views[view]);
-    if (view == 0 || view == 3) {
-        GtkWidget *quick = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-        gtk_widget_add_css_class(quick, "opus-quick-entry");
-        opus_ui.quick_entry = gtk_entry_new();
-        gtk_entry_set_placeholder_text(GTK_ENTRY(opus_ui.quick_entry),
-                                       view == 3 ? "Add a rhythm…" : "Add a task…");
-        opus_set_identity(opus_ui.quick_entry,
-                          view == 3 ? "add-rhythm" : "quick-entry", NULL);
-        g_signal_connect(opus_ui.quick_entry, "activate", G_CALLBACK(quick_add), NULL);
-        gtk_box_append(GTK_BOX(quick), opus_ui.quick_entry);
-        gtk_box_append(GTK_BOX(opus_ui.views[view]), quick);
+    if (view == 0 || view == 3 || view == 4) {
+        if (view != 4) {
+            GtkWidget *quick = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+            gtk_widget_add_css_class(quick, "opus-quick-entry");
+            opus_ui.quick_entry = gtk_entry_new();
+            gtk_entry_set_placeholder_text(GTK_ENTRY(opus_ui.quick_entry),
+                                           view == 3 ? "Add a rhythm…" : "Add a task…");
+            opus_set_identity(opus_ui.quick_entry,
+                              view == 3 ? "add-rhythm" : "quick-entry", NULL);
+            g_signal_connect(opus_ui.quick_entry, "activate", G_CALLBACK(quick_add), NULL);
+            gtk_box_append(GTK_BOX(quick), opus_ui.quick_entry);
+            gtk_box_append(GTK_BOX(opus_ui.views[view]), quick);
+        }
         gtk_box_append(GTK_BOX(opus_ui.views[view]),
                        opus_scrolled_box(&opus_ui.rows));
     }
@@ -215,6 +217,103 @@ void opus_work_row(const char *id, const char *kind, const char *title,
     g_signal_connect(remove, "clicked", G_CALLBACK(delete_work), NULL);
     gtk_box_append(GTK_BOX(row), remove);
     gtk_box_append(GTK_BOX(opus_ui.rows), row);
+}
+
+static void notes_changed(GtkTextBuffer *buffer, gpointer unused) {
+    (void)unused;
+    GtkTextIter start, end;
+    gtk_text_buffer_get_bounds(buffer, &start, &end);
+    char *text = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
+    OpusEventPayload event = {
+        .action = "save-notes",
+        .id = g_object_get_data(G_OBJECT(buffer), "opus-id"),
+        .course = g_object_get_data(G_OBJECT(buffer), "opus-course"),
+        .text = text ? text : ""
+    };
+    opus_send(&event);
+    g_free(text);
+}
+
+static void note_title_changed(GtkEditable *editable, gpointer unused) {
+    (void)unused;
+    OpusEventPayload event = {
+        .action = "save-note-title",
+        .id = g_object_get_data(G_OBJECT(editable), "opus-id"),
+        .course = g_object_get_data(G_OBJECT(editable), "opus-course"),
+        .text = gtk_editable_get_text(editable)
+    };
+    opus_send(&event);
+}
+
+static void add_note_clicked(GtkButton *button, gpointer unused) {
+    (void)unused;
+    OpusEventPayload event = {
+        .action = "add-note",
+        .id = g_object_get_data(G_OBJECT(button), "opus-id")
+    };
+    opus_send(&event);
+}
+
+static void delete_note_clicked(GtkButton *button, gpointer unused) {
+    (void)unused;
+    OpusEventPayload event = {
+        .action = "delete-note",
+        .id = g_object_get_data(G_OBJECT(button), "opus-id"),
+        .course = g_object_get_data(G_OBJECT(button), "opus-course")
+    };
+    opus_send(&event);
+}
+
+void opus_list_note(const char *course_id, const char *note_id, const char *title, const char *markdown) {
+    if (!opus_ui.rows) {
+        return;
+    }
+    GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    GtkWidget *name = gtk_entry_new();
+    gtk_editable_set_text(GTK_EDITABLE(name), title ? title : "");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(name), "Untitled note");
+    gtk_widget_set_hexpand(name, TRUE);
+    g_object_set_data_full(G_OBJECT(name), "opus-id", g_strdup(note_id ? note_id : ""), g_free);
+    g_object_set_data_full(G_OBJECT(name), "opus-course", g_strdup(course_id ? course_id : ""), g_free);
+    g_signal_connect(name, "changed", G_CALLBACK(note_title_changed), NULL);
+    GtkWidget *remove = gtk_button_new_from_icon_name("user-trash-symbolic");
+    gtk_widget_add_css_class(remove, "flat");
+    gtk_widget_set_tooltip_text(remove, "Delete");
+    g_object_set_data_full(G_OBJECT(remove), "opus-id", g_strdup(note_id ? note_id : ""), g_free);
+    g_object_set_data_full(G_OBJECT(remove), "opus-course", g_strdup(course_id ? course_id : ""), g_free);
+    g_signal_connect(remove, "clicked", G_CALLBACK(delete_note_clicked), NULL);
+    gtk_box_append(GTK_BOX(header), name);
+    gtk_box_append(GTK_BOX(header), remove);
+    gtk_box_append(GTK_BOX(opus_ui.rows), header);
+    GtkWidget *scroll = gtk_scrolled_window_new();
+    gtk_widget_set_size_request(scroll, -1, 140);
+    gtk_widget_set_hexpand(scroll, TRUE);
+    GtkWidget *view = gtk_text_view_new();
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(view), GTK_WRAP_WORD_CHAR);
+    gtk_text_view_set_left_margin(GTK_TEXT_VIEW(view), 8);
+    gtk_text_view_set_right_margin(GTK_TEXT_VIEW(view), 8);
+    gtk_text_view_set_top_margin(GTK_TEXT_VIEW(view), 8);
+    gtk_text_view_set_bottom_margin(GTK_TEXT_VIEW(view), 8);
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
+    if (markdown && *markdown) {
+        gtk_text_buffer_set_text(buffer, markdown, -1);
+    }
+    g_object_set_data_full(G_OBJECT(buffer), "opus-id", g_strdup(note_id ? note_id : ""), g_free);
+    g_object_set_data_full(G_OBJECT(buffer), "opus-course", g_strdup(course_id ? course_id : ""), g_free);
+    g_signal_connect(buffer, "changed", G_CALLBACK(notes_changed), NULL);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), view);
+    gtk_box_append(GTK_BOX(opus_ui.rows), scroll);
+}
+
+void opus_add_note(const char *course_id) {
+    if (!opus_ui.rows) {
+        return;
+    }
+    GtkWidget *add = gtk_button_new_with_label("Add a note");
+    gtk_widget_add_css_class(add, "flat");
+    g_object_set_data_full(G_OBJECT(add), "opus-id", g_strdup(course_id ? course_id : ""), g_free);
+    g_signal_connect(add, "clicked", G_CALLBACK(add_note_clicked), NULL);
+    gtk_box_append(GTK_BOX(opus_ui.rows), add);
 }
 
 void opus_empty(const char *message) {

@@ -19,7 +19,9 @@ final class PresentationTests: XCTestCase {
         ]
         let nav = LinuxPresentation.navItems(selection: .section(.today), courses: state.courses)
         XCTAssertTrue(nav.contains { $0.id == "calendar" })
+        XCTAssertFalse(nav.contains { $0.id == "notes" })
         XCTAssertTrue(nav.contains { $0.id == "list:" + course.id })
+        XCTAssertTrue(LinuxPresentation.workRows(in: state, selection: .list(course.id), query: "").tasks.contains { $0.title == "Essay" })
         let rows = LinuxPresentation.workRows(in: state, selection: .section(.today), query: "")
         XCTAssertEqual(rows.assessments.count, 1)
         XCTAssertEqual(rows.progress.count, 1)
@@ -194,6 +196,15 @@ final class SessionTests: XCTestCase {
         draft = .from(course)
         draft.classTimes[0].endMinute = 530
         XCTAssertTrue(app.handle(.saveCourse(draft)).contains { if case .showError = $0 { return true }; return false })
+        _ = app.handle(.addListNote(course.id))
+        let note = app.store.course(course.id)?.listNotes.last
+        XCTAssertNotNil(note)
+        _ = app.handle(.saveListNoteTitle(courseID: course.id, noteID: note!.id, title: "Lecture"))
+        _ = app.handle(.saveListNote(courseID: course.id, noteID: note!.id, markdown: "Lecture $x$"))
+        XCTAssertEqual(app.store.course(course.id)?.listNotes.last?.title, "Lecture")
+        XCTAssertEqual(app.store.course(course.id)?.listNotes.last?.markdown, "Lecture $x$")
+        _ = app.handle(.select("list:" + course.id))
+        XCTAssertEqual(app.selection, .list(course.id))
     }
 
     @MainActor func testCalendarNavigationSettingsAndSearch() async throws {

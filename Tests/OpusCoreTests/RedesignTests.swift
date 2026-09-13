@@ -582,4 +582,54 @@ final class RedesignTests: XCTestCase {
         store.undo()
         XCTAssertNotNil(store.state.tasks.first { $0.title == "Read ch. 3" })
     }
+    func testJournalMathFindsInlineAndDisplayLaTeX() {
+        let spans = JournalMath.spans(in: "Energy $E=mc^2$ and\n$$\\frac{a}{b}$$\ncode `$not$`")
+        XCTAssertEqual(spans.map(\.latex), ["E=mc^2", "\\frac{a}{b}"])
+        XCTAssertEqual(spans.map(\.display), [false, true])
+        XCTAssertEqual(spans[0].openRange.length, 1)
+        XCTAssertEqual(spans[1].openRange.length, 2)
+        XCTAssertTrue(JournalMath.spans(in: "almost $open").isEmpty)
+        XCTAssertTrue(JournalMath.spans(in: "`$x$`").isEmpty)
+        let code = JournalCode.spans(in: "use `let x` and ```not a block```")
+        XCTAssertEqual(code.map { ($0.innerRange.location, $0.innerRange.length) }.count, 1)
+        XCTAssertEqual(( "use `let x` and ```not a block```" as NSString).substring(with: code[0].innerRange), "let x")
+        let source = "intro\n```swift\nlet value = 1\n```\n$x$"
+        let blocks = JournalCode.blocks(in: source)
+        XCTAssertEqual(blocks.map(\.language), ["swift"])
+        XCTAssertEqual((source as NSString).substring(with: blocks[0].innerRange), "let value = 1\n")
+        XCTAssertTrue(JournalMath.spans(in: source).map(\.latex) == ["x"])
+        let tokens = CodeHighlight.tokens(in: "let value = 1 // hi", language: "swift")
+        XCTAssertTrue(tokens.contains { $0.1 == .keyword })
+        XCTAssertTrue(tokens.contains { $0.1 == .comment })
+        XCTAssertEqual(ListNote(markdown: "# Hello").displayTitle, "Untitled note")
+        XCTAssertEqual(ListNote(title: "Calc", markdown: "body").displayTitle, "Calc")
+    }
+    @MainActor func testListNotesPersistAndStayOffToday() async throws {
+        let store = try Store(database: db())
+        let course = Course(name: "Calc", notesMarkdown: "See $x^2$")
+        store.save(course)
+        store.save(StudyTask(courseID: course.id, title: "Homework", due: Day.today))
+        XCTAssertEqual(store.course(course.id)?.listNotes.map(\.markdown), ["See $x^2$"])
+        let first = store.course(course.id)!.listNotes[0]
+        store.saveListNote(course.id, ListNote(id: first.id, title: "Lecture", markdown: "Updated $$1+1$$"))
+        XCTAssertEqual(store.course(course.id)?.listNotes.map(\.markdown), ["Updated $$1+1$$"])
+        XCTAssertNotNil(store.addListNote(course.id))
+        XCTAssertEqual(store.course(course.id)?.listNotes.count, 2)
+        var renamed = store.course(course.id)!
+        renamed.name = "Calculus"
+        store.save(renamed)
+        XCTAssertEqual(store.course(course.id)?.listNotes.map(\.markdown), ["Updated $$1+1$$", ""])
+        XCTAssertTrue(store.state.tasks.contains { $0.title == "Homework" && $0.isInToday(on: Day.today) })
+        XCTAssertFalse(store.state.tasks.contains { $0.title.contains("$") })
+        var payload = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Course(name: "Old"))) as! [String: Any]
+        payload.removeValue(forKey: "notesMarkdown")
+        payload.removeValue(forKey: "notes")
+        let decoded = try JSONDecoder().decode(Course.self, from: try JSONSerialization.data(withJSONObject: payload))
+        XCTAssertTrue(decoded.listNotes.isEmpty)
+    }
+    func testUpdateCompletionRequiresInstalledVersion() {
+        XCTAssertTrue(AppUpdateCompletion.didInstall("0.5.6", current: "0.5.6"))
+        XCTAssertTrue(AppUpdateCompletion.didInstall("0.5.6", current: "0.5.7"))
+        XCTAssertFalse(AppUpdateCompletion.didInstall("0.5.6", current: "0.5.5"))
+    }
 }

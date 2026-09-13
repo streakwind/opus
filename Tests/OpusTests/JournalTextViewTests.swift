@@ -77,4 +77,9 @@ final class JournalTextViewTests: XCTestCase {
         XCTAssertTrue(presentation.detail.contains("9 of 33 pages"))
         XCTAssertTrue(presentation.detail.contains("24 left"))
     }
+    @MainActor func testMathRendererDrawsInlineAndDisplayLaTeX() async {
+        MathRenderer.prepareFonts()
+        XCTAssertNotNil(MathRenderer.image(latex: "E=mc^2", display: false, color: .labelColor, fontSize: 17))
+        XCTAssertNotNil(MathRenderer.image(latex: #"\frac{a}{b}"#, display: true, color: .labelColor, fontSize: 20))
+    }
 }

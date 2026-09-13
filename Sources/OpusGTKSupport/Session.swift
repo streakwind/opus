@@ -43,6 +43,10 @@ package enum LinuxEvent: Equatable, Sendable {
     case prepareTask(String)
     case moveTask(id: String, courseID: String?)
     case confirmAssessment(String, Bool)
+    case saveListNote(courseID: String, noteID: String, markdown: String)
+    case saveListNoteTitle(courseID: String, noteID: String, title: String)
+    case addListNote(String)
+    case deleteListNote(courseID: String, noteID: String)
 }
 
 package enum LinuxCommand: Equatable, Sendable {
@@ -413,6 +417,24 @@ package final class LinuxSession {
             commands.append(.render)
         case .confirmAssessment:
             break
+        case .saveListNote(let courseID, let noteID, let markdown):
+            guard var note = store.course(courseID)?.listNotes.first(where: { $0.id == noteID }) else { break }
+            note.markdown = markdown
+            store.saveListNote(courseID, note)
+            if let error = store.error { commands.append(.showError(error)) }
+        case .saveListNoteTitle(let courseID, let noteID, let title):
+            guard var note = store.course(courseID)?.listNotes.first(where: { $0.id == noteID }) else { break }
+            note.title = title
+            store.saveListNote(courseID, note)
+            if let error = store.error { commands.append(.showError(error)) }
+        case .addListNote(let courseID):
+            _ = store.addListNote(courseID)
+            if let error = store.error { commands.append(.showError(error)) }
+            commands.append(.render)
+        case .deleteListNote(let courseID, let noteID):
+            store.deleteListNote(courseID, noteID: noteID)
+            if let error = store.error { commands.append(.showError(error)) }
+            commands.append(.render)
         }
         return commands
     }

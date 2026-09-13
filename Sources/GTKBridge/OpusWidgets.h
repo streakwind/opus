@@ -26,7 +26,7 @@ typedef struct {
     GtkWidget *search_entry;
     GtkWidget *error_label;
     GtkWidget *stack;
-    GtkWidget *views[4];
+    GtkWidget *views[5];
     GtkWidget *rows;
     GtkWidget *quick_entry;
     int active_view;

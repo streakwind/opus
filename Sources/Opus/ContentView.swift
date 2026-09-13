@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var courseEditor: Course?
     @State private var ruleDetail: QuizRule?
     @State private var workDetail: WorkDraft?
+    @State private var noteDetail: NoteDraft?
     @State private var quickTitle = ""
     @State private var quickKind: WorkKind = .task
     @State private var quickCourse: String?
@@ -100,7 +101,7 @@ struct ContentView: View {
             } message: {
                 Text(store.error ?? "")
             }
-            .onChange(of: selection) { _, _ in workDetail = nil; ruleDetail = nil; quickCourse = course?.id }
+            .onChange(of: selection) { _, _ in workDetail = nil; ruleDetail = nil; noteDetail = nil; quickCourse = course?.id }
             .onChange(of: scenePhase) { _, phase in if phase == .active { store.refreshOccurrences() } }
             .onChange(of: store.state.tasks.map(\.id)) { _, ids in
                 if case .task(let task) = workDetail, !ids.contains(task.id) { workDetail = nil }
@@ -226,6 +227,12 @@ struct ContentView: View {
                         .id(draft.id)
                         .editorCard()
                 }
+            } else if let draft = noteDetail {
+                EditorCardBackdrop {
+                    ListNoteEditor(store: store, draft: draft, onDismiss: { noteDetail = nil })
+                        .id(draft.id)
+                        .editorCard()
+                }
             } else if let rule = ruleDetail {
                 EditorCardBackdrop {
                     RuleEditor(store: store, rule: rule, onDismiss: { ruleDetail = nil })
@@ -290,7 +297,10 @@ struct ContentView: View {
         .padding(24)
         .frame(width: 440)
         .sheet(isPresented: $showTutorial) { QuickStartView() }
-        .task { await updater.check() }
+        .task {
+            if case .updated = updater.status { return }
+            await updater.check()
+        }
         .fixedSize(horizontal: false, vertical: true)
         .roundedControls()
     }
@@ -327,6 +337,7 @@ struct ContentView: View {
         case .current: "You're up to date."
         case .available(let offer): "Version \(offer.version) is ready. Your lists stay put."
         case .working(let text): text
+        case .updated(let version): "Opus \(version) is installed."
         case .failed(let text): text
         }
     }
@@ -413,10 +424,56 @@ struct ContentView: View {
                     store.change { state in state.tasks = state.tasks.map { ids.contains($0.id) ? iterator.next()! : $0 } }
                 }
                 .animation(.easeInOut(duration: 0.28), value: tasks.map(\.id))
-                if tasks.isEmpty && progressItems.isEmpty && assessments.isEmpty && !query.isEmpty {
+                if let course, !listNotes.isEmpty || query.isEmpty {
+                    listHeading("Notes")
+                    ForEach(listNotes) { note in
+                        Button { noteDetail = NoteDraft(courseID: course.id, note: note) } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "note.text")
+                                    .foregroundStyle(course.tint).frame(width: 18)
+                                Text(note.displayTitle).font(.system(size: 14, weight: .medium)).lineLimit(1)
+                                Spacer()
+                            }.padding(.vertical, 5).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(noteDetail?.note.id == note.id ? Color.accentColor.opacity(0.065) : Color.clear)
+                        .contextMenu {
+                            Button("Delete", role: .destructive) { store.deleteListNote(course.id, noteID: note.id) }
+                        }
+                    }
+                    if query.isEmpty {
+                    Button {
+                        if let note = store.addListNote(course.id) {
+                            noteDetail = NoteDraft(courseID: course.id, note: note)
+                        }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "plus").frame(width: 18)
+                            Text(listNotes.isEmpty ? "Add a note" : "Add another note")
+                        }
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowSeparator(.hidden)
+                    }
+                }
+                if tasks.isEmpty && progressItems.isEmpty && assessments.isEmpty && listNotes.isEmpty && !query.isEmpty {
                     Text("No matches.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 12).listRowSeparator(.hidden)
                 }
             }.listStyle(.inset).scrollContentBackground(.hidden)
+        }
+    }
+    private var listNotes: [ListNote] {
+        guard let course else { return [] }
+        return course.listNotes.filter {
+            query.isEmpty ||
+            $0.title.localizedCaseInsensitiveContains(query) ||
+            $0.markdown.localizedCaseInsensitiveContains(query) ||
+            $0.displayTitle.localizedCaseInsensitiveContains(query)
         }
     }
     private func listHeading(_ title: String) -> some View {
