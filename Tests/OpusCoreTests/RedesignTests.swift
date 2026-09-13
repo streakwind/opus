@@ -324,6 +324,13 @@ final class RedesignTests: XCTestCase {
             return nil
         }, [task.token])
         XCTAssertEqual(JournalMarkdown.removing(task.embedToken, from: placed).contains(task.embedToken), false)
+        let onlyEmbed = JournalMarkdown.blocks(from: task.embedToken)
+        XCTAssertEqual(onlyEmbed.count, 3)
+        guard case .text(let before) = onlyEmbed[0], case .embed = onlyEmbed[1], case .text(let after) = onlyEmbed[2] else {
+            return XCTFail("Embeds should keep editable text above and below")
+        }
+        XCTAssertTrue(before.isEmpty)
+        XCTAssertTrue(after.isEmpty)
     }
     func testCourseWorkSeparatesProgressAndCollapsesRhythms() {
         let course = Course(name: "Example list")

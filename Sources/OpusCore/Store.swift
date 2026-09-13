@@ -65,6 +65,9 @@ package final class Store {
             state.journal = normalizedJournal
             needsSave = true
         }
+        if Self.migrateEmbedComments(in: &state) {
+            needsSave = true
+        }
         Self.syncJournalLinks(in: &state)
         if needsSave { try database.save(state) }
         refreshOccurrences()
@@ -169,6 +172,36 @@ package final class Store {
             documents[entry.day]?.markdown += fragment
         }
         return dayOrder.compactMap { documents[$0] } + embeds
+    }
+    private static func migrateEmbedComments(in state: inout Snapshot) -> Bool {
+        var changed = false
+        for index in state.journal.indices {
+            guard let link = state.journal[index].link else { continue }
+            let comment = state.journal[index].markdown.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !comment.isEmpty else { continue }
+            let day = state.journal[index].day
+            var documentIndex = state.journal.firstIndex { $0.link == nil && $0.day == day }
+            if documentIndex == nil {
+                state.journal.append(JournalEntry(day: day, title: "Journal"))
+                documentIndex = state.journal.indices.last
+            }
+            guard let documentIndex else { continue }
+            let token = link.embedToken
+            if state.journal[documentIndex].markdown.contains(token) {
+                state.journal[documentIndex].markdown = state.journal[documentIndex].markdown.replacingOccurrences(
+                    of: token,
+                    with: token + "\n" + comment,
+                    options: [],
+                    range: state.journal[documentIndex].markdown.range(of: token)
+                )
+            } else {
+                let existing = state.journal[documentIndex].markdown
+                state.journal[documentIndex].markdown = token + "\n" + comment + (existing.isEmpty ? "" : "\n\n" + existing)
+            }
+            state.journal[index].markdown = ""
+            changed = true
+        }
+        return changed
     }
     private static func syncJournalLinks(in state: inout Snapshot) {
         for index in state.journal.indices {

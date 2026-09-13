@@ -254,8 +254,8 @@ struct JournalNativeEditor: NSViewRepresentable {
     override func mouseDown(with event: NSEvent) {
         if let (link, index, rect) = hit(event) {
             if event.clickCount == 2 { onOpen?(link); return }
-            let point = convert(event.locationInWindow, from: nil)
-            if point.x < rect.minX + 38,
+            let click = convert(event.locationInWindow, from: nil)
+            if click.x < rect.minX + 38,
                let attachment = textStorage?.attribute(.attachment, at: index, effectiveRange: nil) as? NSTextAttachment,
                (attachment.attachmentCell as? JournalAttachmentCell)?.presentation.checkable == true {
                 onToggle?(link); return
@@ -286,24 +286,24 @@ struct JournalNativeEditor: NSViewRepresentable {
               let link = JournalRichText.link(in: storage.attributes(at: selectedRange().location, effectiveRange: nil)) else { return }
         onOpen?(link)
     }
-    @objc private func removeSelectedEmbed() { insertText("", replacementRange: selectedRange()) }
+    @objc private func removeSelectedEmbed() {
+        insertText("", replacementRange: selectedRange())
+    }
 }
 
 @MainActor struct JournalEmbedPresentation: Equatable {
     var title: String
     var detail: String
-    var comment: String
     var icon: String
     var checkable = false
     var completed = false
     init(placeholder: String) {
-        title = placeholder; detail = ""; comment = ""; icon = "link"
+        title = placeholder; detail = ""; icon = "link"
     }
     init(link: JournalLink, store: Store, day: String) {
         let entry = store.journalTaskEmbeds(on: day).first { $0.link == link }
         title = entry?.title ?? "Unavailable item"
         detail = "The linked item was deleted"
-        comment = entry?.markdown ?? ""
         icon = "link"
         switch link {
         case .task(let id):
@@ -312,7 +312,12 @@ struct JournalNativeEditor: NSViewRepresentable {
             icon = checkable ? (completed ? "checkmark.circle.fill" : "circle") : "book.closed"
             var parts = [store.course(task.courseID)?.name ?? "Inbox"]
             if let due = task.due { parts.append(Day.label(due)) }
-            if task.kind == .progress { parts.append("Page \(task.current) of \(task.target)") }
+            if task.kind == .progress {
+                let total = max(1, task.target - task.start + 1)
+                let read = min(total, max(0, task.current - task.start + 1))
+                parts.append("\(read) of \(total) \(task.unit)")
+                parts.append("\(total - read) left")
+            }
             detail = parts.joined(separator: " · ")
         case .assessment(let id):
             guard let item = store.state.assessments.first(where: { $0.id == id }) else { return }
@@ -340,29 +345,33 @@ struct JournalNativeEditor: NSViewRepresentable {
         width = 320
         super.init(textCell: "Linked item")
     }
-    override func cellSize() -> NSSize { NSSize(width: width, height: presentation.comment.isEmpty ? 58 : 80) }
-    override func cellBaselineOffset() -> NSPoint { NSPoint(x: 0, y: -8) }
+    override func cellSize() -> NSSize {
+        NSSize(width: width, height: 54)
+    }
+    override func cellBaselineOffset() -> NSPoint { NSPoint(x: 0, y: -6) }
     override func draw(withFrame frame: NSRect, in controlView: NSView?) {
-        let rect = frame.insetBy(dx: 0, dy: 3)
-        NSColor.controlBackgroundColor.setFill()
-        NSBezierPath(roundedRect: rect, xRadius: 7, yRadius: 7).fill()
+        let rect = frame.insetBy(dx: 0, dy: 2)
+        let rule = NSBezierPath()
+        rule.move(to: NSPoint(x: rect.minX + 1, y: rect.minY + 7))
+        rule.line(to: NSPoint(x: rect.minX + 1, y: rect.maxY - 7))
+        NSColor.controlAccentColor.withAlphaComponent(0.7).setStroke()
+        rule.lineWidth = 2
+        rule.lineCapStyle = .round
+        rule.stroke()
         let flipped = controlView?.isFlipped ?? true
-        func row(_ y: CGFloat, _ h: CGFloat, x: CGFloat = 38, width: CGFloat? = nil) -> NSRect {
+        func row(_ y: CGFloat, _ h: CGFloat, x: CGFloat = 40, width: CGFloat? = nil) -> NSRect {
             NSRect(x: rect.minX + x, y: flipped ? rect.minY + y : rect.maxY - y - h, width: width ?? max(1, rect.width - x - 12), height: h)
         }
         if let image = NSImage(systemSymbolName: presentation.icon, accessibilityDescription: nil) {
             let color: NSColor = presentation.completed ? .controlAccentColor : .secondaryLabelColor
             let symbol = image.withSymbolConfiguration(.init(paletteColors: [color])) ?? image
-            symbol.draw(in: row(9, 19, x: 10, width: 19), from: .zero, operation: .sourceOver, fraction: presentation.completed ? 0.5 : 0.85, respectFlipped: true, hints: nil)
+            symbol.draw(in: row(8, 19, x: 12, width: 19), from: .zero, operation: .sourceOver, fraction: presentation.completed ? 0.5 : 0.85, respectFlipped: true, hints: nil)
         }
         let paragraph = NSMutableParagraphStyle(); paragraph.lineBreakMode = .byTruncatingTail
-        var titleAttributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 16), .foregroundColor: presentation.completed ? NSColor.secondaryLabelColor : NSColor.labelColor, .paragraphStyle: paragraph]
+        var titleAttributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 17), .foregroundColor: presentation.completed ? NSColor.secondaryLabelColor : NSColor.labelColor, .paragraphStyle: paragraph]
         if presentation.completed { titleAttributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
-        (presentation.title as NSString).draw(in: row(6, 22), withAttributes: titleAttributes)
-        let caption: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph]
-        (presentation.detail as NSString).draw(in: row(29, 18), withAttributes: caption)
-        if !presentation.comment.isEmpty {
-            (presentation.comment.replacingOccurrences(of: "\n", with: " ") as NSString).draw(in: row(51, 18), withAttributes: caption)
-        }
+        (presentation.title as NSString).draw(in: row(5, 22), withAttributes: titleAttributes)
+        let caption: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph]
+        (presentation.detail as NSString).draw(in: row(28, 18), withAttributes: caption)
     }
 }

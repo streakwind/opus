@@ -43,8 +43,10 @@ final class JournalEditingTests: XCTestCase {
         let reopened = try Store(database: db)
         reopened.ensureJournalDocument(on: "2027-01-02")
         XCTAssertEqual(reopened.journalDocument(on: "2027-01-02")?.markdown, second.markdown)
-        XCTAssertEqual(reopened.journalDocument(on: "2027-01-01")?.markdown, history.markdown)
-        XCTAssertEqual(reopened.journalTaskEmbeds(on: "2027-01-02").first?.markdown, "Existing comment")
+        let migratedHistory = try XCTUnwrap(reopened.journalDocument(on: "2027-01-01")?.markdown)
+        XCTAssertTrue(migratedHistory.contains(history.markdown))
+        XCTAssertTrue(migratedHistory.contains("Existing comment"))
+        XCTAssertEqual(reopened.journalTaskEmbeds(on: "2027-01-02").first?.markdown, "")
         second.markdown = link.embedToken + "\nReinserted"
         reopened.save(second)
         XCTAssertNil(reopened.journalDocument(on: second.day)?.omittedEmbeds)

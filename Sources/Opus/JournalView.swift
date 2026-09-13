@@ -239,13 +239,8 @@ private struct JournalEmbedDetails: View {
     var link: JournalLink
     var day: String
     var close: () -> Void
-    @State private var comment: String
-    private let commentID: String?
     init(store: Store, link: JournalLink, day: String, close: @escaping () -> Void) {
         self.store = store; self.link = link; self.day = day; self.close = close
-        let entry = store.journalTaskEmbeds(on: day).first { $0.link == link && !$0.markdown.isEmpty }
-        commentID = entry?.id
-        _comment = State(initialValue: entry?.markdown ?? "")
     }
     var body: some View {
         VStack(spacing: 0) {
@@ -266,16 +261,6 @@ private struct JournalEmbedDetails: View {
                     ScheduleEditor(store: store, block: block, onDismiss: close)
                 } else { missing }
             }
-            if commentID != nil {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Journal comment").font(.caption).foregroundStyle(.secondary)
-                    TextField("Comment", text: $comment, axis: .vertical).lineLimit(1...6).textFieldStyle(.plain)
-                }.padding([.horizontal, .bottom], 20)
-            }
-        }
-        .onChange(of: comment) { _, value in
-            guard let id = commentID, var entry = store.state.journal.first(where: { $0.id == id }) else { return }
-            entry.markdown = value; store.save(entry)
         }
     }
     private var missing: some View {

@@ -50,18 +50,32 @@ extension View {
 }
 
 struct PillChrome: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(.regularMaterial, in: Capsule())
+            .background {
+                if colorScheme == .light {
+                    Capsule().fill(Color.white)
+                } else {
+                    Capsule().fill(.regularMaterial)
+                }
+            }
             .overlay { Capsule().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.75) }
     }
 }
 struct FieldChrome: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background {
+                if colorScheme == .light {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white)
+                } else {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.regularMaterial)
+                }
+            }
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.75)

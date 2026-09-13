@@ -17,7 +17,7 @@ struct ContentView: View {
     @State private var quickStart = 1
     @State private var quickEnd = 30
     @State private var newEntryRequest = 0
-    @State private var journalNewEntryRequest = 0
+    @State private var isSearching = false
     @State private var showSettings = false
     @State private var showTutorial = false
     @AppStorage("appearance") private var appearance = "system"
@@ -173,7 +173,7 @@ struct ContentView: View {
                 }
             }
             else if selection == "journal" {
-                JournalView(store: store, query: query, newEntryRequest: journalNewEntryRequest)
+                JournalView(store: store, query: query, newEntryRequest: 0)
             }
             else {
                 if selection != "all" && selection != "inbox" && selection != "routines" {
@@ -195,7 +195,22 @@ struct ContentView: View {
                     .accessibilityIdentifier("add-button")
             }
         }
-        .searchable(text: $query, placement: .toolbar, prompt: "Search")
+        .opusSearchable(enabled: selection != "journal", text: $query, isPresented: $isSearching)
+        .background {
+            if selection != "journal" {
+                Button("Search") { isSearching = true }
+                    .keyboardShortcut("k", modifiers: .command)
+                    .opacity(0)
+                    .frame(width: 0, height: 0)
+                    .accessibilityHidden(true)
+            }
+        }
+        .onChange(of: selection) { _, value in
+            if value == "journal" {
+                isSearching = false
+                query = ""
+            }
+        }
         .overlay {
             if let draft = workDetail, !isCalendar {
                 EditorCardBackdrop {
@@ -486,7 +501,9 @@ struct ContentView: View {
     }
     private func add() {
         if isCalendar { newEntryRequest += 1 }
-        else if selection == "journal" { journalNewEntryRequest += 1 }
+        else if selection == "journal" {
+            workDetail = .new(day: Day.today, courseID: nil, title: "", kind: .task)
+        }
         else if selection == "routines" { ruleDetail = QuizRule(itemKind: .task, startDate: Day.today) }
         else { quickFocused = true }
     }
@@ -505,5 +522,15 @@ struct ContentView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do { let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]; try encoder.encode(store.state).write(to: url, options: .atomic) }
         catch { store.error = error.localizedDescription }
+    }
+}
+
+private extension View {
+    @ViewBuilder func opusSearchable(enabled: Bool, text: Binding<String>, isPresented: Binding<Bool>) -> some View {
+        if enabled {
+            searchable(text: text, isPresented: isPresented, placement: .toolbar, prompt: "Search")
+        } else {
+            self
+        }
     }
 }

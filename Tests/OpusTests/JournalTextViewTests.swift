@@ -65,4 +65,16 @@ final class JournalTextViewTests: XCTestCase {
         XCTAssertEqual(JournalRichText.markdown(view.attributedString()), "Before\n" + token + "\nAfter")
         pasteboard.releaseGlobally()
     }
+    @MainActor func testProgressEmbedShowsCompletedAmountAndRemainingWork() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = try Store(database: Database(url: folder.appendingPathComponent("journal.sqlite")))
+        let task = StudyTask(title: "Reading", kind: .progress, start: 17, target: 49, current: 25)
+        store.save(task)
+
+        let presentation = JournalEmbedPresentation(link: .task(task.id), store: store, day: Day.today)
+
+        XCTAssertTrue(presentation.detail.contains("9 of 33 pages"))
+        XCTAssertTrue(presentation.detail.contains("24 left"))
+    }
 }
