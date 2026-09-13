@@ -11,7 +11,6 @@ struct MarkdownDocumentEditor: View {
     var embedCourseID: String?
     var onEmbed: ((JournalEmbedOption) -> Void)?
     var onSave: (String) -> Void
-    @State private var preview = false
     @State private var draft: String
     @State private var saved: String
     @State private var pendingSave: Task<Void, Never>?
@@ -38,26 +37,7 @@ struct MarkdownDocumentEditor: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Spacer()
-                Picker("Markdown mode", selection: $preview) {
-                    Text("Edit").tag(false)
-                    Text("Preview").tag(true)
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .fixedSize()
-            }.padding(.horizontal, 28)
-            ZStack {
-                nativeEditor(preview: false)
-                    .opacity(preview ? 0 : 1)
-                    .allowsHitTesting(!preview)
-                    .accessibilityHidden(preview)
-                if preview { nativeEditor(preview: true) }
-            }
-        }
-        .onChange(of: preview) { _, _ in pendingSave?.cancel(); pendingSave = nil; flush() }
+        nativeEditor()
         .onChange(of: draft) { _, _ in scheduleSave() }
         .onChange(of: markdown) { _, value in
             if value == draft { saved = value }
@@ -88,15 +68,14 @@ struct MarkdownDocumentEditor: View {
         }
     }
 
-    private func nativeEditor(preview: Bool) -> some View {
+    private func nativeEditor() -> some View {
         JournalNativeEditor(
-            markdown: preview ? .constant(draft) : $draft,
+            markdown: $draft,
             store: store, day: day, focusRequest: focusRequest,
-            pendingEmbed: preview ? .constant(nil) : $pendingEmbed,
+            pendingEmbed: $pendingEmbed,
             onTaskCommand: { _ in choosingTask = true },
             onOpen: { editing = EmbedSelection(link: $0) },
-            preview: preview,
-            active: preview || !self.preview
+            live: true
         )
     }
 

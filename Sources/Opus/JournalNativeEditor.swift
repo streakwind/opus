@@ -60,6 +60,7 @@ struct JournalNativeEditor: NSViewRepresentable {
     var onOpen: (JournalLink) -> Void
     var preview = false
     var active = true
+    var live = false
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> NSScrollView {
@@ -101,6 +102,13 @@ struct JournalNativeEditor: NSViewRepresentable {
         context.coordinator.load(markdown, in: editor)
         return scroll
     }
+    static func dismantleNSView(_ scroll: NSScrollView, coordinator: Coordinator) {
+        guard let editor = scroll.documentView as? JournalTextView else { return }
+        if let session = coordinator.liveSession { editor.undoManager?.removeAllActions(withTarget: session) }
+        editor.onReplace = nil
+        editor.onCopy = nil
+        editor.delegate = nil
+    }
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let coordinator = context.coordinator
         coordinator.parent = self
@@ -141,8 +149,14 @@ struct JournalNativeEditor: NSViewRepresentable {
         var inserting = false
         var commandRange: NSRange?
         private var styling = false
+        var liveSession: LiveMarkdownSession?
         init(_ parent: JournalNativeEditor) { self.parent = parent }
         func load(_ value: String, in editor: JournalTextView) {
+            if parent.live {
+                if liveSession == nil { liveSession = LiveMarkdownSession(coordinator: self) }
+                liveSession?.load(value, in: editor)
+                return
+            }
             source = value
             preview = parent.preview
             editor.isEditable = !preview && parent.active
@@ -153,7 +167,7 @@ struct JournalNativeEditor: NSViewRepresentable {
             if preview { renderPreview(editor) }
         }
         func textDidChange(_ notification: Notification) {
-            guard !preview, !styling, let editor = notification.object as? JournalTextView, !editor.hasMarkedText(), let storage = editor.textStorage else { return }
+            guard liveSession == nil, !preview, !styling, let editor = notification.object as? JournalTextView, !editor.hasMarkedText(), let storage = editor.textStorage else { return }
             source = JournalRichText.markdown(storage)
             parent.markdown = source
             style(editor)
@@ -185,7 +199,7 @@ struct JournalNativeEditor: NSViewRepresentable {
             }
             if changed { editor.needsDisplay = true }
         }
-        private func style(_ editor: JournalTextView) {
+        func style(_ editor: JournalTextView) {
             guard !styling, let storage = editor.textStorage else { return }
             styling = true
             let full = NSRange(location: 0, length: storage.length)
@@ -261,7 +275,7 @@ struct JournalNativeEditor: NSViewRepresentable {
             refreshAttachments(editor)
             editor.needsDisplay = true
         }
-        private func renderPreview(_ editor: JournalTextView) {
+        func renderPreview(_ editor: JournalTextView) {
             guard let storage = editor.textStorage else { return }
             let text = storage.string
             let blocks = JournalCode.blocks(in: text)
@@ -300,7 +314,13 @@ struct JournalNativeEditor: NSViewRepresentable {
             editor.setSelectedRange(NSRange(location: 0, length: 0))
         }
         func textViewDidChangeSelection(_ notification: Notification) {
-            // Styling depends on content, never on caret position.
+            guard let editor = notification.object as? JournalTextView else { return }
+            liveSession?.selectionChanged(in: editor)
+        }
+        func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {
+            guard let session = liveSession, let editor = textView as? JournalTextView else { return true }
+            session.replace(affectedCharRange, with: JournalRichText.attributed(replacementString ?? ""), in: editor)
+            return false
         }
         private func highlightColor(_ kind: CodeTokenKind) -> NSColor {
             switch kind {
@@ -381,6 +401,8 @@ struct JournalNativeEditor: NSViewRepresentable {
 /// One text system provides caret movement, multiline selection, and native undo
 /// across both prose and embeds. There are no nested editors or synthetic rows.
 @MainActor final class JournalTextView: NSTextView {
+    var onReplace: ((Any, NSRange) -> Void)?
+    var onCopy: ((NSRange) -> String)?
     var onOpen: ((JournalLink) -> Void)?
     var onToggle: ((JournalLink) -> Void)?
     var onWidthChange: (() -> Void)?
@@ -388,6 +410,11 @@ struct JournalNativeEditor: NSViewRepresentable {
         let changed = newSize.width != frame.width
         super.setFrameSize(newSize)
         if changed { onWidthChange?() }
+    }
+    override func insertText(_ insertString: Any, replacementRange: NSRange) {
+        if let onReplace {
+            onReplace(insertString, replacementRange.location == NSNotFound ? selectedRange() : replacementRange)
+        } else { super.insertText(insertString, replacementRange: replacementRange) }
     }
     func insertEmbed(_ link: JournalLink, replacing proposed: NSRange) {
         let location = min(proposed.location, string.utf16.count)
@@ -452,6 +479,7 @@ struct JournalNativeEditor: NSViewRepresentable {
         } else { super.paste(sender) }
     }
     override func writeSelection(to pboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        if type == .string, let onCopy { return pboard.setString(onCopy(selectedRange()), forType: .string) }
         if type == .string, let storage = textStorage {
             return pboard.setString(JournalRichText.markdown(storage.attributedSubstring(from: selectedRange())), forType: .string)
         }

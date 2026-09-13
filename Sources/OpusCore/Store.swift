@@ -120,20 +120,11 @@ package final class Store {
         state.journal.first { $0.link == nil && $0.day == day }
     }
     package func ensureJournalDocument(on day: String) {
-        let links = journalTaskEmbeds(on: day).compactMap(\.link)
-        var document = journalDocument(on: day) ?? JournalEntry(day: day, title: "Journal")
-        let markdown = JournalMarkdown.placingCarriedEmbeds(in: document.markdown, links: links.filter { !(document.omittedEmbeds ?? []).contains($0) })
-        guard journalDocument(on: day) == nil || markdown != document.markdown else { return }
-        document.markdown = markdown
-        save(document)
+        guard journalDocument(on: day) == nil else { return }
+        save(JournalEntry(day: day, title: "Journal"))
     }
     package func journalTaskEmbeds(on day: String) -> [JournalEntry] {
-        state.journal.filter {
-            switch $0.link {
-            case .task, .assessment, .rhythm: return $0.appears(on: day)
-            default: return false
-            }
-        }
+        state.journal.filter { $0.day == day && $0.link != nil }
     }
     package func save(_ entry: JournalEntry) {
         var entry = entry
@@ -151,10 +142,11 @@ package final class Store {
     }
     package func deleteJournalEntry(_ id: String) {
         change { state in
-            let token = state.journal.first { $0.id == id }.flatMap(\.link)?.embedToken
+            let entry = state.journal.first { $0.id == id }
+            let token = entry?.link?.embedToken
             state.journal.removeAll { $0.id == id }
             guard let token else { return }
-            for index in state.journal.indices where state.journal[index].link == nil {
+            for index in state.journal.indices where state.journal[index].link == nil && state.journal[index].day == entry?.day {
                 state.journal[index].markdown = JournalMarkdown.removing(token, from: state.journal[index].markdown)
             }
         }
@@ -214,7 +206,7 @@ package final class Store {
                 )
             } else {
                 let existing = state.journal[documentIndex].markdown
-                state.journal[documentIndex].markdown = token + "\n" + comment + (existing.isEmpty ? "" : "\n\n" + existing)
+                state.journal[documentIndex].markdown = comment + (existing.isEmpty ? "" : "\n\n" + existing)
             }
             state.journal[index].markdown = ""
             changed = true

@@ -420,8 +420,7 @@ package struct JournalEntry: Identifiable, Codable, Equatable {
         self.throughDay = throughDay
     }
     package func appears(on selectedDay: String) -> Bool {
-        guard link != nil else { return day == selectedDay }
-        return selectedDay >= day && selectedDay <= (throughDay ?? day)
+        day == selectedDay
     }
 }
 package struct Snapshot: Codable {

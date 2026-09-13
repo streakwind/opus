@@ -25,7 +25,7 @@ final class JournalEditingTests: XCTestCase {
         XCTAssertEqual(text, a + "\n\nTyping a sentence" + b + "\n")
         XCTAssertEqual(text.filter { $0 == "\n" }.count, 3)
     }
-    @MainActor func testRemovingCarriedEmbedStaysRemovedAfterReopeningWithoutChangingHistory() async throws {
+    @MainActor func testJournalDaysStartEmptyAndNeverCarryEmbeds() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
         let db = try Database(url: folder.appendingPathComponent("journal.sqlite"))
@@ -37,6 +37,8 @@ final class JournalEditingTests: XCTestCase {
         store.ensureJournalDocument(on: "2027-01-01")
         store.ensureJournalDocument(on: "2027-01-02")
         let history = try XCTUnwrap(store.journalDocument(on: "2027-01-01"))
+        XCTAssertEqual(history.markdown, "")
+        XCTAssertEqual(store.journalDocument(on: "2027-01-02")?.markdown, "")
         var second = try XCTUnwrap(store.journalDocument(on: "2027-01-02"))
         second.markdown = "Just prose now."
         store.save(second)
@@ -44,9 +46,9 @@ final class JournalEditingTests: XCTestCase {
         reopened.ensureJournalDocument(on: "2027-01-02")
         XCTAssertEqual(reopened.journalDocument(on: "2027-01-02")?.markdown, second.markdown)
         let migratedHistory = try XCTUnwrap(reopened.journalDocument(on: "2027-01-01")?.markdown)
-        XCTAssertTrue(migratedHistory.contains(history.markdown))
+        XCTAssertFalse(migratedHistory.contains(link.embedToken))
         XCTAssertTrue(migratedHistory.contains("Existing comment"))
-        XCTAssertEqual(reopened.journalTaskEmbeds(on: "2027-01-02").first?.markdown, "")
+        XCTAssertTrue(reopened.journalTaskEmbeds(on: "2027-01-02").isEmpty)
         second.markdown = link.embedToken + "\nReinserted"
         reopened.save(second)
         XCTAssertNil(reopened.journalDocument(on: second.day)?.omittedEmbeds)

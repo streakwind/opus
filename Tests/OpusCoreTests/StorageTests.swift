@@ -123,7 +123,7 @@ final class StorageTests: XCTestCase {
         XCTAssertNil(store.state.schedule.first?.ruleID)
         XCTAssertFalse(store.state.generated.contains { $0.hasPrefix(rule.id + ":") })
     }
-    @MainActor func testJournalLinkedEntryCarriesThroughDueDateAndSurvivesTaskDeletion() async throws {
+    @MainActor func testJournalLinkedEntryStaysOnItsDayAndSurvivesTaskDeletion() async throws {
         let database = try database()
         let store = try Store(database: database)
         var task = StudyTask(title: "Essay", due: Day.adding(3))
@@ -134,7 +134,8 @@ final class StorageTests: XCTestCase {
         var linked = try XCTUnwrap(store.state.journal.first)
         XCTAssertEqual(linked.title, "Essay")
         XCTAssertEqual(linked.throughDay, Day.adding(3))
-        XCTAssertTrue(linked.appears(on: Day.adding(2)))
+        XCTAssertTrue(linked.appears(on: Day.today))
+        XCTAssertFalse(linked.appears(on: Day.adding(2)))
         XCTAssertFalse(linked.appears(on: Day.adding(4)))
 
         task.due = Day.adding(5)
