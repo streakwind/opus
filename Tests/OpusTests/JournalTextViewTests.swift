@@ -19,6 +19,13 @@ final class JournalTextViewTests: XCTestCase {
         XCTAssertEqual(JournalRichText.markdown(rich), source)
         XCTAssertEqual(rich.string.filter { $0 == "\u{fffc}" }.count, 2)
     }
+    @MainActor func testAdjacentCopiesSharingOneAttachmentRemainDistinct() async {
+        let token = JournalLink.task("copied").embedToken
+        let attachment = JournalRichText.attributed(token)
+        let copied = NSMutableAttributedString(attributedString: attachment)
+        copied.append(attachment)
+        XCTAssertEqual(JournalRichText.markdown(copied), token + token)
+    }
     @MainActor func testTypingAndArrowMovementAcrossAnEmbedUseOneTextFlow() async {
         let token = JournalLink.task("task").embedToken
         let view = editor("Before\n" + token + "\nAfter")

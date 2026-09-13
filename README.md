@@ -37,6 +37,10 @@ sudo apt-get install libgtk-4-dev libsqlite3-dev pkg-config
 - **⌥⌘Z** / **Ctrl+Shift+Z** (or Undo) undoes the last saved change during the current session. Settings exports JSON and reveals the database folder.
 - Inbox holds items without a course/list.
 
+## Journal
+
+Each day is one continuous Markdown document. Type `/task` at the caret to embed work, then keep writing. Arrow keys and Shift-selection move through text and embeds; standard copy, paste, delete, and ⌘Z work across both. Double-click an embed, or select it and press ⌘Return, to open its linked item. Removing an embed affects that day only, leaving the task and older entries intact. Existing embed comments remain available in the linked item's editor.
+
 ## Storage
 
 - macOS: `~/Library/Application Support/Opus/Opus.sqlite`

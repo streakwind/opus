@@ -27,7 +27,10 @@ import SwiftUI
     static func markdown(_ text: NSAttributedString) -> String {
         var result = ""
         text.enumerateAttributes(in: NSRange(location: 0, length: text.length)) { attributes, range, _ in
-            if let link = link(in: attributes) { result += link.embedToken }
+            if let link = link(in: attributes) {
+                let substring = (text.string as NSString).substring(with: range)
+                result += substring.replacingOccurrences(of: "\u{fffc}", with: link.embedToken)
+            }
             else { result += (text.string as NSString).substring(with: range) }
         }
         return result
@@ -348,7 +351,9 @@ struct JournalNativeEditor: NSViewRepresentable {
             NSRect(x: rect.minX + x, y: flipped ? rect.minY + y : rect.maxY - y - h, width: width ?? max(1, rect.width - x - 12), height: h)
         }
         if let image = NSImage(systemSymbolName: presentation.icon, accessibilityDescription: nil) {
-            image.draw(in: row(9, 19, x: 10, width: 19), from: .zero, operation: .sourceOver, fraction: presentation.completed ? 0.5 : 0.85, respectFlipped: true, hints: nil)
+            let color: NSColor = presentation.completed ? .controlAccentColor : .secondaryLabelColor
+            let symbol = image.withSymbolConfiguration(.init(paletteColors: [color])) ?? image
+            symbol.draw(in: row(9, 19, x: 10, width: 19), from: .zero, operation: .sourceOver, fraction: presentation.completed ? 0.5 : 0.85, respectFlipped: true, hints: nil)
         }
         let paragraph = NSMutableParagraphStyle(); paragraph.lineBreakMode = .byTruncatingTail
         var titleAttributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 16), .foregroundColor: presentation.completed ? NSColor.secondaryLabelColor : NSColor.labelColor, .paragraphStyle: paragraph]

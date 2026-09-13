@@ -206,6 +206,12 @@ private struct JournalDocumentEditor: View {
                 else if pendingSave == nil { savedMarkdown = value; markdown = value }
             }
             .onDisappear { pendingSave?.cancel(); flush() }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification)) { _ in
+                pendingSave?.cancel(); pendingSave = nil; flush()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                pendingSave?.cancel(); pendingSave = nil; flush()
+            }
             .sheet(item: $editing) { target in
                 JournalEmbedDetails(store: store, link: target.link, day: document.day, close: { editing = nil })
             }
@@ -255,8 +261,10 @@ private struct JournalEmbedDetails: View {
             case .rhythm(let id):
                 if let rule = store.rule(id) { RuleEditor(store: store, rule: rule, onDismiss: close) }
                 else { missing }
-            case .schedule:
-                missing
+            case .schedule(let id):
+                if let block = store.state.schedule.first(where: { $0.id == id }) {
+                    ScheduleEditor(store: store, block: block, onDismiss: close)
+                } else { missing }
             }
             if commentID != nil {
                 VStack(alignment: .leading, spacing: 6) {
