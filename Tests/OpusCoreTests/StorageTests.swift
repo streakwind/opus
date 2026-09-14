@@ -176,7 +176,7 @@ final class StorageTests: XCTestCase {
         XCTAssertEqual(store.state.journal.count, 2)
         XCTAssertEqual(try Database(url: database.url).load().journal, store.state.journal)
     }
-    @MainActor func testLegacyNotesAreDiscardedOnOpen() async throws {
+    @MainActor func testNotesArePreservedOnOpen() async throws {
         let database = try database()
         var state = Snapshot()
         state.tasks = [StudyTask(title: "Task", notes: "old task note")]
@@ -187,10 +187,10 @@ final class StorageTests: XCTestCase {
 
         let store = try Store(database: database)
 
-        XCTAssertEqual(store.state.tasks[0].notes, "")
-        XCTAssertEqual(store.state.assessments[0].topics, "")
-        XCTAssertNil(store.state.rules[0].notes)
-        XCTAssertEqual(store.state.schedule[0].notes, "")
+        XCTAssertEqual(store.state.tasks[0].notes, "old task note")
+        XCTAssertEqual(store.state.assessments[0].topics, "old topics")
+        XCTAssertEqual(store.state.rules[0].notes, "old rhythm note")
+        XCTAssertEqual(store.state.schedule[0].notes, "old event note")
     }
     @MainActor func testRemoveListPreservesWorkAndUndoRestoresIt() async throws {
         let store = try Store(database: database())

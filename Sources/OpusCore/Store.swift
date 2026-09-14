@@ -44,22 +44,6 @@ package final class Store {
             state.assessments[index].confirmed = true
             needsSave = true
         }
-        for index in state.tasks.indices where !state.tasks[index].notes.isEmpty {
-            state.tasks[index].notes = ""
-            needsSave = true
-        }
-        for index in state.assessments.indices where !state.assessments[index].topics.isEmpty {
-            state.assessments[index].topics = ""
-            needsSave = true
-        }
-        for index in state.rules.indices where state.rules[index].notes != nil {
-            state.rules[index].notes = nil
-            needsSave = true
-        }
-        for index in state.schedule.indices where !state.schedule[index].notes.isEmpty {
-            state.schedule[index].notes = ""
-            needsSave = true
-        }
         for index in state.courses.indices {
             if state.courses[index].notes == nil, let markdown = state.courses[index].notesMarkdown, !markdown.isEmpty {
                 state.courses[index].notes = [ListNote(id: "legacy-list-note", markdown: markdown)]
@@ -242,6 +226,13 @@ package final class Store {
     }
     package func save(_ task: StudyTask) {
         change { state in
+            var task = task
+            if let original = state.assessments.first(where: { $0.id == task.id }) {
+                task.ruleID = original.ruleID
+                task.occurrence = original.occurrence
+                state.assessments.removeAll { $0.id == task.id }
+                Self.convertLinks(from: .assessment(task.id), to: .task(task.id), in: &state)
+            }
             if let index = state.tasks.firstIndex(where: { $0.id == task.id }) { state.tasks[index] = task }
             else { state.tasks.append(task) }
         }
@@ -250,8 +241,33 @@ package final class Store {
         var assessment = assessment
         assessment.confirmed = true
         change { state in
+            if let original = state.tasks.first(where: { $0.id == assessment.id }) {
+                assessment.ruleID = original.ruleID
+                assessment.occurrence = original.occurrence
+                state.tasks.removeAll { $0.id == assessment.id }
+                state.activities.removeAll { $0.taskID == assessment.id }
+                Self.convertLinks(from: .task(assessment.id), to: .assessment(assessment.id), in: &state)
+            }
             if let index = state.assessments.firstIndex(where: { $0.id == assessment.id }) { state.assessments[index] = assessment }
             else { state.assessments.append(assessment) }
+        }
+    }
+    private static func convertLinks(from old: JournalLink, to new: JournalLink, in state: inout Snapshot) {
+        func converted(_ text: String) -> String {
+            text.replacingOccurrences(of: old.embedToken, with: new.embedToken)
+        }
+        for index in state.journal.indices {
+            if state.journal[index].link == old { state.journal[index].link = new }
+            state.journal[index].markdown = converted(state.journal[index].markdown)
+            state.journal[index].omittedEmbeds = state.journal[index].omittedEmbeds?.map { $0 == old ? new : $0 }
+        }
+        for index in state.courses.indices {
+            state.courses[index].notesMarkdown = state.courses[index].notesMarkdown.map(converted)
+            state.courses[index].notes = state.courses[index].notes?.map { note in
+                var note = note
+                note.markdown = converted(note.markdown)
+                return note
+            }
         }
     }
     package func deleteAssessment(_ id: String) {
@@ -363,15 +379,22 @@ package final class Store {
         }
     }
     private static func removeUntouched(_ rule: QuizRule, in state: inout Snapshot) {
+        // Explicit references make an occurrence user-owned, even without field edits.
+        var referenced = Set(state.journal.compactMap(\.link))
+        for entry in state.journal { referenced.formUnion(JournalMarkdown.links(in: entry.markdown)) }
+        for course in state.courses {
+            for note in course.listNotes { referenced.formUnion(JournalMarkdown.links(in: note.markdown)) }
+        }
         var removedDays: [String] = []
         state.assessments.removeAll { item in
+            guard rule.kind == .assessment, item.topics.isEmpty, !referenced.contains(.assessment(item.id)) else { return false }
             let remove = item.ruleID == rule.id && item.day >= Day.today && item.day == item.occurrence && item.title == rule.title && item.courseID == rule.courseID
             if remove, let day = item.occurrence { removedDays.append(day) }
             return remove
         }
         let worked = Set(state.activities.map(\.taskID))
         state.tasks.removeAll { item in
-            guard item.ruleID == rule.id, !item.completed, !worked.contains(item.id), item.courseID == rule.courseID else { return false }
+            guard rule.kind == .task, item.notes.isEmpty, !referenced.contains(.task(item.id)), item.ruleID == rule.id, !item.completed, !worked.contains(item.id), item.courseID == rule.courseID else { return false }
             let kind: TaskKind = rule.taskKind == .progress ? .progress : .checkbox
             let start = kind == .progress ? max(0, rule.startCount ?? 1) : 1
             let target = max(start, rule.targetCount ?? 30)
@@ -387,6 +410,7 @@ package final class Store {
             return remove
         }
         state.schedule.removeAll { item in
+            guard rule.kind == .schedule, item.notes.isEmpty, !referenced.contains(.schedule(item.id)) else { return false }
             let remove = item.ruleID == rule.id && item.day >= Day.today && item.day == item.occurrence && item.title == rule.title && item.startMinute == (rule.startMinute ?? 540) && item.duration == (rule.duration ?? 60) && item.isAllDay == (rule.allDay == true) && item.courseID == rule.courseID
             if remove, let day = item.occurrence { removedDays.append(day) }
             return remove

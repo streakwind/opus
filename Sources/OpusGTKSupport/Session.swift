@@ -308,7 +308,7 @@ package final class LinuxSession {
                 block.duration = draft.duration
                 block.notes = draft.notes
                 block.ruleID = draft.ruleID
-                block.occurrence = draft.occurrence
+                block.occurrence = block.occurrence ?? draft.occurrence
                 store.save(block)
                 if let ruleID = draft.ruleID { store.setScheduleRuleEnd(ruleID, to: draft.repeatEnd) }
             }
@@ -338,7 +338,8 @@ package final class LinuxSession {
         case .calendarNavigate(let delta):
             let unit: Calendar.Component = calendarPeriod == .month ? .month : .day
             let amount = calendarPeriod == .week ? delta * 7 : delta
-            calendarAnchor = Day.string(Calendar.current.date(byAdding: unit, value: amount, to: Day.date(calendarAnchor))!)
+            calendarAnchor = delta == 0 ? Day.today : Day.string(Calendar.current.date(byAdding: unit, value: amount, to: Day.date(calendarAnchor))!)
+            selectedDay = calendarAnchor
             store.refreshOccurrences(through: Day.adding(40, to: calendarAnchor))
             commands.append(.render)
         case .calendarSelectDay(let day):
@@ -355,7 +356,7 @@ package final class LinuxSession {
             commands.append(.render)
         case .scheduleNavigate(let delta):
             let amount = schedulePeriod == .day ? delta : delta * 7
-            scheduleAnchor = Day.adding(amount, to: scheduleAnchor)
+            scheduleAnchor = delta == 0 ? Day.today : Day.adding(amount, to: scheduleAnchor)
             store.refreshOccurrences(through: Day.adding(40, to: scheduleAnchor))
             commands.append(.render)
         case .scheduleCreate(let day, let startY, let endY):

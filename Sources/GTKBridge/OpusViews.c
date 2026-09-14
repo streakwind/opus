@@ -549,13 +549,6 @@ void opus_calendar_item(const char *day, const char *id, const char *kind,
         return;
     }
     info->count++;
-    if (info->count > 4) {
-        char overflow[32];
-        g_snprintf(overflow, sizeof(overflow), "+%d more", info->count - 4);
-        gtk_label_set_text(GTK_LABEL(info->overflow), overflow);
-        gtk_widget_set_visible(info->overflow, TRUE);
-        return;
-    }
 
     GtkWidget *button = gtk_button_new();
     gtk_widget_add_css_class(button, "flat");

@@ -101,9 +101,7 @@ struct TaskLine: View {
     var task: StudyTask
     var selected: Bool
     var openDetails: () -> Void
-    @State private var pendingComplete = false
-    @State private var pendingWork: Task<Void, Never>?
-    private var struck: Bool { task.completed || pendingComplete }
+    private var struck: Bool { task.completed }
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Button(action: toggleComplete) {
@@ -111,7 +109,7 @@ struct TaskLine: View {
                     .font(.system(size: 18)).foregroundStyle(struck ? Color.accentColor : Color.secondary)
             }
             .buttonStyle(.borderless)
-            .help(task.completed ? "Reopen task" : (pendingComplete ? "Cancel completion" : "Complete task"))
+            .help(task.completed ? "Reopen task" : "Complete task")
             .accessibilityIdentifier("task-complete-\(task.id)")
 
             Button(action: openDetails) {
@@ -138,34 +136,11 @@ struct TaskLine: View {
         }
         .padding(.vertical, 5)
         .opacity(struck ? 0.55 : 1)
-        .onDisappear {
-            pendingWork?.cancel()
-            pendingWork = nil
-        }
     }
-    private func toggleComplete() {
-        if task.completed {
-            var updated = task
-            updated.completed = false
-            withAnimation(.easeInOut(duration: 0.25)) { store.save(updated) }
-            return
-        }
-        if pendingComplete {
-            pendingWork?.cancel()
-            pendingWork = nil
-            pendingComplete = false
-            return
-        }
-        pendingComplete = true
-        pendingWork = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 600_000_000)
-            guard !Task.isCancelled else { return }
-            var updated = task
-            updated.completed = true
-            withAnimation(.easeInOut(duration: 0.28)) { store.save(updated) }
-            pendingComplete = false
-            pendingWork = nil
-        }
+    func toggleComplete() {
+        var updated = task
+        updated.completed.toggle()
+        withAnimation(.easeInOut(duration: 0.28)) { store.save(updated) }
     }
 }
 

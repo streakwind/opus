@@ -159,30 +159,14 @@ final class AppUpdater {
 
     private func launchReplacer(from source: URL, replacing destination: URL, version: String) throws {
         let script = FileManager.default.temporaryDirectory.appendingPathComponent("opus-replace-\(UUID().uuidString).sh")
-        let body = """
-        #!/bin/bash
-        trap '' HUP
-        pid="$1"
-        src="$2"
-        dest="$3"
-        version="$4"
-        marker="$5"
-        while /bin/kill -0 "$pid" 2>/dev/null; do /bin/sleep 0.2; done
-        /bin/sleep 0.4
-        /bin/rm -rf "$dest"
-        /usr/bin/ditto "$src" "$dest"
-        /usr/bin/xattr -cr "$dest" || true
-        /bin/mkdir -p "$(/usr/bin/dirname "$marker")"
-        /bin/printf '%s' "$version" > "$marker"
-        /usr/bin/open "$dest"
-        """
+        let body = Self.replacementScript
         try body.write(to: script, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = [
             "-c",
-            "trap '' HUP; nohup /bin/bash \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" >/dev/null 2>&1 &",
+            "trap '' HUP; nohup /bin/bash \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" >\"$1.log\" 2>&1 &",
             "--",
             script.path,
             String(ProcessInfo.processInfo.processIdentifier),
@@ -195,6 +179,49 @@ final class AppUpdater {
         process.waitUntilExit()
         guard process.terminationStatus == 0 else { throw AppUpdateError.badResponse }
     }
+
+    // Stage on the destination volume before moving the installed bundle.
+    // A failed copy leaves the original untouched; a failed swap rolls back.
+    static let replacementScript = """
+    #!/bin/bash
+    set -eu
+    trap '' HUP
+    pid="$1"
+    src="$2"
+    dest="$3"
+    version="$4"
+    marker="$5"
+    parent="$(/usr/bin/dirname "$dest")"
+    work="$(/usr/bin/mktemp -d "$parent/.opus-update.XXXXXX")"
+    staged="$work/Opus.app"
+    backup="$work/previous.app"
+    cleanup() {
+        if [ -e "$backup" ]; then
+            if [ ! -e "$dest" ]; then
+                /bin/mv "$backup" "$dest" || return
+            else
+                # Retain the backup if an unexpected destination prevents rollback.
+                return
+            fi
+        fi
+        /bin/rm -rf "$work"
+    }
+    trap cleanup EXIT
+    /usr/bin/ditto "$src" "$staged"
+    test -f "$staged/Contents/Info.plist"
+    test -x "$staged/Contents/MacOS/Opus"
+    /usr/bin/xattr -cr "$staged" || true
+    while /bin/kill -0 "$pid" 2>/dev/null; do /bin/sleep 0.2; done
+    /bin/mv "$dest" "$backup"
+    if ! /bin/mv "$staged" "$dest"; then
+        /bin/mv "$backup" "$dest"
+        exit 1
+    fi
+    /bin/rm -rf "$backup"
+    /bin/mkdir -p "$(/usr/bin/dirname "$marker")"
+    /usr/bin/printf '%s' "$version" > "$marker"
+    /usr/bin/open "$dest"
+    """
 
     private static func readMarker(at url: URL) -> String? {
         guard let raw = try? String(contentsOf: url, encoding: .utf8) else { return nil }

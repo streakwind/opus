@@ -214,7 +214,7 @@ struct WorkItemEditor: View {
         return parts.joined(separator: " · ")
     }
 
-    private func save() {
+    func save() {
         guard valid else { return }
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let on = day ?? Day.today
@@ -222,10 +222,10 @@ struct WorkItemEditor: View {
         case .new:
             switch kind {
             case .task:
-                store.save(StudyTask(courseID: course, title: name, due: on))
+                store.save(StudyTask(courseID: course, title: name, due: day))
             case .progress:
                 store.save(StudyTask(
-                    courseID: course, title: name, kind: .progress, due: on,
+                    courseID: course, title: name, kind: .progress, due: day,
                     start: start, target: target, current: min(target + 1, max(start, current))
                 ))
             case .assessment:
@@ -236,12 +236,15 @@ struct WorkItemEditor: View {
             let previousCurrent = currentTask.current
             currentTask.title = name
             currentTask.courseID = course
-            if kind == .progress {
+            if kind == .assessment {
+                store.save(Assessment(id: currentTask.id, courseID: course, title: name, day: on, topics: currentTask.notes))
+            } else if kind == .progress {
                 currentTask.kind = .progress
                 currentTask.completed = false
                 currentTask.start = start
                 currentTask.target = target
-                currentTask.moveCalendarDay(to: on)
+                if let day { currentTask.moveCalendarDay(to: day) }
+                else { currentTask.due = nil; currentTask.planned = nil }
                 store.save(currentTask)
                 let bounded = min(target + 1, max(start, current))
                 if bounded != previousCurrent {

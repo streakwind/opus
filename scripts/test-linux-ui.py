@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 import os
 from pathlib import Path
 import sqlite3
@@ -281,6 +282,24 @@ with tempfile.TemporaryDirectory(prefix='opus-ui-') as data:
         assert process.wait(timeout=10) == 0
         subprocess.run(['dist/linux/bin/opus', '--smoke-test'], env=env, check=True, timeout=15)
         assert tasks()[0]['id'] == task_id
+        # Exercise both the Swift renderer and GTK widget with more than five
+        # dated items. Seed only while the isolated test app is stopped.
+        with sqlite3.connect(db) as conn:
+            for index in range(8):
+                item = dict(tasks()[0], id=f'calendar-overflow-{index}',
+                            title=f'Calendar overflow item {index}',
+                            due=date.today().isoformat(), completed=False)
+                conn.execute('INSERT INTO tasks (id, course_id, payload, position) VALUES (?, ?, ?, ?)',
+                             (item['id'], item.get('courseID'), json.dumps(item), index + 100))
+        process = subprocess.Popen(['dist/linux/bin/opus'], env=env,
+                                   stdout=log_file, stderr=subprocess.STDOUT)
+        main = wait_for(lambda: window_id('Opus'))
+        click(('nav-calendar', 'Calendar'))
+        for index in range(8):
+            find_accessible(f'Calendar overflow item {index}')
+        command('xdotool', 'windowfocus', '--sync', main)
+        command('xdotool', 'key', '--clearmodifiers', 'ctrl+q')
+        assert process.wait(timeout=10) == 0
         css = Path('dist/linux/share/opus/opus.css')
         assert css.is_file(), 'Bundled Opus CSS missing from Linux package'
         print('Accessibility UI checks passed for tasks, calendar, schedule, rhythm, class times, and persistence.')

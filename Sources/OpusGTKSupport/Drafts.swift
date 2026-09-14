@@ -1,6 +1,15 @@
 import Foundation
 import OpusCore
 
+private func validDay(_ value: String) -> Bool {
+    value.count == 10 && Day.string(Day.date(value)) == value
+}
+
+// The GTK bridge encodes two metadata fields followed by unrestricted notes.
+package func rhythmMetadata(_ payload: String) -> [String] {
+    payload.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
+}
+
 package struct WorkDraftModel: Equatable, Sendable {
     package var id: String = ""
     package var title = ""
@@ -68,7 +77,7 @@ package struct WorkDraftModel: Equatable, Sendable {
     package var validationError: String? {
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return "Enter a title." }
-        if let day, !(day.count == 10 && Day.string(Day.date(day)) == day) {
+        if let day, !validDay(day) {
             return "Use a valid date in YYYY-MM-DD format."
         }
         if kind == .progress {
@@ -192,6 +201,8 @@ package struct RuleDraftModel: Equatable, Sendable {
     package var validationError: String? {
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "Enter a title." }
         guard !weekdays.isEmpty else { return "Choose at least one day." }
+        if let startDate, !validDay(startDate) { return "Use a valid start date in YYYY-MM-DD format." }
+        if let endDate, !validDay(endDate) { return "Use a valid end date in YYYY-MM-DD format." }
         if let endDate, let startDate, endDate < startDate { return "Rhythm end must be on or after the start date." }
         if workKind == .progress {
             guard startCount >= 0, targetCount >= startCount else { return "Check the page range." }
@@ -287,6 +298,9 @@ package struct ScheduleDraftModel: Equatable, Sendable {
     }
     package var validationError: String? {
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "Enter a title." }
+        guard validDay(day) else { return "Use a valid date in YYYY-MM-DD format." }
+        if let repeatEnd, !validDay(repeatEnd) { return "Use a valid end date in YYYY-MM-DD format." }
+        if repeatEnabled, let repeatEnd, repeatEnd < day { return "Repeat end must be on or after the start date." }
         guard duration > 0, startMinute + duration <= 1440 else { return "Choose a duration that ends before midnight." }
         if repeatEnabled && repeatDays.isEmpty { return "Choose at least one day." }
         return nil

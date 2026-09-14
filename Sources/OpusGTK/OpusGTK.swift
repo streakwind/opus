@@ -151,7 +151,7 @@ final class LinuxApp {
         opus_calendar_begin(heading, periodIndex(session.calendarPeriod), session.calendarPeriod == .day ? 1 : 7)
         for day in session.calendarDays() {
             opus_calendar_day(day.day, day.label, day.inMonth ? 1 : 0, day.isToday ? 1 : 0, day.isSelected ? 1 : 0)
-            for item in day.items.prefix(5) {
+            for item in day.items {
                 opus_calendar_item(day.day, item.id, item.kind.rawValue, item.title, item.completed ? 1 : 0, 1, item.color)
             }
         }
@@ -279,7 +279,7 @@ final class LinuxApp {
         case "save-course":
             mapped = .saveCourse(CourseDraftModel(id: id, name: text, color: day.isEmpty ? "blue" : day, classTimes: ClassTimeCodec.parse(drag), listOnly: flags != 0))
         case "save-rule":
-            let meta = drag.split(separator: "|", maxSplits: 3, omittingEmptySubsequences: false).map(String.init)
+            let meta = rhythmMetadata(drag)
             mapped = .saveRule(RuleDraftModel(
                 id: id, title: text, courseID: course.isEmpty ? nil : course,
                 workKind: kind == 1 ? .progress : kind == 2 ? .assessment : .task,
