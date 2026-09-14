@@ -1,5 +1,35 @@
 import OpusCore
 import SwiftUI
+import Observation
+
+@MainActor @Observable
+final class TaskCompletionPresentation {
+    private var pending: [String: UUID] = [:]
+
+    func filteringTask(_ task: StudyTask) -> StudyTask {
+        var result = task
+        if pending[task.id] != nil { result.completed = false }
+        return result
+    }
+
+    func toggle(_ task: StudyTask, store: Store) {
+        guard var updated = store.state.tasks.first(where: { $0.id == task.id }) else { return }
+        updated.completed.toggle()
+        let token = UUID()
+        if updated.completed { pending[task.id] = token }
+        else { pending[task.id] = nil }
+        store.save(updated)
+        guard store.error == nil, updated.completed else {
+            pending[task.id] = nil
+            return
+        }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard let self, self.pending[task.id] == token else { return }
+            withAnimation(.easeInOut(duration: 0.28)) { self.pending[task.id] = nil }
+        }
+    }
+}
 
 struct InlineProgress: View {
     var store: Store
@@ -100,6 +130,7 @@ struct TaskLine: View {
     var store: Store
     var task: StudyTask
     var selected: Bool
+    var completionPresentation: TaskCompletionPresentation? = nil
     var openDetails: () -> Void
     private var struck: Bool { task.completed }
     var body: some View {
@@ -138,6 +169,10 @@ struct TaskLine: View {
         .opacity(struck ? 0.55 : 1)
     }
     func toggleComplete() {
+        if let completionPresentation {
+            completionPresentation.toggle(task, store: store)
+            return
+        }
         var updated = task
         updated.completed.toggle()
         withAnimation(.easeInOut(duration: 0.28)) { store.save(updated) }

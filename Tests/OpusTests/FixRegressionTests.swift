@@ -4,6 +4,38 @@ import OpusCore
 @testable import Opus
 
 final class FixRegressionTests: XCTestCase {
+    @MainActor func testCompletionPersistsWhileCrossedOutRowRemainsBrieflyVisible() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let database = try Database(url: folder.appendingPathComponent("test.sqlite"))
+        let store = try Store(database: database)
+        let task = StudyTask(title: "Finish", due: Day.today)
+        store.save(task)
+        let presentation = TaskCompletionPresentation()
+        presentation.toggle(task, store: store)
+        let completed = try XCTUnwrap(store.state.tasks.first)
+        XCTAssertTrue(completed.completed)
+        XCTAssertTrue(try XCTUnwrap(database.load().tasks.first).completed)
+        XCTAssertTrue(presentation.filteringTask(completed).isInToday(on: Day.today))
+        try await Task.sleep(for: .milliseconds(750))
+        XCTAssertFalse(presentation.filteringTask(completed).isInToday(on: Day.today))
+        presentation.toggle(completed, store: store)
+        XCTAssertFalse(try XCTUnwrap(database.load().tasks.first).completed)
+    }
+
+    @MainActor func testLeavingPresentationCannotCancelSavedCompletion() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let database = try Database(url: folder.appendingPathComponent("test.sqlite"))
+        let store = try Store(database: database)
+        let task = StudyTask(title: "Finish")
+        store.save(task)
+        var presentation: TaskCompletionPresentation? = TaskCompletionPresentation()
+        presentation?.toggle(task, store: store)
+        presentation = nil
+        XCTAssertTrue(try XCTUnwrap(database.load().tasks.first).completed)
+    }
+
     @MainActor func testSavingUndatedProgressKeepsDeadlineEmpty() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }

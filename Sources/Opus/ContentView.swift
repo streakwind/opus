@@ -7,6 +7,7 @@ struct ContentView: View {
     @Bindable var store: Store
     @State private var selection: String? = "today"
     @State private var query = ""
+    @State private var completionPresentation = TaskCompletionPresentation()
     @State private var courseEditor: Course?
     @State private var ruleDetail: QuizRule?
     @State private var workDetail: WorkDraft?
@@ -44,14 +45,15 @@ struct ContentView: View {
     }
     private var matchingItems: [StudyTask] {
         store.state.tasks.filter { task in
+            let filteringTask = completionPresentation.filteringTask(task)
             let matches: Bool
             switch selection {
             case "all": matches = store.state.showsInOverview(task.courseID)
             case "inbox": matches = task.courseID == nil
-            case "today": matches = task.isInToday(on: Day.today) && store.state.showsInOverview(task.courseID)
+            case "today": matches = filteringTask.isInToday(on: Day.today) && store.state.showsInOverview(task.courseID)
             default: matches = task.courseID == selection
             }
-            let visible = task.kind == .progress ? !task.isProgressComplete : !task.completed
+            let visible = task.kind == .progress ? !task.isProgressComplete : !filteringTask.completed
             return matches && visible && matchesQuery(title: task.title, courseID: task.courseID)
         }
     }
@@ -398,7 +400,7 @@ struct ContentView: View {
                 }
                 if !tasks.isEmpty && (!assessments.isEmpty || !progressItems.isEmpty) { listHeading("Tasks") }
                 ForEach(tasks) { task in
-                    TaskLine(store: store, task: task, selected: workDetail?.id == "task:" + task.id) {
+                    TaskLine(store: store, task: task, selected: workDetail?.id == "task:" + task.id, completionPresentation: completionPresentation) {
                         openWork(.task(task))
                     }
                     .listRowSeparator(.hidden)
