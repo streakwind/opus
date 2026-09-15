@@ -20,6 +20,8 @@ struct ContentView: View {
     @State private var quickEnd = 30
     @State private var newEntryRequest = 0
     @State private var isSearching = false
+    @State private var pendingSearchResult: SearchResult?
+    @State private var scheduleDetail: ScheduleBlock?
     @State private var showSettings = false
     @State private var showTutorial = false
     @State private var updater = AppUpdater()
@@ -96,6 +98,12 @@ struct ContentView: View {
     }
     private var root: some View {
         splitView
+            .sheet(isPresented: $isSearching, onDismiss: navigateToSearchResult) {
+                GlobalSearchView(store: store, onOpen: openSearchResult, onDismiss: { isSearching = false })
+            }
+            .sheet(item: $scheduleDetail) { block in
+                ScheduleEditor(store: store, block: block, onDismiss: { scheduleDetail = nil }).padding(24)
+            }
             .sheet(item: $courseEditor) { CourseEditor(store: store, course: $0) }
             .sheet(isPresented: $showSettings) { settingsView }
             .alert("Couldn't save changes", isPresented: saveErrorPresented) {
@@ -103,7 +111,7 @@ struct ContentView: View {
             } message: {
                 Text(store.error ?? "")
             }
-            .onChange(of: selection) { _, _ in workDetail = nil; ruleDetail = nil; noteDetail = nil; quickCourse = course?.id }
+            .onChange(of: selection) { _, _ in workDetail = nil; ruleDetail = nil; noteDetail = nil; quickCourse = course?.id; revealSearchResult() }
             .onChange(of: scenePhase) { _, phase in if phase == .active { store.refreshOccurrences() } }
             .onChange(of: store.state.tasks.map(\.id)) { _, ids in
                 if case .task(let task) = workDetail, !ids.contains(task.id) { workDetail = nil }
@@ -191,6 +199,12 @@ struct ContentView: View {
         .background(Color(nsColor: .textBackgroundColor))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
+                Button { isSearching = true } label: { Label("Search Opus", systemImage: "magnifyingglass") }
+                    .keyboardShortcut("k", modifiers: .command)
+                    .help("Search all of Opus (⌘K)")
+                    .accessibilityIdentifier("global-search-button")
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button { store.undo() } label: { Image(systemName: "arrow.uturn.backward") }
                     .disabled(!store.canUndo).help("Undo change (⌥⌘Z)")
                     .accessibilityIdentifier("undo-button")
@@ -199,22 +213,6 @@ struct ContentView: View {
                 Button(action: add) { Label("Add", systemImage: "plus") }
                     .keyboardShortcut("n").help("Add (⌘N)")
                     .accessibilityIdentifier("add-button")
-            }
-        }
-        .opusSearchable(enabled: selection != "journal", text: $query, isPresented: $isSearching)
-        .background {
-            if selection != "journal" {
-                Button("Search") { isSearching = true }
-                    .keyboardShortcut("k", modifiers: .command)
-                    .opacity(0)
-                    .frame(width: 0, height: 0)
-                    .accessibilityHidden(true)
-            }
-        }
-        .onChange(of: selection) { _, value in
-            if value == "journal" {
-                isSearching = false
-                query = ""
             }
         }
         .overlay {
@@ -621,20 +619,48 @@ struct ContentView: View {
         if let rule { ruleDetail = rule }
         else { workDetail = draft }
     }
+    private func openSearchResult(_ result: SearchResult) {
+        isSearching = false
+        pendingSearchResult = result
+    }
+    private func navigateToSearchResult() {
+        guard let result = pendingSearchResult else { return }
+        let destination: String
+        switch result.category {
+        case .pages: destination = result.targetID
+        case .lists: destination = result.targetID
+        case .rhythms: destination = "routines"
+        case .schedule: destination = "schedule"
+        default: destination = result.courseID ?? "all"
+        }
+        if selection == destination { revealSearchResult() }
+        else { selection = destination }
+    }
+    private func revealSearchResult() {
+        guard let result = pendingSearchResult else { return }
+        pendingSearchResult = nil
+        workDetail = nil; noteDetail = nil; ruleDetail = nil
+        switch result.category {
+        case .tasks, .progress:
+            if let task = store.state.tasks.first(where: { $0.id == result.targetID }) { workDetail = .task(task) }
+        case .assessments:
+            if let item = store.state.assessments.first(where: { $0.id == result.targetID }) { workDetail = .assessment(item) }
+        case .notes:
+            if let courseID = result.courseID,
+               let note = store.course(courseID)?.listNotes.first(where: { $0.id == result.targetID }) {
+                noteDetail = NoteDraft(courseID: courseID, note: note)
+            }
+        case .rhythms:
+            ruleDetail = store.state.rules.first { $0.id == result.targetID }
+        case .schedule:
+            scheduleDetail = store.state.schedule.first { $0.id == result.targetID }
+        case .pages, .lists: break
+        }
+    }
     private func exportData() {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = "Opus-\(Day.today).json"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do { let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]; try encoder.encode(store.state).write(to: url, options: .atomic) }
         catch { store.error = error.localizedDescription }
-    }
-}
-
-private extension View {
-    @ViewBuilder func opusSearchable(enabled: Bool, text: Binding<String>, isPresented: Binding<Bool>) -> some View {
-        if enabled {
-            searchable(text: text, isPresented: isPresented, placement: .toolbar, prompt: "Search")
-        } else {
-            self
-        }
     }
 }

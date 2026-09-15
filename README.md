@@ -29,6 +29,7 @@ sudo apt-get install libgtk-4-dev libsqlite3-dev pkg-config
 
 - New installations start empty. Add your own lists and rhythms; no personal course or timetable defaults are shipped.
 - **⌘N** / **Ctrl+N** adds in context. Type a title and press Return to add it and keep typing. List, task type, and optional deadline appear when editing.
+- **⌘K** (macOS) opens global search for lists, tasks, progress, assessments, note names, rhythms, schedule blocks, and app pages. Use ↑/↓ and Return to open a result, ⌘1–9 to switch categories, and Escape to close. Completed and past work remains searchable; journal entries and note bodies are excluded.
 - **Today** includes work planned or due through tomorrow, plus overdue work. Old recurring tasks do not accumulate unless overdue. **Tasks** also shows unscheduled work.
 - For notes on pages 206–235, use Start 206, Finish 235, Finished through 205. Edit the last-read page beside the task title.
 - **Calendar** combines planned tasks, deadlines, and assessments in day, week, and month views. Drag items to reschedule.
