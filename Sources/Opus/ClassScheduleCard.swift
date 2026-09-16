@@ -127,7 +127,9 @@ private struct CourseWorkPopover: View {
                     Text(task.title).strikethrough(task.completed).lineLimit(2)
                     Spacer(minLength: 8)
                     if task.ruleID != nil { RepeatBadge() }
-                    if let date = CourseWork.relevantDay(for: task, from: from) {
+                    if let caption = task.dateCaption() {
+                        Text(caption).font(.caption).foregroundStyle(.secondary).fixedSize()
+                    } else if let date = CourseWork.relevantDay(for: task, from: from) {
                         Text(Day.label(date)).font(.caption).foregroundStyle(.secondary).fixedSize()
                     }
                 }
@@ -142,7 +144,9 @@ private struct CourseWorkPopover: View {
                     Text(task.title).lineLimit(2)
                     if task.ruleID != nil { RepeatBadge() }
                     Spacer(minLength: 8)
-                    if let date = CourseWork.relevantDay(for: task, from: from) {
+                    if let caption = task.dateCaption() {
+                        Text(caption).font(.caption).foregroundStyle(.secondary).fixedSize()
+                    } else if let date = CourseWork.relevantDay(for: task, from: from) {
                         Text(Day.label(date)).font(.caption).foregroundStyle(.secondary).fixedSize()
                     }
                 }

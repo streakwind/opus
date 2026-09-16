@@ -877,7 +877,7 @@ struct JournalNativeEditor: NSViewRepresentable {
             title = task.title; checkable = task.kind != .progress; completed = task.completed
             icon = checkable ? (completed ? "checkmark.circle.fill" : "circle") : "book.closed"
             var parts = [store.course(task.courseID)?.name ?? "Inbox"]
-            if let due = task.due { parts.append(Day.label(due)) }
+            if let caption = task.dateCaption() { parts.append(caption) }
             if task.kind == .progress {
                 parts.append(task.progressLabel)
                 parts.append("\(task.pagesTotal - task.pagesRead) left")

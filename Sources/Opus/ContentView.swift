@@ -7,6 +7,14 @@ struct ContentView: View {
     @Bindable var store: Store
     @State private var selection: String? = "today"
     @State private var query = ""
+    @AppStorage("listGroup") private var listGroup = ""
+    private var groups: [String] { Set(store.state.courses.compactMap(\.group)).sorted() }
+    private var sharesInboxJournalSchedule: Bool {
+        selection == "inbox" || selection == "journal" || selection == "schedule"
+    }
+    private func inGroup(_ courseID: String?) -> Bool {
+        store.state.matchesGroup(courseID, group: listGroup)
+    }
     @State private var completionPresentation = TaskCompletionPresentation()
     @State private var courseEditor: Course?
     @State private var ruleDetail: QuizRule?
@@ -31,9 +39,9 @@ struct ContentView: View {
     private var course: Course? { store.course(selection) }
     private var isCalendar: Bool { selection == "upcoming" || selection == "schedule" }
     private func matchesQuery(title: String, courseID: String?) -> Bool {
-        query.isEmpty ||
+        (sharesInboxJournalSchedule || inGroup(courseID)) && (query.isEmpty ||
         title.localizedCaseInsensitiveContains(query) ||
-        (store.course(courseID)?.name.localizedCaseInsensitiveContains(query) ?? false)
+        (store.course(courseID)?.name.localizedCaseInsensitiveContains(query) ?? false))
     }
     private var heading: String {
         switch selection {
@@ -93,13 +101,27 @@ struct ContentView: View {
     }
     var body: some View {
         root
-            .onAppear(perform: applyAppearance)
+            .onAppear { applyAppearance(); if !listGroup.isEmpty && !groups.contains(listGroup) { switchGroup("") } }
+            .onChange(of: groups) { _, values in
+                if !listGroup.isEmpty && !values.contains(listGroup) { switchGroup("") }
+            }
             .onChange(of: appearance) { _, _ in applyAppearance() }
     }
     private var root: some View {
         splitView
+            .environment(\.listGroup, listGroup)
+            .environment(\.allowInboxList, listGroup.isEmpty || sharesInboxJournalSchedule)
+            .background {
+                HStack {
+                    Button("All lists") { switchGroup("") }.keyboardShortcut("0", modifiers: [.command, .option])
+                    ForEach(Array(groups.prefix(9).enumerated()), id: \.element) { index, name in
+                        Button(name) { switchGroup(name) }
+                            .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command, .option])
+                    }
+                }.frame(width: 0, height: 0).opacity(0).accessibilityHidden(true)
+            }
             .sheet(isPresented: $isSearching, onDismiss: navigateToSearchResult) {
-                GlobalSearchView(store: store, onOpen: openSearchResult, onDismiss: { isSearching = false })
+                GlobalSearchView(store: store, group: listGroup, onOpen: openSearchResult, onDismiss: { isSearching = false })
             }
             .sheet(item: $scheduleDetail) { block in
                 ScheduleEditor(store: store, block: block, onDismiss: { scheduleDetail = nil }).padding(24)
@@ -111,7 +133,7 @@ struct ContentView: View {
             } message: {
                 Text(store.error ?? "")
             }
-            .onChange(of: selection) { _, _ in workDetail = nil; ruleDetail = nil; noteDetail = nil; quickCourse = course?.id; revealSearchResult() }
+            .onChange(of: selection) { _, _ in workDetail = nil; ruleDetail = nil; noteDetail = nil; quickCourse = sharesInboxJournalSchedule ? nil : (course?.id ?? store.state.defaultCourseID(inGroup: listGroup)); revealSearchResult() }
             .onChange(of: scenePhase) { _, phase in if phase == .active { store.refreshOccurrences() } }
             .onChange(of: store.state.tasks.map(\.id)) { _, ids in
                 if case .task(let task) = workDetail, !ids.contains(task.id) { workDetail = nil }
@@ -137,12 +159,61 @@ struct ContentView: View {
             detail
         }
     }
+    private func switchGroup(_ value: String) {
+        listGroup = value
+        if let currentID = course?.id, !store.state.matchesGroup(currentID, group: value) { selection = "all" }
+        workDetail = nil; ruleDetail = nil; noteDetail = nil
+        quickCourse = sharesInboxJournalSchedule ? nil : (course?.id ?? store.state.defaultCourseID(inGroup: value))
+    }
+    private func cycleGroup(_ delta: Int) {
+        let values = [""] + groups
+        let index = values.firstIndex(of: listGroup) ?? 0
+        switchGroup(values[(index + delta + values.count) % values.count])
+    }
+    private func groupOption(_ name: String) -> some View {
+        Button { switchGroup(name) } label: {
+            if listGroup == name { Label(name, systemImage: "checkmark") } else { Text(name) }
+        }
+    }
+    private var groupSwitcher: some View {
+        HStack(spacing: 4) {
+            Menu {
+                Button("All lists") { switchGroup("") }.keyboardShortcut("0", modifiers: [.command, .option])
+                Divider()
+                ForEach(Array(groups.enumerated()), id: \.element) { index, name in
+                    if index < 9 {
+                        groupOption(name).keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command, .option])
+                    } else { groupOption(name) }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "square.stack").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text(listGroup.isEmpty ? "All lists" : listGroup).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
+                }.padding(.vertical, 9).padding(.leading, 10)
+            }.menuStyle(.borderlessButton).menuIndicator(.hidden).frame(maxWidth: .infinity)
+                .accessibilityLabel("Switch group")
+                .accessibilityIdentifier("group-switcher")
+            HStack(spacing: 0) {
+                Button { cycleGroup(-1) } label: { Image(systemName: "chevron.left").frame(width: 22, height: 28) }
+                    .keyboardShortcut(.leftArrow, modifiers: [.command, .option]).help("Previous group (⌥⌘←)")
+                Button { cycleGroup(1) } label: { Image(systemName: "chevron.right").frame(width: 22, height: 28) }
+                    .keyboardShortcut(.rightArrow, modifiers: [.command, .option]).help("Next group (⌥⌘→)")
+            }.font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary).buttonStyle(.plain)
+                .disabled(groups.isEmpty)
+        }
+        .padding(.trailing, 4)
+        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 12).padding(.bottom, 8)
+    }
     private var sidebar: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Image(systemName: "square.stack.3d.up.fill").font(.title2).foregroundStyle(.teal)
                 Text("Opus").font(.title2.weight(.semibold)); Spacer()
             }.padding(20)
+            groupSwitcher
             List(selection: $selection) {
                 Label("Today", systemImage: "sun.max").tag("today")
                 Label("Tasks", systemImage: "checklist").tag("all")
@@ -154,7 +225,7 @@ struct ContentView: View {
                     Label("Rhythm", systemImage: "repeat").tag("routines")
                 }
                 Section("Your lists") {
-                    ForEach(store.state.courses) { course in
+                    ForEach(store.state.courses.filter { inGroup($0.id) }) { course in
                         Label { Text(course.name) } icon: { Circle().fill(course.tint).frame(width: 8, height: 8) }.tag(course.id)
                             .contextMenu { Button("Edit list…") { courseEditor = course } }
                             .accessibilityIdentifier("sidebar-list-\(course.id)")
@@ -162,7 +233,11 @@ struct ContentView: View {
                 }
             }.listStyle(.sidebar)
             HStack {
-                Button { courseEditor = Course(name: "") } label: { Label("New list", systemImage: "plus") }
+                Button {
+                    var draft = Course(name: "")
+                    draft.group = listGroup.isEmpty ? nil : listGroup
+                    courseEditor = draft
+                } label: { Label("New list", systemImage: "plus") }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("new-list-button")
                 Spacer()
@@ -177,7 +252,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             if !store.state.setupComplete { welcome }
             else if selection == "upcoming" {
-                AssessmentCalendar(store: store, query: query, newEntryRequest: newEntryRequest) { rule in
+                AssessmentCalendar(store: store, query: query, group: listGroup, newEntryRequest: newEntryRequest) { rule in
                     ruleDetail = rule
                 }
             }
@@ -389,8 +464,10 @@ struct ContentView: View {
                                     Button("Details") { workDetail = .task(item) }
                                 }
                                 Menu("Move to list") {
-                                    Button("Inbox") { var copy = item; copy.courseID = nil; store.save(copy) }
-                                    ForEach(store.state.courses) { list in Button(list.name) { var copy = item; copy.courseID = list.id; store.save(copy) } }
+                                    if listGroup.isEmpty || sharesInboxJournalSchedule {
+                                        Button("Inbox") { var copy = item; copy.courseID = nil; store.save(copy) }
+                                    }
+                                    ForEach(store.state.courses(inGroup: listGroup)) { list in Button(list.name) { var copy = item; copy.courseID = list.id; store.save(copy) } }
                                 }
                                 Button("Delete", role: .destructive) { store.deleteTask(item.id) }
                             }
@@ -411,8 +488,10 @@ struct ContentView: View {
                             Button("Details") { workDetail = .task(task) }
                         }
                         Menu("Move to list") {
-                            Button("Inbox") { var copy = task; copy.courseID = nil; store.save(copy) }
-                            ForEach(store.state.courses) { list in Button(list.name) { var copy = task; copy.courseID = list.id; store.save(copy) } }
+                            if listGroup.isEmpty || sharesInboxJournalSchedule {
+                                Button("Inbox") { var copy = task; copy.courseID = nil; store.save(copy) }
+                            }
+                            ForEach(store.state.courses(inGroup: listGroup)) { list in Button(list.name) { var copy = task; copy.courseID = list.id; store.save(copy) } }
                         }
                         Button("Delete", role: .destructive) { store.deleteTask(task.id) }
                     }
@@ -514,8 +593,10 @@ struct ContentView: View {
     }
     @ViewBuilder private var entryOptions: some View {
         PillPicker("List", label: store.course(quickCourse)?.shortName ?? "Inbox", selection: $quickCourse) {
-            Text("Inbox").tag(nil as String?)
-            ForEach(store.state.courses) { Text($0.shortName).tag(Optional($0.id)) }
+            if listGroup.isEmpty || sharesInboxJournalSchedule {
+                Text("Inbox").tag(nil as String?)
+            }
+            ForEach(store.state.courses(inGroup: listGroup)) { Text($0.shortName).tag(Optional($0.id)) }
         }.labelsHidden().fixedSize()
         PillPicker("Type", label: quickKind.rawValue, selection: $quickKind) {
             ForEach(WorkKind.allCases) { Text($0.rawValue).tag($0) }
@@ -555,7 +636,7 @@ struct ContentView: View {
                         Button("Delete", role: .destructive) { store.deleteRule(rule.id) }
                     }
                 }
-                Button { ruleDetail = QuizRule(itemKind: .task, startDate: Day.today) } label: { Label("Add a rhythm", systemImage: "plus") }
+                Button { ruleDetail = QuizRule(courseID: store.state.defaultCourseID(inGroup: listGroup), itemKind: .task, startDate: Day.today) } label: { Label("Add a rhythm", systemImage: "plus") }
                     .buttonStyle(.plain).foregroundStyle(.secondary).padding(.vertical, 8)
                     .accessibilityIdentifier("add-rhythm-button")
             }.listStyle(.inset).scrollContentBackground(.hidden)
@@ -606,7 +687,7 @@ struct ContentView: View {
         else if selection == "journal" {
             workDetail = .new(day: Day.today, courseID: nil, title: "", kind: .task)
         }
-        else if selection == "routines" { ruleDetail = QuizRule(itemKind: .task, startDate: Day.today) }
+        else if selection == "routines" { ruleDetail = QuizRule(courseID: store.state.defaultCourseID(inGroup: listGroup), itemKind: .task, startDate: Day.today) }
         else { quickFocused = true }
     }
     private func openWork(_ draft: WorkDraft) {
@@ -630,7 +711,6 @@ struct ContentView: View {
         case .pages: destination = result.targetID
         case .lists: destination = result.targetID
         case .rhythms: destination = "routines"
-        case .schedule: destination = "schedule"
         default: destination = result.courseID ?? "all"
         }
         if selection == destination { revealSearchResult() }
@@ -652,8 +732,6 @@ struct ContentView: View {
             }
         case .rhythms:
             ruleDetail = store.state.rules.first { $0.id == result.targetID }
-        case .schedule:
-            scheduleDetail = store.state.schedule.first { $0.id == result.targetID }
         case .pages, .lists: break
         }
     }

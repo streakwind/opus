@@ -109,10 +109,10 @@ struct ProgressLine: View {
                     HStack(spacing: 5) {
                         if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
                         else { Text("Inbox") }
-                        if let caption = task.rhythmCaption() {
+                        if let caption = task.dateCaption() {
+                            Text("· " + caption).foregroundStyle(task.isFinished ? Color.secondary : (task.due.map { $0 < Day.today ? Color.red : .secondary } ?? .secondary))
+                        } else if let caption = task.rhythmCaption() {
                             Text("· " + caption).foregroundStyle(task.due.map { $0 < Day.today ? Color.red : .secondary } ?? .secondary)
-                        } else if let due = task.due {
-                            Text("· Goal " + Day.label(due)).foregroundStyle(due < Day.today ? Color.red : .secondary)
                         }
                     }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).padding(.top, 1)
                 }
@@ -150,12 +150,14 @@ struct TaskLine: View {
                     HStack(spacing: 5) {
                         if let course = store.course(task.courseID) { Circle().fill(course.tint).frame(width: 5, height: 5); Text(course.shortName) }
                         else { Text("Inbox") }
-                        if let caption = task.rhythmCaption() {
+                        if let caption = task.dateCaption() {
+                            Text("· " + caption)
+                                .foregroundStyle(task.isFinished ? Color.secondary : (task.due.map { $0 < Day.today && !struck ? Color.red : .secondary } ?? .secondary))
+                        } else if let caption = task.rhythmCaption() {
                             Text("· " + caption)
                                 .foregroundStyle(task.due.map { $0 < Day.today && !struck ? Color.red : .secondary } ?? .secondary)
-                        } else {
-                            if let due = task.due { Text("· Due " + Day.label(due)).foregroundStyle(due < Day.today && !struck ? Color.red : .secondary) }
-                            if task.planned == Day.adding(1), task.due != task.planned { Text("· Tomorrow") }
+                        } else if task.planned == Day.adding(1), task.due != task.planned {
+                            Text("· Tomorrow")
                         }
                     }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                     .padding(.top, 1)

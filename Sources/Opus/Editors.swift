@@ -4,12 +4,51 @@ import SwiftUI
 struct CourseEditor: View {
     var store: Store
     @State var course: Course
+    @State private var creatingGroup = false
+    @State private var newGroup = ""
     @State private var classTimes: [ClassTime]
     @Environment(\.dismiss) private var dismiss
     init(store: Store, course: Course) {
         self.store = store
         _course = State(initialValue: course)
         _classTimes = State(initialValue: course.resolvedClassTimes)
+    }
+    private var groupField: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("GROUP").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            Menu {
+                Button("None") { course.group = nil }
+                ForEach(Array(Set(store.state.courses.compactMap(\.group))).sorted(), id: \.self) { name in
+                    Button(name) { course.group = name }
+                }
+                Divider()
+                Button("New group…") { newGroup = ""; creatingGroup = true }
+            } label: {
+                Label(course.group ?? "None", systemImage: "square.stack")
+            }
+            .menuStyle(.borderlessButton)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(11)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
+            .popover(isPresented: $creatingGroup) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("New group").font(.headline)
+                    TextField("Name", text: $newGroup).textFieldStyle(.roundedBorder)
+                        .onSubmit(createGroup)
+                    HStack {
+                        Button("Cancel") { creatingGroup = false }
+                        Spacer()
+                        Button("Create", action: createGroup)
+                            .disabled(newGroup.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }.padding(16).frame(width: 240)
+            }
+        }
+    }
+    private func createGroup() {
+        let name = newGroup.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        course.group = name
+        creatingGroup = false
     }
     private var suggestedClassStart: Int { 540 }
     private var valid: Bool {
@@ -63,13 +102,28 @@ struct CourseEditor: View {
                         .fixedSize()
                     }
 
+                    groupField
+
                     Toggle(isOn: Binding(
                         get: { course.isListOnly },
                         set: { course.listOnly = $0 ? true : nil }
                     )) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Show only on this list")
-                            Text("Hide from Today, Inbox, Calendar, and Schedule.")
+                            Text("Hide from Today, Inbox, and Calendar.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(.switch)
+
+                    Toggle(isOn: Binding(
+                        get: { course.isHiddenFromSchedule },
+                        set: { course.hideFromSchedule = $0 ? true : nil }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Hide from Schedule")
+                            Text("Keep class times and this list's work off the week grid.")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                         }

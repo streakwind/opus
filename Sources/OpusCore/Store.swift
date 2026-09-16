@@ -233,6 +233,7 @@ package final class Store {
                 state.assessments.removeAll { $0.id == task.id }
                 Self.convertLinks(from: .assessment(task.id), to: .task(task.id), in: &state)
             }
+            task.syncCompletion(previous: state.tasks.first { $0.id == task.id })
             if let index = state.tasks.firstIndex(where: { $0.id == task.id }) { state.tasks[index] = task }
             else { state.tasks.append(task) }
         }
@@ -329,6 +330,9 @@ package final class Store {
             if let value {
                 state.tasks[index].current = value
                 if task.kind != .progress { state.tasks[index].completed = value >= task.target }
+                var updated = state.tasks[index]
+                updated.syncCompletion()
+                state.tasks[index] = updated
             }
             state.activities.append(Activity(taskID: task.id, note: note, previous: value == nil ? nil : previous, value: value))
         }

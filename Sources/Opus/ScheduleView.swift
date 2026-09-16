@@ -264,10 +264,10 @@ private struct ScheduleAllDayRow: View {
                 ForEach(tasks) { task in
                     allDayButton(
                         task.title,
-                        icon: task.kind == .progress ? "chart.bar.fill" : task.completed ? "checkmark.circle.fill" : "circle",
+                        icon: task.kind == .progress ? "chart.bar.fill" : task.isFinished ? "checkmark.circle.fill" : "circle",
                         tint: store.course(task.courseID)?.tint ?? .teal,
                         repeating: task.ruleID != nil,
-                        dimmed: task.completed
+                        dimmed: task.isFinished
                     ) {
                         editWork(.task(task))
                     }

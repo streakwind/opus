@@ -275,6 +275,7 @@ package final class LinuxSession {
             course.color = draft.color
             course.classTimes = draft.classTimes
             course.listOnly = draft.listOnly ? true : nil
+            course.hideFromSchedule = draft.hideFromSchedule ? true : nil
             course.syncLegacyClassTime()
             store.save(course)
             if store.error == nil { selection = .list(course.id) }

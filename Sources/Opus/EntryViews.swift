@@ -12,13 +12,44 @@ struct PropertyRow<Content: View>: View {
         }.font(.system(size: 13)).padding(.vertical, 6)
     }
 }
+
+private struct ListGroupKey: EnvironmentKey {
+    static let defaultValue = ""
+}
+private struct AllowInboxListKey: EnvironmentKey {
+    static let defaultValue = true
+}
+extension EnvironmentValues {
+    var listGroup: String {
+        get { self[ListGroupKey.self] }
+        set { self[ListGroupKey.self] = newValue }
+    }
+    var allowInboxList: Bool {
+        get { self[AllowInboxListKey.self] }
+        set { self[AllowInboxListKey.self] = newValue }
+    }
+}
+
 struct CourseMenu: View {
     var courses: [Course]
     @Binding var value: String?
+    @Environment(\.listGroup) private var group
+    @Environment(\.allowInboxList) private var allowInbox
+    private var visible: [Course] { storeCourses() }
+    private func storeCourses() -> [Course] {
+        var lists = group.isEmpty ? courses : courses.filter { $0.group == group }
+        if let value, let current = courses.first(where: { $0.id == value }), lists.allSatisfy({ $0.id != value }) {
+            lists.append(current)
+        }
+        return lists
+    }
+    private var includeInbox: Bool { allowInbox || value == nil }
     var body: some View {
         PillPicker("List", label: courses.first { $0.id == value }?.name ?? "Inbox", selection: $value) {
-            Text("Inbox").tag(nil as String?)
-            ForEach(courses) { Text($0.name).tag(Optional($0.id)) }
+            if includeInbox {
+                Text("Inbox").tag(nil as String?)
+            }
+            ForEach(visible) { Text($0.name).tag(Optional($0.id)) }
         }.labelsHidden().pickerStyle(.menu).fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("work-list-menu")
     }

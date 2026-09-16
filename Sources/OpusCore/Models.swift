@@ -22,8 +22,11 @@ package struct Course: Identifiable, Codable, Hashable {
     package var classStart: Int?
     package var classDuration: Int?
     package var classDays: [Int]?
+    package var group: String?
     package var listOnly: Bool?
     package var isListOnly: Bool { listOnly == true }
+    package var hideFromSchedule: Bool?
+    package var isHiddenFromSchedule: Bool { hideFromSchedule == true }
     /// Legacy single-document notes. Migrated into `notes` on open.
     package var notesMarkdown: String?
     package var notes: [ListNote]?
@@ -106,6 +109,7 @@ package struct StudyTask: Identifiable, Codable, Equatable {
     package var unit = "pages"
     package var ruleID: String?
     package var occurrence: String?
+    package var completedOn: String?
     package var pagesTotal: Int { max(1, target - start + 1) }
     /// Unread at the start page (1–30 on 1 is 0 of 30). Full at the last page (30 of 30). Done at target + 1.
     package var pagesRead: Int {
@@ -116,8 +120,9 @@ package struct StudyTask: Identifiable, Codable, Equatable {
     package var progressLabel: String { "\(pagesRead) of \(pagesTotal)" }
     package var progressCompleteAt: Int { target + 1 }
     package var isProgressComplete: Bool { current > target }
+    package var isFinished: Bool { kind == .progress ? isProgressComplete : completed }
     package func clampedProgress(_ value: Int) -> Int { min(progressCompleteAt, max(start, value)) }
-    package init(id: String = UUID().uuidString, courseID: String? = nil, title: String = "", notes: String = "", kind: TaskKind = .checkbox, planned: String? = nil, due: String? = nil, completed: Bool = false, start: Int = 1, target: Int = 30, current: Int = 0, unit: String = "pages", ruleID: String? = nil, occurrence: String? = nil) {
+    package init(id: String = UUID().uuidString, courseID: String? = nil, title: String = "", notes: String = "", kind: TaskKind = .checkbox, planned: String? = nil, due: String? = nil, completed: Bool = false, start: Int = 1, target: Int = 30, current: Int = 0, unit: String = "pages", ruleID: String? = nil, occurrence: String? = nil, completedOn: String? = nil) {
         self.id = id
         self.courseID = courseID
         self.title = title
@@ -132,6 +137,34 @@ package struct StudyTask: Identifiable, Codable, Equatable {
         self.unit = unit
         self.ruleID = ruleID
         self.occurrence = occurrence
+        self.completedOn = completedOn
+    }
+    package mutating func syncCompletion(previous: StudyTask? = nil, on day: String = Day.today) {
+        if kind == .progress {
+            completed = false
+            if isProgressComplete {
+                completedOn = completedOn ?? previous?.completedOn ?? day
+            } else {
+                completedOn = nil
+            }
+        } else if completed {
+            completedOn = completedOn ?? previous?.completedOn ?? day
+        } else {
+            completedOn = nil
+        }
+    }
+    package func appearsOnCalendarDay(_ day: String) -> Bool {
+        if let due { return due == day }
+        return isFinished && completedOn == day
+    }
+    package func dateCaption() -> String? {
+        if isFinished {
+            if let day = completedOn ?? due { return "Completed " + Day.label(day) }
+            return "Completed"
+        }
+        if kind == .progress, let due { return "Goal " + Day.label(due) }
+        if let due { return "Due " + Day.label(due) }
+        return nil
     }
 }
 package struct Assessment: Identifiable, Codable, Equatable {
@@ -445,9 +478,26 @@ package struct Snapshot: Codable {
         self.generated = generated
         self.setupComplete = setupComplete
     }
+    package func matchesGroup(_ courseID: String?, group: String) -> Bool {
+        group.isEmpty || courses.first { $0.id == courseID }?.group == group
+    }
+    package func courses(inGroup group: String, including courseID: String? = nil) -> [Course] {
+        var lists = group.isEmpty ? courses : courses.filter { $0.group == group }
+        if let courseID, let current = courses.first(where: { $0.id == courseID }), lists.allSatisfy({ $0.id != courseID }) {
+            lists.append(current)
+        }
+        return lists
+    }
+    package func defaultCourseID(inGroup group: String) -> String? {
+        group.isEmpty ? nil : courses.first { $0.group == group }?.id
+    }
     package func showsInOverview(_ courseID: String?) -> Bool {
         guard let courseID else { return true }
         return courses.first { $0.id == courseID }?.isListOnly != true
+    }
+    package func showsOnSchedule(_ courseID: String?) -> Bool {
+        guard let courseID, let course = courses.first(where: { $0.id == courseID }) else { return true }
+        return !course.isListOnly && !course.isHiddenFromSchedule
     }
 }
 
@@ -510,7 +560,7 @@ package enum JournalWork {
         for task in tasks {
             if let ruleID = task.ruleID, !seenTaskRules.insert(ruleID).inserted { continue }
             var parts = [state.courses.first { $0.id == task.courseID }?.name ?? "Inbox"]
-            if let due = task.due { parts.append("Due " + Day.label(due)) }
+            if let caption = task.dateCaption() { parts.append(caption) }
             if task.kind == .progress { parts.append(task.progressLabel) }
             if task.ruleID != nil { parts.append("Rhythm") }
             options.append(JournalEmbedOption(
@@ -548,15 +598,15 @@ package enum ScheduleWork {
     }
     package static func untimedTasks(on day: String, in state: Snapshot) -> [StudyTask] {
         state.tasks.filter {
-            $0.calendarDay == day &&
-            state.showsInOverview($0.courseID) &&
+            ($0.calendarDay == day || $0.appearsOnCalendarDay(day)) &&
+            state.showsOnSchedule($0.courseID) &&
             isUntimed(courseID: $0.courseID, on: day, in: state)
         }
     }
     package static func untimedAssessments(on day: String, in state: Snapshot) -> [Assessment] {
         state.assessments.filter {
             $0.day == day &&
-            state.showsInOverview($0.courseID) &&
+            state.showsOnSchedule($0.courseID) &&
             isUntimed(courseID: $0.courseID, on: day, in: state)
         }
     }
@@ -564,17 +614,17 @@ package enum ScheduleWork {
         state.schedule.filter {
             $0.isAllDay &&
             $0.day == day &&
-            state.showsInOverview($0.courseID) &&
+            state.showsOnSchedule($0.courseID) &&
             isUntimed(courseID: $0.courseID, on: day, in: state)
         }
     }
     package static func timedBlocks(on day: String, in state: Snapshot, excluding excludedID: String? = nil) -> [ScheduleBlock] {
-        let classes = state.courses.filter { !$0.isListOnly }.flatMap { $0.classBlocks(on: day) }
+        let classes = state.courses.filter { state.showsOnSchedule($0.id) }.flatMap { $0.classBlocks(on: day) }
         let events = state.schedule.filter {
             !$0.isAllDay &&
             $0.day == day &&
             $0.id != excludedID &&
-            state.showsInOverview($0.courseID)
+            state.showsOnSchedule($0.courseID)
         }
         return classes + events
     }
@@ -631,6 +681,7 @@ extension StudyTask {
         if draft.current != baseline.current { result.current = draft.current }
         if draft.unit != baseline.unit { result.unit = draft.unit }
         if draft.completed != baseline.completed { result.completed = draft.completed }
+        if draft.completedOn != baseline.completedOn { result.completedOn = draft.completedOn }
         return result
     }
 }

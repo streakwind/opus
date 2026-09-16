@@ -174,6 +174,47 @@ final class RedesignTests: XCTestCase {
         XCTAssertTrue(ScheduleWork.untimedEvents(on: Day.today, in: state).isEmpty)
         XCTAssertEqual(ScheduleWork.timedBlocks(on: Day.today, in: state).map(\.title), ["Office"])
     }
+    func testHideFromScheduleKeepsTodayAndCalendarWork() throws {
+        let weekday = Calendar.current.component(.weekday, from: Date())
+        var hidden = Course(name: "Studio")
+        hidden.hideFromSchedule = true
+        var hiddenClass = Course(
+            name: "Lab",
+            classTimes: [ClassTime(startMinute: 540, endMinute: 600, days: [weekday])]
+        )
+        hiddenClass.hideFromSchedule = true
+        let listed = Course(name: "Bio")
+        XCTAssertTrue(hidden.isHiddenFromSchedule)
+        XCTAssertNil(try JSONDecoder().decode(
+            Course.self,
+            from: Data(#"{"id":"c","name":"Example list","color":"blue"}"#.utf8)
+        ).hideFromSchedule)
+        let encoded = try JSONDecoder().decode(Course.self, from: JSONEncoder().encode(hidden))
+        XCTAssertTrue(encoded.isHiddenFromSchedule)
+        var state = Snapshot(courses: [hidden, hiddenClass, listed])
+        state.tasks = [
+            StudyTask(courseID: hidden.id, title: "Sketch", due: Day.today),
+            StudyTask(courseID: listed.id, title: "Essay", due: Day.today)
+        ]
+        state.assessments = [
+            Assessment(courseID: hidden.id, title: "Critique", day: Day.today),
+            Assessment(courseID: listed.id, title: "Quiz", day: Day.today)
+        ]
+        state.schedule = [
+            ScheduleBlock(courseID: hiddenClass.id, title: "Studio block", day: Day.today),
+            ScheduleBlock(courseID: hidden.id, title: "All-day studio", day: Day.today, allDay: true),
+            ScheduleBlock(courseID: listed.id, title: "Office", day: Day.today)
+        ]
+        XCTAssertTrue(state.showsInOverview(hidden.id))
+        XCTAssertTrue(state.showsInOverview(hiddenClass.id))
+        XCTAssertFalse(state.showsOnSchedule(hidden.id))
+        XCTAssertFalse(state.showsOnSchedule(hiddenClass.id))
+        XCTAssertTrue(state.showsOnSchedule(listed.id))
+        XCTAssertEqual(ScheduleWork.untimedTasks(on: Day.today, in: state).map(\.title), ["Essay"])
+        XCTAssertEqual(ScheduleWork.untimedAssessments(on: Day.today, in: state).map(\.title), ["Quiz"])
+        XCTAssertTrue(ScheduleWork.untimedEvents(on: Day.today, in: state).isEmpty)
+        XCTAssertEqual(ScheduleWork.timedBlocks(on: Day.today, in: state).map(\.title), ["Office"])
+    }
     @MainActor func testFreshInstallAndSetupNeverSeedUserData() async throws {
         let database = try db()
         let store = try Store(database: database)
@@ -450,6 +491,39 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(CourseWork.tasks(courseID: course.id, from: "2026-09-12", in: state, progress: true, exactDay: true).count, 1)
         XCTAssertEqual(CourseWork.tasks(courseID: course.id, from: "2026-09-13", in: state, progress: true).count, 0)
     }
+    func testUndatedCompletionLandsOnCalendarWithCompletedCaption() throws {
+        var task = StudyTask(title: "Someday")
+        XCTAssertFalse(task.appearsOnCalendarDay(Day.today))
+        XCTAssertNil(task.dateCaption())
+        task.completed = true
+        task.syncCompletion(on: "2026-09-15")
+        XCTAssertEqual(task.completedOn, "2026-09-15")
+        XCTAssertTrue(task.appearsOnCalendarDay("2026-09-15"))
+        XCTAssertFalse(task.appearsOnCalendarDay("2026-09-14"))
+        XCTAssertEqual(task.dateCaption(), "Completed " + Day.label("2026-09-15"))
+        let decoded = try JSONDecoder().decode(StudyTask.self, from: JSONEncoder().encode(task))
+        XCTAssertEqual(decoded.completedOn, "2026-09-15")
+        task.completed = false
+        task.syncCompletion(on: "2026-09-15")
+        XCTAssertNil(task.completedOn)
+        XCTAssertFalse(task.appearsOnCalendarDay("2026-09-15"))
+
+        var dated = StudyTask(title: "Essay", due: "2026-09-20", completed: true, completedOn: "2026-09-15")
+        XCTAssertTrue(dated.appearsOnCalendarDay("2026-09-20"))
+        XCTAssertFalse(dated.appearsOnCalendarDay("2026-09-15"))
+        XCTAssertEqual(dated.dateCaption(), "Completed " + Day.label("2026-09-15"))
+        dated.completed = false
+        dated.syncCompletion()
+        XCTAssertNil(dated.completedOn)
+        XCTAssertEqual(dated.dateCaption(), "Due " + Day.label("2026-09-20"))
+
+        var progress = StudyTask(title: "Book", kind: .progress, start: 1, target: 10, current: 11)
+        progress.syncCompletion(on: "2026-09-15")
+        XCTAssertEqual(progress.completedOn, "2026-09-15")
+        XCTAssertTrue(progress.appearsOnCalendarDay("2026-09-15"))
+        XCTAssertEqual(progress.dateCaption(), "Completed " + Day.label("2026-09-15"))
+        XCTAssertEqual(ScheduleWork.untimedTasks(on: "2026-09-15", in: Snapshot(tasks: [progress])).map(\.title), ["Book"])
+    }
     func testNotesDraftMergesWithLiveProgress() {
         let original = StudyTask(title: "Notes", kind: .progress, current: 3)
         var draft = original; draft.notes = "Keep this edit"
@@ -469,9 +543,11 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(store.state.tasks[0].current, 50)
         XCTAssertTrue(store.state.tasks[0].isProgressComplete)
         XCTAssertFalse(store.state.tasks[0].completed)
+        XCTAssertEqual(store.state.tasks[0].completedOn, Day.today)
         store.updateProgress(task.id, to: 0)
         XCTAssertEqual(store.state.tasks[0].current, 17)
         XCTAssertFalse(store.state.tasks[0].completed)
+        XCTAssertNil(store.state.tasks[0].completedOn)
     }
     @MainActor func testStoreRaisesProgressBelowRangeStart() async throws {
         let database = try db()

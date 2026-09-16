@@ -199,7 +199,7 @@ final class LinuxApp {
     }
 
     private func openCourse(_ draft: CourseDraftModel) {
-        opus_course_editor_open(draft.id, draft.name, draft.color, draft.listOnly ? 1 : 0)
+        opus_course_editor_open(draft.id, draft.name, draft.color, draft.listOnly ? 1 : 0, draft.hideFromSchedule ? 1 : 0)
         for time in draft.classTimes {
             opus_course_editor_time(time.id, Int32(time.startMinute), Int32(time.endMinute), time.days.map(String.init).joined(separator: ","))
         }
@@ -277,7 +277,7 @@ final class LinuxApp {
                 confirmed: flags != 0, notes: drag, start: start, target: end, current: page
             ))
         case "save-course":
-            mapped = .saveCourse(CourseDraftModel(id: id, name: text, color: day.isEmpty ? "blue" : day, classTimes: ClassTimeCodec.parse(drag), listOnly: flags != 0))
+            mapped = .saveCourse(CourseDraftModel(id: id, name: text, color: day.isEmpty ? "blue" : day, classTimes: ClassTimeCodec.parse(drag), listOnly: flags & 1 != 0, hideFromSchedule: flags & 2 != 0))
         case "save-rule":
             let meta = rhythmMetadata(drag)
             mapped = .saveRule(RuleDraftModel(

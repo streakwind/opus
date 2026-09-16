@@ -108,10 +108,10 @@ package enum LinuxPresentation {
         let course = state.courses.first { $0.id == task.courseID }
         var detail: [String] = []
         if let name = course?.name { detail.append(name) }
-        if let caption = task.rhythmCaption() {
+        if let caption = task.dateCaption() {
             detail.append(caption)
-        } else if let day = task.calendarDay {
-            detail.append(task.kind == .progress ? "Goal " + Day.label(day) : "Due " + Day.label(day))
+        } else if let caption = task.rhythmCaption() {
+            detail.append(caption)
         }
         if task.kind == .progress {
             detail.append(task.progressLabel)
@@ -122,14 +122,14 @@ package enum LinuxPresentation {
             kind: task.kind == .progress ? .progress : .task,
             title: task.title,
             detail: detail.joined(separator: " · "),
-            completed: task.completed,
+            completed: task.isFinished,
             progress: task.kind == .progress,
             start: task.start,
             target: task.target,
             current: task.current,
             confirmed: true,
             courseID: task.courseID,
-            day: task.calendarDay,
+            day: task.calendarDay ?? task.completedOn,
             color: course?.color ?? "blue",
             markNext: markNext && task.ruleID != nil && !task.completed
         )
@@ -177,9 +177,8 @@ package enum LinuxPresentation {
                 .map { row(for: $0, in: state) }
             let tasks = state.tasks
                 .filter {
-                    $0.due == day &&
+                    $0.appearsOnCalendarDay(day) &&
                     state.showsInOverview($0.courseID) &&
-                    ($0.kind == .progress ? !$0.isProgressComplete : !$0.completed) &&
                     matchesQuery(query, title: $0.title, details: $0.notes)
                 }
                 .map { row(for: $0, in: state, markNext: false) }
@@ -199,10 +198,10 @@ package enum LinuxPresentation {
         for day in days {
             var blocks = state.schedule.filter {
                 $0.day == day &&
-                state.showsInOverview($0.courseID) &&
+                state.showsOnSchedule($0.courseID) &&
                 matchesQuery(query, title: $0.title, details: $0.notes)
             }
-            for course in state.courses where !course.isListOnly {
+            for course in state.courses where state.showsOnSchedule(course.id) {
                 blocks += course.classBlocks(on: day).filter { matchesQuery(query, title: $0.title) }
             }
             for placement in ScheduleLayout.placements(blocks) {

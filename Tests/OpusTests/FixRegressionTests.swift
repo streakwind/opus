@@ -15,6 +15,7 @@ final class FixRegressionTests: XCTestCase {
         presentation.toggle(task, store: store)
         let completed = try XCTUnwrap(store.state.tasks.first)
         XCTAssertTrue(completed.completed)
+        XCTAssertEqual(completed.completedOn, Day.today)
         XCTAssertTrue(try XCTUnwrap(database.load().tasks.first).completed)
         XCTAssertTrue(presentation.filteringTask(completed).isInToday(on: Day.today))
         try await Task.sleep(for: .milliseconds(750))

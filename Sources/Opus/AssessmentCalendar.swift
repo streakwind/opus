@@ -60,6 +60,7 @@ struct CalendarHeading: View {
 struct AssessmentCalendar: View {
     var store: Store
     var query: String
+    var group: String = ""
     var newEntryRequest: Int
     var editRhythm: (QuizRule) -> Void
     @State private var anchor = Date()
@@ -86,7 +87,7 @@ struct AssessmentCalendar: View {
                         ForEach(0..<rows, id: \.self) { row in
                             HStack(spacing: 0) {
                                 ForEach(Array(days[(row*columns)..<(row*columns+columns)]), id: \.self) { day in
-                                    CalendarDayCell(store: store, day: day, inMonth: period != .month || Calendar.current.isDate(Day.date(day), equalTo: anchor, toGranularity: .month), query: query, capacity: max(1, Int((height - 52) / 23)), wide: period == .day, select: { selectedDay = day }, editing: $editing, editingEvent: $editingEvent)
+                                    CalendarDayCell(store: store, day: day, inMonth: period != .month || Calendar.current.isDate(Day.date(day), equalTo: anchor, toGranularity: .month), query: query, group: group, capacity: max(1, Int((height - 52) / 23)), wide: period == .day, select: { selectedDay = day }, editing: $editing, editingEvent: $editingEvent)
                                         .frame(width: geometry.size.width / CGFloat(columns), height: height).id(day)
                                 }
                             }
@@ -148,8 +149,9 @@ struct AssessmentCalendar: View {
             ensureOccurrences()
         }
         .onChange(of: newEntryRequest) { _, _ in
-            editing = .new(day: selectedDay, courseID: nil, title: "", kind: .task)
+            editing = .new(day: selectedDay, courseID: store.state.defaultCourseID(inGroup: group), title: "", kind: .task)
         }
+        .onChange(of: group) { _, _ in editing = nil; editingEvent = nil }
         .onAppear(perform: ensureOccurrences)
     }
     private func ensureOccurrences() { store.refreshOccurrences(through: days.last) }
@@ -160,6 +162,7 @@ private struct CalendarDayCell: View {
     var day: String
     var inMonth: Bool
     var query: String
+    var group: String = ""
     var capacity: Int
     var wide: Bool
     var select: () -> Void
@@ -168,9 +171,9 @@ private struct CalendarDayCell: View {
     @State private var overflow = false
     @State private var targeted = false
     private func matches(_ title: String, courseID: String?) -> Bool {
-        query.isEmpty ||
+        store.state.matchesGroup(courseID, group: group) && (query.isEmpty ||
         title.localizedCaseInsensitiveContains(query) ||
-        (store.course(courseID)?.name.localizedCaseInsensitiveContains(query) ?? false)
+        (store.course(courseID)?.name.localizedCaseInsensitiveContains(query) ?? false))
     }
     private var assessments: [Assessment] {
         store.state.assessments.filter {
@@ -179,8 +182,8 @@ private struct CalendarDayCell: View {
     }
     private var tasks: [StudyTask] {
         store.state.tasks.filter {
-            $0.due == day && store.state.showsInOverview($0.courseID) && matches($0.title, courseID: $0.courseID)
-        }.sorted { !$0.completed && $1.completed }
+            $0.appearsOnCalendarDay(day) && store.state.showsInOverview($0.courseID) && matches($0.title, courseID: $0.courseID)
+        }.sorted { !$0.isFinished && $1.isFinished }
     }
     private var allDayEvents: [ScheduleBlock] {
         store.state.schedule.filter {
@@ -192,7 +195,7 @@ private struct CalendarDayCell: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Spacer()
-                Button { select(); editing = .new(day: day, courseID: nil, title: "", kind: .task) } label: {
+                Button { select(); editing = .new(day: day, courseID: store.state.defaultCourseID(inGroup: group), title: "", kind: .task) } label: {
                     Text(Day.date(day).formatted(.dateTime.day())).font(.system(size: 17, weight: .regular))
                         .foregroundStyle(day == Day.today ? Color.white : inMonth ? Color.primary : Color.secondary.opacity(0.5))
                         .frame(width: 30, height: 30).background(day == Day.today ? Color.accentColor : .clear, in: Circle())
@@ -213,7 +216,7 @@ private struct CalendarDayCell: View {
                                     ForEach(tasks) { taskLine($0) }
                                 }
                             }.frame(maxHeight: 330)
-                            Button("Add…") { overflow = false; select(); editing = .new(day: day, courseID: nil, title: "", kind: .task) }
+                            Button("Add…") { overflow = false; select(); editing = .new(day: day, courseID: store.state.defaultCourseID(inGroup: group), title: "", kind: .task) }
                         }.padding(16).frame(width: 320)
                     }
             }
@@ -223,7 +226,7 @@ private struct CalendarDayCell: View {
         .background(targeted ? Color.accentColor.opacity(0.08) : background)
         .overlay(alignment: .trailing) { Rectangle().fill(Color.primary.opacity(0.13)).frame(width: 0.5) }
         .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.13)).frame(height: 0.5) }
-        .contentShape(Rectangle()).onTapGesture { select(); editing = .new(day: day, courseID: nil, title: "", kind: .task) }
+        .contentShape(Rectangle()).onTapGesture { select(); editing = .new(day: day, courseID: store.state.defaultCourseID(inGroup: group), title: "", kind: .task) }
         .onDrop(of: [UTType.text], isTargeted: $targeted) { providers in
             guard let provider = providers.first else { return false }
             let targetDay = day; let targetStore = store
@@ -288,8 +291,8 @@ private struct CalendarDayCell: View {
                     if task.ruleID != nil { RepeatBadge() }
                 }.frame(maxWidth: .infinity, minHeight: 21, alignment: .leading).contentShape(Rectangle())
             }.buttonStyle(.plain)
-        }.font(.system(size: wide ? 13 : 11)).frame(height: 21).padding(.horizontal, 5).opacity(task.completed ? 0.45 : 1)
-            .help(task.title + " · Due")
+        }.font(.system(size: wide ? 13 : 11)).frame(height: 21).padding(.horizontal, 5).opacity(task.isFinished ? 0.45 : 1)
+            .help(task.title + (task.dateCaption().map { " · " + $0 } ?? ""))
             .onDrag { NSItemProvider(object: ("task:" + task.id) as NSString) }
     }
 }

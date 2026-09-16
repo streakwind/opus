@@ -62,6 +62,21 @@ final class PresentationTests: XCTestCase {
         XCTAssertTrue(blocks.isEmpty)
     }
 
+    func testHideFromScheduleLeavesCalendarAndListPages() {
+        var hidden = Course(name: "Studio")
+        hidden.hideFromSchedule = true
+        var state = Snapshot(courses: [hidden], setupComplete: true)
+        state.tasks = [StudyTask(courseID: hidden.id, title: "Sketch", due: Day.today)]
+        state.assessments = [Assessment(courseID: hidden.id, title: "Critique", day: Day.today)]
+        state.schedule = [ScheduleBlock(courseID: hidden.id, title: "Studio block", day: Day.today, startMinute: 600, duration: 30)]
+        let today = LinuxPresentation.workRows(in: state, selection: .section(.today), query: "")
+        XCTAssertEqual(today.tasks.map(\.title), ["Sketch"])
+        XCTAssertEqual(today.assessments.map(\.title), ["Critique"])
+        let days = LinuxPresentation.calendarDays(in: state, period: .day, anchor: Day.today, selected: Day.today, query: "")
+        XCTAssertEqual(days.first?.items.map(\.title).sorted(), ["Critique", "Sketch"])
+        XCTAssertTrue(LinuxPresentation.scheduleBlocks(in: state, days: [Day.today], query: "").isEmpty)
+    }
+
     func testCalendarScheduleAndRhythmProjection() {
         let course = Course(name: "Calc", color: "blue", classTimes: [ClassTime(startMinute: 480, endMinute: 530, days: [Calendar.current.component(.weekday, from: Date())])])
         var state = Snapshot(courses: [course], setupComplete: true)
@@ -86,6 +101,12 @@ final class PresentationTests: XCTestCase {
         let calendar = LinuxPresentation.calendarDays(in: state, period: .week, anchor: today, selected: today, query: "")
         XCTAssertTrue(calendar.contains { day in day.day == today && day.items.contains { $0.title == "Due work" } })
         XCTAssertFalse(calendar.contains { day in day.items.contains { $0.title == "Someday" } })
+        var finished = undated
+        finished.completed = true
+        finished.syncCompletion(on: today)
+        state.tasks[state.tasks.firstIndex { $0.title == "Someday" }!] = finished
+        let after = LinuxPresentation.calendarDays(in: state, period: .week, anchor: today, selected: today, query: "")
+        XCTAssertTrue(after.contains { day in day.day == today && day.items.contains { $0.title == "Someday" && $0.detail.contains("Completed") } })
     }
 }
 
@@ -107,6 +128,7 @@ final class SessionTests: XCTestCase {
         let taskID = app.store.state.tasks[0].id
         _ = app.handle(.toggleTask(taskID))
         XCTAssertTrue(app.store.state.tasks[0].completed)
+        XCTAssertEqual(app.store.state.tasks[0].completedOn, Day.today)
         app.selection = .section(.archive)
         XCTAssertEqual(app.workRows().tasks.count, 1)
         _ = app.handle(.confirmArchiveDeleteAll)
@@ -198,6 +220,7 @@ final class SessionTests: XCTestCase {
         let course = app.store.state.courses[0]
         XCTAssertEqual(course.name, "Physics")
         XCTAssertTrue(course.isListOnly)
+        XCTAssertFalse(course.isHiddenFromSchedule)
         XCTAssertEqual(course.resolvedClassTimes.count, 2)
         XCTAssertEqual(course.resolvedClassTimes[0].days, [2, 4, 6])
         XCTAssertEqual(course.resolvedClassTimes[1].id, "id:with:colons")

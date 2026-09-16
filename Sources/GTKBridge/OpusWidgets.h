@@ -69,6 +69,7 @@ typedef struct {
     GtkWidget *editor_name;
     GtkWidget *editor_color;
     GtkWidget *editor_list_only;
+    GtkWidget *editor_hide_from_schedule;
     GtkWidget *editor_times_box;
     GtkWidget *editor_weekday_box;
     GtkWidget *editor_interval;
