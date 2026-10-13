@@ -1,0 +1,9 @@
+// Set this to the iCloud container registered to your Apple Developer team.
+// Both targets must use the same container.
+OPUS_ICLOUD_CONTAINER = iCloud.com.ruben.opus
+SWIFT_VERSION = 6.0
+CODE_SIGN_STYLE = Automatic
+CURRENT_PROJECT_VERSION = 1
+MARKETING_VERSION = 0.3.0
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_KEY_CFBundleDisplayName = Opus

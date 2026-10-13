@@ -2,7 +2,7 @@ import AppKit
 import XCTest
 import SwiftUI
 import OpusCore
-@testable import Opus
+@testable import OpusDesktop
 
 final class JournalTextViewTests: XCTestCase {
     @MainActor private func editor(_ source: String) -> JournalTextView {

@@ -1,0 +1,3 @@
+import OpusDesktop
+
+OpusApplication.main()

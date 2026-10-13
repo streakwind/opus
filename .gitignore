@@ -9,3 +9,8 @@ dist/
 *.db
 *.db-*
 exports/
+
+# Xcode personal signing and UI state
+xcuserdata/
+*.xcuserstate
+DerivedData/

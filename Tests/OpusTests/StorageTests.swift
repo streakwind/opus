@@ -1,7 +1,7 @@
 import XCTest
 import SwiftUI
 import OpusCore
-@testable import Opus
+@testable import OpusDesktop
 
 final class AppearanceTests: XCTestCase {
     func testCustomCourseHexColorsRoundTrip() {

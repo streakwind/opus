@@ -21,6 +21,21 @@ if (( ${sdk%%.*} < 26 )); then
   exit 1
 fi
 
+# A provisioned Xcode build is required for iCloud. The existing ad-hoc
+# package build remains useful for local use without a developer account.
+if [[ -n "${OPUS_DEVELOPMENT_TEAM:-}" ]]; then
+  xcodebuild -project Apple/Opus.xcodeproj -scheme "Opus Mac" -configuration Release \
+    -derivedDataPath /tmp/opus-mac -destination 'generic/platform=macOS' \
+    -allowProvisioningUpdates DEVELOPMENT_TEAM="$OPUS_DEVELOPMENT_TEAM" \
+    OPUS_ICLOUD_CONTAINER="${OPUS_ICLOUD_CONTAINER:-iCloud.com.ruben.opus}" \
+    MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$build_number" build
+  mkdir -p dist
+  rm -rf dist/Opus.app
+  ditto '/tmp/opus-mac/Build/Products/Release/Opus Mac.app' dist/Opus.app
+  print "Built signed Mac app: $PWD/dist/Opus.app"
+  exit 0
+fi
+
 swift build -c release --scratch-path /tmp/opus-release
 if [[ "${OPUS_REGENERATE_ICON:-0}" == "1" ]]; then
   swift scripts/make-icon.swift "$PWD/Assets"

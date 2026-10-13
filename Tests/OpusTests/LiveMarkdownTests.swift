@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import XCTest
 import OpusCore
-@testable import Opus
+@testable import OpusDesktop
 
 final class LiveMarkdownTests: XCTestCase {
     @MainActor private func liveEditor(_ source: String) throws -> (JournalNativeEditor.Coordinator, JournalTextView) {

@@ -84,7 +84,9 @@ package final class ICloudSync {
             ledger = merged
             try persist()
             let destination = directory.appendingPathComponent(ledger.device + ".json")
-            let data = try JSONEncoder().encode(ledger)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(ledger)
             try await Task.detached { try CloudFiles.write(data, to: destination) }.value
             guard enabled else { return }
             status = downloaded.waiting ? "Downloading iCloud changes…" : "iCloud checked at \(Date().formatted(date: .omitted, time: .shortened))"
@@ -138,7 +140,9 @@ private enum CloudFiles {
         var coordinationError: NSError?
         var writeError: Error?
         NSFileCoordinator().coordinate(writingItemAt: destination, options: .forReplacing, error: &coordinationError) { url in
-            do { try data.write(to: url, options: .atomic) } catch { writeError = error }
+            do {
+                if (try? Data(contentsOf: url)) != data { try data.write(to: url, options: .atomic) }
+            } catch { writeError = error }
         }
         if let error = coordinationError ?? writeError as NSError? { throw error }
     }

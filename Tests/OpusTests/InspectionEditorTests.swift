@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import XCTest
 import OpusCore
-@testable import Opus
+@testable import OpusDesktop
 
 final class InspectionEditorTests: XCTestCase {
     @MainActor func testReturnIntentionallyInsertsAfterSelection() async throws {

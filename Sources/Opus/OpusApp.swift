@@ -2,13 +2,12 @@ import OpusCore
 import SwiftUI
 import AppKit
 
-@main
-struct OpusApp: App {
+public struct OpusApplication: App {
     @State private var store: Store?
     @State private var sync: ICloudSync?
     @Environment(\.scenePhase) private var scenePhase
     @State private var startupError: String?
-    init() {
+    public init() {
         MathRenderer.prepareFonts()
         do {
             let root: URL
@@ -20,7 +19,7 @@ struct OpusApp: App {
             catch { opened.error = "iCloud sync could not start: \(error.localizedDescription)" }
         } catch { _startupError = State(initialValue: error.localizedDescription) }
     }
-    var body: some Scene {
+    public var body: some Scene {
         WindowGroup {
             if let store {
                 ContentView(store: store, sync: sync).background(WindowChrome()).frame(minWidth: 850, minHeight: 600)

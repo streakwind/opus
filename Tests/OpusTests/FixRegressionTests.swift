@@ -1,7 +1,7 @@
 import Foundation
 import XCTest
 import OpusCore
-@testable import Opus
+@testable import OpusDesktop
 
 final class FixRegressionTests: XCTestCase {
     @MainActor func testCompletionPersistsWhileCrossedOutRowRemainsBrieflyVisible() async throws {
