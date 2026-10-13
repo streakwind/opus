@@ -29,7 +29,7 @@ jobs:
           set -euo pipefail
           tag="${{ steps.tag.outputs.name }}"
           test -n "$tag"
-          for workflow in macOS Linux; do
+          for workflow in macOS; do
             for _ in $(seq 1 60); do
               id=$(gh run list --workflow "$workflow" --branch "$tag" --limit 1 --json databaseId,conclusion,status --jq '.[0].databaseId // empty')
               status=$(gh run list --workflow "$workflow" --branch "$tag" --limit 1 --json status,conclusion --jq '.[0] | "\(.status):\(.conclusion)"')
@@ -55,10 +55,9 @@ jobs:
           tag="${{ steps.tag.outputs.name }}"
           version="${tag#v}"
           mac=$(find dist -name 'Opus-macOS.zip' | head -n1)
-          linux=$(find dist -name 'Opus-linux-x86_64.tar.gz' | head -n1)
-          test -f "$mac" && test -f "$linux"
+          test -f "$mac"
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" "$mac" "$linux" --clobber
+            gh release upload "$tag" "$mac" --clobber
           else
-            gh release create "$tag" "$mac" "$linux" --title "Opus $version" --generate-notes
+            gh release create "$tag" "$mac" --title "Opus $version" --generate-notes
           fi
