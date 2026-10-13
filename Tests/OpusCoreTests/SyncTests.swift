@@ -40,6 +40,15 @@ final class SyncTests: XCTestCase {
         XCTAssertNil(try a.snapshot().tasks.first?.courseID)
         XCTAssertThrowsError(try { var future = b; future.version = 2; try a.merge(future) }())
     }
+    @MainActor func testOfflineRecurrenceGenerationUsesTheSameIDs() {
+        var left = Snapshot()
+        left.rules = [QuizRule(id: "rule", title: "Read", weekday: 2, itemKind: .task)]
+        var right = left
+        Store.generate(in: &left)
+        Store.generate(in: &right)
+        XCTAssertFalse(left.tasks.isEmpty)
+        XCTAssertEqual(left.tasks.map(\.id), right.tasks.map(\.id))
+    }
     @MainActor func testSyncClearsUndoAndPersistsWithoutFeedback() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

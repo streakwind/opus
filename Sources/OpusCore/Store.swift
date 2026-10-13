@@ -351,7 +351,7 @@ package final class Store {
         var next = state
         Self.generate(in: &next, through: through)
         Self.syncJournalLinks(in: &next)
-        do { try database.save(next); state = next } catch { self.error = error.localizedDescription }
+        do { try database.save(next); state = next; didSave?() } catch { self.error = error.localizedDescription }
     }
     package static func generate(in state: inout Snapshot, today: String = Day.today, through: String? = nil) {
         let horizon = max(56, through.map { (Calendar.current.dateComponents([.day], from: Day.date(today), to: Day.date($0)).day ?? 0) + 1 } ?? 56)
@@ -371,11 +371,12 @@ package final class Store {
                 state.generated.insert(key)
                 switch rule.kind {
                 case .assessment:
-                    state.assessments.append(Assessment(courseID: rule.courseID, title: rule.title, day: day, confirmed: true, ruleID: rule.id, occurrence: day))
+                    state.assessments.append(Assessment(id: "occurrence:\(rule.id):\(day)", courseID: rule.courseID, title: rule.title, day: day, confirmed: true, ruleID: rule.id, occurrence: day))
                 case .task:
                     let kind = (rule.taskKind == .progress) ? TaskKind.progress : .checkbox
                     let start = kind == .progress ? max(0, rule.startCount ?? 1) : 1
                     state.tasks.append(StudyTask(
+                        id: "occurrence:\(rule.id):\(day)",
                         courseID: rule.courseID,
                         title: rule.title,
                         kind: kind,
@@ -387,7 +388,7 @@ package final class Store {
                         occurrence: day
                     ))
                 case .schedule:
-                    state.schedule.append(ScheduleBlock(courseID: rule.courseID, title: rule.title, day: day, startMinute: rule.startMinute ?? 540, duration: rule.duration ?? 60, allDay: rule.allDay == true, ruleID: rule.id, occurrence: day))
+                    state.schedule.append(ScheduleBlock(id: "occurrence:\(rule.id):\(day)", courseID: rule.courseID, title: rule.title, day: day, startMinute: rule.startMinute ?? 540, duration: rule.duration ?? 60, allDay: rule.allDay == true, ruleID: rule.id, occurrence: day))
                 }
             }
         }

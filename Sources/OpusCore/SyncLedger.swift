@@ -3,8 +3,8 @@ import Foundation
 /// Per-item last-writer-wins revisions. Tombstones survive offline devices returning.
 /// Each installation publishes its own ledger, so concurrent uploads never replace
 /// another device's file. SQLite itself is never placed in iCloud Drive.
-package struct SyncLedger: Codable {
-    package struct Record: Codable, Equatable {
+package struct SyncLedger: Codable, Sendable {
+    package struct Record: Codable, Equatable, Sendable {
         var payload: Data?
         var position: Int
         var clock: Int64

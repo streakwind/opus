@@ -65,28 +65,18 @@ package final class ICloudSync {
             accountToken = identity
             try identity.write(to: accountURL, options: .atomic)
             let directory = root.appendingPathComponent("Documents/OpusSync", isDirectory: true)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            var merged = ledger
-            var waitingForDownload = false
-            for url in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.ubiquitousItemDownloadingStatusKey]) where url.pathExtension == "json" {
-                let values = try url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
-                if let download = values.ubiquitousItemDownloadingStatus, download != .current {
-                    try FileManager.default.startDownloadingUbiquitousItem(at: url)
-                    waitingForDownload = true
-                    continue
-                }
-                var coordinationError: NSError?
-                var readError: Error?
-                NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { coordinated in
-                    do {
-                        try merged.merge(JSONDecoder().decode(SyncLedger.self, from: Data(contentsOf: coordinated)))
-                        for conflict in NSFileVersion.unresolvedConflictVersionsOfItem(at: coordinated) ?? [] {
-                            try merged.merge(JSONDecoder().decode(SyncLedger.self, from: Data(contentsOf: conflict.url)))
-                        }
-                    } catch { readError = error }
-                }
-                if let error = coordinationError ?? readError as NSError? { throw error }
+            let downloaded = try await Task.detached { try CloudFiles.read(directory) }.value
+            guard enabled else { return }
+            guard let currentToken = FileManager.default.ubiquityIdentityToken,
+                  try NSKeyedArchiver.archivedData(withRootObject: currentToken, requiringSecureCoding: false) == identity else {
+                setEnabled(false)
+                status = "iCloud account changed during sync. Use the original account."
+                return
             }
+            // Local edits may have happened while the files were downloading.
+            // Merge into the newest ledger, never the state captured before await.
+            var merged = ledger
+            for remote in downloaded.ledgers { try merged.merge(remote) }
             // Commit locally before publishing. A failed database write must never
             // advertise a state this device could not load.
             let next = try merged.snapshot()
@@ -95,13 +85,61 @@ package final class ICloudSync {
             try persist()
             let destination = directory.appendingPathComponent(ledger.device + ".json")
             let data = try JSONEncoder().encode(ledger)
-            var coordinationError: NSError?
-            var writeError: Error?
-            NSFileCoordinator().coordinate(writingItemAt: destination, options: .forReplacing, error: &coordinationError) { url in
-                do { try data.write(to: url, options: .atomic) } catch { writeError = error }
-            }
-            if let error = coordinationError ?? writeError as NSError? { throw error }
-            status = waitingForDownload ? "Downloading iCloud changes…" : "Synced with iCloud at \(Date().formatted(date: .omitted, time: .shortened))"
+            try await Task.detached { try CloudFiles.write(data, to: destination) }.value
+            guard enabled else { return }
+            status = downloaded.waiting ? "Downloading iCloud changes…" : "iCloud checked at \(Date().formatted(date: .omitted, time: .shortened))"
+
         } catch { status = "Sync error: \(error.localizedDescription)" }
+    }
+}
+
+/// Coordinated cloud disk access runs outside the main actor. A device writes
+/// only its own file; unresolved versions are merged without discarding them.
+private enum CloudFiles {
+    struct ReadResult: Sendable {
+        var ledgers: [SyncLedger] = []
+        var waiting = false
+    }
+    static func read(_ directory: URL) throws -> ReadResult {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var result = ReadResult()
+        for url in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.ubiquitousItemDownloadingStatusKey]) {
+            // macOS may enumerate evicted documents as hidden .name.icloud
+            // placeholders rather than the logical document URL.
+            let name = url.lastPathComponent
+            if name.hasPrefix("."), name.hasSuffix(".json.icloud") {
+                let logicalName = String(name.dropFirst().dropLast(".icloud".count))
+                try FileManager.default.startDownloadingUbiquitousItem(at: directory.appendingPathComponent(logicalName))
+                result.waiting = true
+                continue
+            }
+            guard url.pathExtension == "json" else { continue }
+            let values = try url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+            if let download = values.ubiquitousItemDownloadingStatus, download != .current {
+                try FileManager.default.startDownloadingUbiquitousItem(at: url)
+                result.waiting = true
+                continue
+            }
+            var coordinationError: NSError?
+            var readError: Error?
+            NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { coordinated in
+                do {
+                    result.ledgers.append(try JSONDecoder().decode(SyncLedger.self, from: Data(contentsOf: coordinated)))
+                    for conflict in NSFileVersion.unresolvedConflictVersionsOfItem(at: coordinated) ?? [] {
+                        result.ledgers.append(try JSONDecoder().decode(SyncLedger.self, from: Data(contentsOf: conflict.url)))
+                    }
+                } catch { readError = error }
+            }
+            if let error = coordinationError ?? readError as NSError? { throw error }
+        }
+        return result
+    }
+    static func write(_ data: Data, to destination: URL) throws {
+        var coordinationError: NSError?
+        var writeError: Error?
+        NSFileCoordinator().coordinate(writingItemAt: destination, options: .forReplacing, error: &coordinationError) { url in
+            do { try data.write(to: url, options: .atomic) } catch { writeError = error }
+        }
+        if let error = coordinationError ?? writeError as NSError? { throw error }
     }
 }
