@@ -57,7 +57,12 @@ package final class ICloudSync {
             let identity = try NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: false)
             let accountURL = localURL.deletingLastPathComponent().appendingPathComponent("SyncAccount.data")
             let previousIdentity = accountToken ?? (try? Data(contentsOf: accountURL))
-            guard previousIdentity == nil || previousIdentity == identity else {
+            let sameAccount: Bool
+            if let previousIdentity {
+                let previousToken = try NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(previousIdentity) as? NSObject
+                sameAccount = previousToken?.isEqual(token) == true
+            } else { sameAccount = true }
+            guard sameAccount else {
                 setEnabled(false)
                 status = "iCloud account changed. Use the original account to protect your data."
                 return
@@ -68,7 +73,7 @@ package final class ICloudSync {
             let downloaded = try await Task.detached { try CloudFiles.read(directory) }.value
             guard enabled else { return }
             guard let currentToken = FileManager.default.ubiquityIdentityToken,
-                  try NSKeyedArchiver.archivedData(withRootObject: currentToken, requiringSecureCoding: false) == identity else {
+                  currentToken.isEqual(token) else {
                 setEnabled(false)
                 status = "iCloud account changed during sync. Use the original account."
                 return

@@ -29,14 +29,18 @@ jobs:
           set -euo pipefail
           tag="${{ steps.tag.outputs.name }}"
           test -n "$tag"
-          for workflow in macOS; do
+          for workflow in macOS iPhone; do
+            found=false
             for _ in $(seq 1 60); do
               id=$(gh run list --workflow "$workflow" --branch "$tag" --limit 1 --json databaseId,conclusion,status --jq '.[0].databaseId // empty')
               status=$(gh run list --workflow "$workflow" --branch "$tag" --limit 1 --json status,conclusion --jq '.[0] | "\(.status):\(.conclusion)"')
               echo "$workflow $status"
               if [[ "$status" == "completed:success" ]]; then
-                mkdir -p dist
-                gh run download "$id" -D dist
+                found=true
+                if [[ "$workflow" == "macOS" ]]; then
+                  mkdir -p dist
+                  gh run download "$id" -D dist
+                fi
                 break
               fi
               if [[ "$status" == completed:* ]]; then
@@ -45,6 +49,10 @@ jobs:
               fi
               sleep 30
             done
+            if [[ "$found" != true ]]; then
+              echo "$workflow did not finish before the release timeout" >&2
+              exit 1
+            fi
           done
           find dist -type f -print
       - name: Create GitHub release

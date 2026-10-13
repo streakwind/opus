@@ -17,7 +17,6 @@ final class AppUpdateTests: XCTestCase {
           "tag_name": "v0.5.4",
           "html_url": "https://github.com/streakwind/opus/releases/tag/v0.5.4",
           "assets": [
-            {"name": "Opus-linux-x86_64.tar.gz", "browser_download_url": "https://example.com/linux"},
             {"name": "Opus-macOS.zip", "browser_download_url": "https://example.com/mac"}
           ]
         }
@@ -27,7 +26,6 @@ final class AppUpdateTests: XCTestCase {
         XCTAssertEqual(offer?.downloadURL, "https://example.com/mac")
         XCTAssertNil(try AppUpdate.offer(from: data, current: "0.5.4", channel: .macOS))
         XCTAssertNil(try AppUpdate.offer(from: data, current: "0.6.0", channel: .macOS))
-        XCTAssertEqual(try AppUpdate.offer(from: data, current: "0.5.3", channel: .linux)?.downloadURL, "https://example.com/linux")
     }
 
     func testMissingChannelAssetFailsInsteadOfSilentlySkipping() {

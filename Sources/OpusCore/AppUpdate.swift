@@ -2,11 +2,9 @@ import Foundation
 
 package enum AppChannel: String, Equatable {
     case macOS
-    case linux
     package var assetName: String {
         switch self {
         case .macOS: "Opus-macOS.zip"
-        case .linux: "Opus-linux-x86_64.tar.gz"
         }
     }
 }
