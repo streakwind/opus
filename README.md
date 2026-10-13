@@ -11,6 +11,18 @@ open dist/Opus.app
 
 Open `Package.swift` in Xcode to edit and run the executable, or use `swift run`. The app bundle is the preferred way to launch with normal Mac window behavior.
 
+## Run (iPhone)
+
+Open `Apple/Opus.xcodeproj`, select **Opus iPhone**, configure your signing team, and Run on your connected phone. No App Store installation is required.
+
+Follow the [iPhone installation and iCloud setup guide](docs/iphone-installation.md) for Developer Mode, free local-only installation, registered-device distribution, and signed Mac/iPhone builds. Both apps must be provisioned for the same iCloud container to sync; the ad-hoc Mac release remains local-only.
+
+For an unsigned simulator build:
+
+```sh
+./scripts/build-iphone.sh simulator
+```
+
 ## Use
 
 - New installations start empty. Add your own lists and rhythms; no personal course or timetable defaults are shipped.
@@ -35,7 +47,10 @@ Each day is one continuous Markdown document. Type `/task` at the caret to embed
 ## Storage
 
 - macOS: `~/Library/Application Support/Opus/Opus.sqlite`
-- Override with `OPUS_DATA_DIR` for isolated runs
+- iPhone: the app container’s `Library/Application Support/Opus/Opus.sqlite`
+- Override Mac storage with `OPUS_DATA_DIR` for isolated runs
+
+Optional iCloud Drive sync exchanges item revisions and deletion records while keeping SQLite local. Enable it in Settings on both provisioned apps. See the installation guide for merge behavior and signing requirements.
 
 SQLite uses WAL, foreign-key checks, bound parameters, and atomic transactions. JSON export is a portable snapshot, not a live file copy. Quit before copying the database; include `-wal`/`-shm` if present.
 
@@ -44,6 +59,8 @@ SQLite uses WAL, foreign-key checks, bound parameters, and atomic transactions. 
 ```sh
 swift test --scratch-path /tmp/opus-build
 ./scripts/build-app.sh          # macOS
+./scripts/build-iphone.sh simulator
+# Xcode: select Opus iPhone, then Product > Test
 ```
 
 Core and Mac presentation tests run on macOS.
@@ -56,11 +73,11 @@ Workflows run only on **manual dispatch** or **version tags**, never on ordinary
 ./scripts/release.sh 0.2.0
 ```
 
-That tags `v0.2.0`, builds macOS ZIP, and publishes a GitHub Release.
+That tags `v0.2.0`, builds the macOS ZIP, checks simulator/device iPhone builds and UI tests, and publishes the Mac GitHub Release. Installable iPhone IPAs need your team’s signing and registered-device profiles; CI does not publish an unsigned IPA.
 
 ## Current scope
 
-Editable lists/tasks, textbook progress, unified calendar, timed schedule, flexible rhythms, undo, JSON export, Archive with delete-all, and System/Light/Dark appearance on Mac. Not yet included: sync, JSON import, automatic backups, reminders, or archived lists. App signing is local/ad hoc; releases are not notarized.
+Editable lists/tasks, textbook progress, unified calendar, timed schedule, flexible rhythms, undo, JSON export, Archive with delete-all, and System/Light/Dark appearance on Mac. iPhone provides native forms, a day calendar, and Markdown source editing/preview with shared storage and optional iCloud sync. The Mac live math/code editor remains Mac-specific. Not yet included: JSON import, automatic backups, reminders, or archived lists. Public Mac releases use ad-hoc signing and are not notarized; iCloud requires the provisioned Xcode build.
 
 Settings includes Quick Start. It never inserts sample tasks or changes your data.
 

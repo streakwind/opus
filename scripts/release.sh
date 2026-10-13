@@ -49,5 +49,5 @@ fi
 
 git tag "$tag"
 git push origin "$tag"
-print "Tagged $tag. GitHub Actions will build macOS/Linux artifacts and publish the release."
+print "Tagged $tag. GitHub Actions will build the macOS artifact, check iPhone builds, and publish the release."
 print "Watch progress with: gh run watch"
