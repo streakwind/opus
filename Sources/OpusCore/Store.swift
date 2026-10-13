@@ -8,6 +8,7 @@ package final class Store {
     package var state: Snapshot
     package var calendarFocus: CalendarFocus?
     package var error: String?
+    package var didSave: (() -> Void)?
     private let database: Database
     private var undoStates: [Snapshot] = []
     package var canUndo: Bool { !undoStates.isEmpty }
@@ -85,11 +86,20 @@ package final class Store {
             undoStates.append(previous)
             if undoStates.count > 30 { undoStates.removeFirst() }
             state = next
+            didSave?()
         } catch { self.error = error.localizedDescription }
+    }
+    package func applySynced(_ snapshot: Snapshot) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard try encoder.encode(state) != encoder.encode(snapshot) else { return }
+        try database.save(snapshot)
+        state = snapshot
+        undoStates.removeAll()
     }
     package func undo() {
         guard let previous = undoStates.last else { return }
-        do { try database.save(previous); state = previous; undoStates.removeLast() }
+        do { try database.save(previous); state = previous; undoStates.removeLast(); didSave?() }
         catch { self.error = error.localizedDescription }
     }
     package func course(_ id: String?) -> Course? { state.courses.first { $0.id == id } }

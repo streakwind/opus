@@ -5,6 +5,8 @@ import AppKit
 @main
 struct OpusApp: App {
     @State private var store: Store?
+    @State private var sync: ICloudSync?
+    @Environment(\.scenePhase) private var scenePhase
     @State private var startupError: String?
     init() {
         MathRenderer.prepareFonts()
@@ -12,13 +14,20 @@ struct OpusApp: App {
             let root: URL
             if let custom = ProcessInfo.processInfo.environment["OPUS_DATA_DIR"] { root = URL(fileURLWithPath: custom) }
             else { root = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("Opus", isDirectory: true) }
-            _store = State(initialValue: try Store(database: Database(url: root.appendingPathComponent("Opus.sqlite"))))
+            let opened = try Store(database: Database(url: root.appendingPathComponent("Opus.sqlite")))
+            _store = State(initialValue: opened)
+            do { _sync = State(initialValue: try ICloudSync(store: opened)) }
+            catch { opened.error = "iCloud sync could not start: \(error.localizedDescription)" }
         } catch { _startupError = State(initialValue: error.localizedDescription) }
     }
     var body: some Scene {
         WindowGroup {
             if let store {
-                ContentView(store: store).background(WindowChrome()).frame(minWidth: 850, minHeight: 600)
+                ContentView(store: store, sync: sync).background(WindowChrome()).frame(minWidth: 850, minHeight: 600)
+                    .task { await sync?.sync() }
+                    .onChange(of: scenePhase) { _, phase in
+                        if phase == .active { store.refreshOccurrences(); Task { await sync?.sync() } }
+                    }
                     .onAppear {
                         if let url = Bundle.main.url(forResource: "OpusStack", withExtension: "icns"), let icon = NSImage(contentsOf: url) { NSApplication.shared.applicationIconImage = icon }
                     }

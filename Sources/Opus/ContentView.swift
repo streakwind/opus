@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Bindable var store: Store
+    var sync: ICloudSync? = nil
     @State private var selection: String? = "today"
     @State private var query = ""
     @AppStorage("listGroup") private var listGroup = ""
@@ -347,6 +348,13 @@ struct ContentView: View {
             Button { showTutorial = true } label: {
                 Label("Quick start tutorial", systemImage: "questionmark.circle")
             }.padding(.vertical, 20).accessibilityIdentifier("settings-tutorial")
+
+            if let sync {
+                Toggle("Sync with iCloud", isOn: Binding(get: { sync.enabled }, set: { sync.setEnabled($0) }))
+                Text(sync.status).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                Button("Sync now") { Task { await sync.sync() } }.disabled(!sync.enabled)
+                    .padding(.bottom, 16)
+            }
 
             Text("Updates").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 .padding(.bottom, 8)
